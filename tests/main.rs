@@ -1,155 +1,88 @@
-use donervan::{Chunk, ChunkInfo, Chunker, DonervanResult, Exponent};
+use donervan::{Chunk, ChunkInfo, Chunker, JsonResult, JsonError};
 
-#[test]
-fn chunk_string() {
-    let chunks: Vec<ChunkInfo> = Chunker::new(r#""foobar""#.as_bytes())
-        .collect::<DonervanResult<_>>()
-        .unwrap();
-    assert_eq!(chunks.len(), 1);
-    let first_chunk = chunks[0].clone();
-    assert_eq!(
-        first_chunk,
-        ChunkInfo {
-            key: None,
-            chunk_type: Chunk::String(1..7),
-            line: 0,
-            col: 0
+macro_rules! single_expect_ok_or_error {
+    ($name:ident, ok, $json:literal, $expected:expr) => {
+        paste::item! {
+            #[test]
+            fn [< single_chunk_ok_ $name >]() {
+                let chunks: Vec<ChunkInfo> = Chunker::new($json.as_bytes()).collect::<JsonResult<_>>().unwrap();
+                assert_eq!(chunks.len(), 1);
+                let first_chunk = chunks[0].clone();
+                let debug = format!("{:?}", first_chunk);
+                assert_eq!(debug, $expected);
+            }
         }
-    );
+    };
+    ($name:ident, err, $json:literal, $error:expr) => {
+       paste::item! {
+           #[test]
+           fn [< single_chunk_xerror_ $name _ $error:snake _error >]() {
+               let result: JsonResult<Vec<ChunkInfo>> = Chunker::new($json.as_bytes()).collect();
+               match result {
+                   Ok(t) => panic!("unexpectedly valid: {:?} -> {:?}", $json, t),
+                   Err(e) => assert_eq!(e.error_type, JsonError::$error),
+               }
+           }
+       }
+    };
 }
 
-#[test]
-fn chunk_int() {
-    let chunks: Vec<ChunkInfo> = Chunker::new("-1234".as_bytes()).collect::<DonervanResult<_>>().unwrap();
-    assert_eq!(chunks.len(), 1);
-    let first_chunk = chunks[0].clone();
-    assert_eq!(
-        first_chunk,
-        ChunkInfo {
-            key: None,
-            chunk_type: Chunk::Int {
-                positive: false,
-                range: 1..5
-            },
-            line: 0,
-            col: 0
-        }
-    );
-}
-#[test]
-fn chunk_int_exp() {
-    let chunker = Chunker::new("20e10".as_bytes());
-    let chunks: Vec<ChunkInfo> = chunker.collect::<DonervanResult<_>>().unwrap();
-    assert_eq!(chunks.len(), 1);
-    let first_chunk = chunks[0].clone();
-    assert_eq!(
-        first_chunk,
-        ChunkInfo {
-            key: None,
-            chunk_type: Chunk::IntExponent {
-                positive: true,
-                range: 0..2,
-                exponent: Exponent {
-                    positive: true,
-                    range: 3..5
-                }
-            },
-            line: 0,
-            col: 0
-        }
-    );
+/// macro to define many tests for expected values
+macro_rules! single_tests {
+    ($($name:ident: $ok_or_err:ident => $input:literal, $expected:expr;)*) => {
+        $(
+            single_expect_ok_or_error!($name, $ok_or_err, $input, $expected);
+        )*
+    }
 }
 
-#[test]
-fn chunk_float() {
-    let chunks: Vec<ChunkInfo> = Chunker::new("12.34".as_bytes()).collect::<DonervanResult<_>>().unwrap();
-    assert_eq!(chunks.len(), 1);
-    let first_chunk = chunks[0].clone();
-    assert_eq!(
-        first_chunk,
-        ChunkInfo {
-            key: None,
-            chunk_type: Chunk::Float {
-                positive: true,
-                range: (0, 3, 5)
-            },
-            line: 0,
-            col: 0
-        }
-    );
-}
-
-#[test]
-fn chunk_float_exp() {
-    let chunker = Chunker::new("2.2e10".as_bytes());
-    let chunks: Vec<ChunkInfo> = chunker.collect::<DonervanResult<_>>().unwrap();
-    assert_eq!(chunks.len(), 1);
-    let first_chunk = chunks[0].clone();
-    assert_eq!(
-        first_chunk,
-        ChunkInfo {
-            key: None,
-            chunk_type: Chunk::FloatExponent {
-                positive: true,
-                range: (0, 2, 3),
-                exponent: Exponent {
-                    positive: true,
-                    range: 4..6
-                }
-            },
-            line: 0,
-            col: 0
-        }
-    );
-}
-
-#[test]
-fn chunk_null() {
-    let json = "null";
-    let chunks: Vec<ChunkInfo> = Chunker::new(json.as_bytes()).collect::<DonervanResult<_>>().unwrap();
-    assert_eq!(chunks.len(), 1);
-    let first_chunk = chunks[0].clone();
-    assert_eq!(
-        first_chunk,
-        ChunkInfo {
-            key: None,
-            chunk_type: Chunk::Null,
-            line: 0,
-            col: 0
-        }
-    );
+single_tests! {
+    string: ok => r#""foobar""#, "ChunkInfo { key: None, chunk_type: String(1..7), loc: (0, 0) }";
+    int_neg: ok => "-1234", "ChunkInfo { key: None, chunk_type: Int { positive: false, range: 1..5, exponent: None }, loc: (0, 0) }";
+    int_pos: ok => "1234", "ChunkInfo { key: None, chunk_type: Int { positive: true, range: 0..4, exponent: None }, loc: (0, 0) }";
+    int_exp: ok => "20e10", "ChunkInfo { key: None, chunk_type: Int { positive: true, range: 0..2, exponent: Some(Exponent { positive: true, range: 3..5 }) }, loc: (0, 0) }";
+    float: ok => "12.34", "ChunkInfo { key: None, chunk_type: Float { positive: true, int_range: 0..2, decimal_range: 3..5, exponent: None }, loc: (0, 0) }";
+    float_exp: ok => "2.2e10", "ChunkInfo { key: None, chunk_type: Float { positive: true, int_range: 0..1, decimal_range: 2..3, exponent: Some(Exponent { positive: true, range: 4..6 }) }, loc: (0, 0) }";
+    null: ok => "null", "ChunkInfo { key: None, chunk_type: Null, loc: (0, 0) }";
+    v_true: ok => "true", "ChunkInfo { key: None, chunk_type: True, loc: (0, 0) }";
+    v_false: ok => "false", "ChunkInfo { key: None, chunk_type: False, loc: (0, 0) }";
+    offset_true: ok => "  true", "ChunkInfo { key: None, chunk_type: True, loc: (0, 2) }";
+    string_unclosed: err => r#""foobar"#, UnexpectedEnd;
+    bad_int: err => "-", InvalidNumber;
+    bad_true: err => "truX", InvalidTrue;
+    bad_true: err => "tru", UnexpectedEnd;
+    bad_false: err => "falsX", InvalidFalse;
+    bad_false: err => "fals", UnexpectedEnd;
+    bad_null: err => "nulX", InvalidNull;
+    bad_null: err => "nul", UnexpectedEnd;
 }
 
 #[test]
 fn chunk_array() {
     let json = "[true, false]";
-    let chunks: Vec<ChunkInfo> = Chunker::new(json.as_bytes()).collect::<DonervanResult<_>>().unwrap();
+    let chunks: Vec<ChunkInfo> = Chunker::new(json.as_bytes()).collect::<JsonResult<_>>().unwrap();
     assert_eq!(
         chunks,
         vec![
             ChunkInfo {
                 key: None,
                 chunk_type: Chunk::ArrayStart,
-                line: 0,
-                col: 0,
+                loc: (0, 0),
             },
             ChunkInfo {
                 key: None,
                 chunk_type: Chunk::True,
-                line: 0,
-                col: 1,
+                loc: (0, 1),
             },
             ChunkInfo {
                 key: None,
                 chunk_type: Chunk::False,
-                line: 0,
-                col: 5,
+                loc: (0, 5),
             },
             ChunkInfo {
                 key: None,
                 chunk_type: Chunk::ArrayEnd,
-                line: 0,
-                col: 12,
+                loc: (0, 12),
             },
         ]
     );
@@ -158,27 +91,24 @@ fn chunk_array() {
 #[test]
 fn chunk_object() {
     let json = r#"{"foobar": null}"#;
-    let chunks: Vec<ChunkInfo> = Chunker::new(json.as_bytes()).collect::<DonervanResult<_>>().unwrap();
+    let chunks: Vec<ChunkInfo> = Chunker::new(json.as_bytes()).collect::<JsonResult<_>>().unwrap();
     assert_eq!(
         chunks,
         vec![
             ChunkInfo {
                 key: None,
                 chunk_type: Chunk::ObjectStart,
-                line: 0,
-                col: 0,
+                loc: (0, 0),
             },
             ChunkInfo {
                 key: Some(2..8,),
                 chunk_type: Chunk::Null,
-                line: 0,
-                col: 1,
+                loc: (0, 1),
             },
             ChunkInfo {
                 key: None,
                 chunk_type: Chunk::ObjectEnd,
-                line: 0,
-                col: 15,
+                loc: (0, 15),
             },
         ]
     );
