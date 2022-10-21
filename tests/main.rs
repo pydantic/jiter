@@ -39,8 +39,8 @@ macro_rules! single_tests {
 
 single_tests! {
     string: ok => r#""foobar""#, "ChunkInfo { key: None, chunk_type: String(1..7), loc: (1, 1) }";
-    int_neg: ok => "-1234", "ChunkInfo { key: None, chunk_type: Int { positive: false, range: 1..5, exponent: None }, loc: (1, 1) }";
     int_pos: ok => "1234", "ChunkInfo { key: None, chunk_type: Int { positive: true, range: 0..4, exponent: None }, loc: (1, 1) }";
+    int_neg: ok => "-1234", "ChunkInfo { key: None, chunk_type: Int { positive: false, range: 1..5, exponent: None }, loc: (1, 1) }";
     int_exp: ok => "20e10", "ChunkInfo { key: None, chunk_type: Int { positive: true, range: 0..2, exponent: Some(Exponent { positive: true, range: 3..5 }) }, loc: (1, 1) }";
     float_pos: ok => "12.34", "ChunkInfo { key: None, chunk_type: Float { positive: true, int_range: 0..2, decimal_range: 3..5, exponent: None }, loc: (1, 1) }";
     float_neg: ok => "-12.34", "ChunkInfo { key: None, chunk_type: Float { positive: false, int_range: 1..3, decimal_range: 4..6, exponent: None }, loc: (1, 1) }";
@@ -123,6 +123,33 @@ fn chunk_object() {
                 key: None,
                 chunk_type: Chunk::ObjectEnd,
                 loc: (1, 16),
+            },
+        ]
+    );
+}
+
+#[test]
+fn chunk_object_compact() {
+    let json = "{\"object with 1 member\"\n:true}";
+    let chunks: Vec<ChunkInfo> = Chunker::new(json.as_bytes()).collect::<JsonResult<_>>().unwrap();
+    // println!("{:#?}", chunks);
+    assert_eq!(
+        chunks,
+        vec![
+            ChunkInfo {
+                key: None,
+                chunk_type: Chunk::ObjectStart,
+                loc: (1, 1),
+            },
+            ChunkInfo {
+                key: Some(2..22,),
+                chunk_type: Chunk::True,
+                loc: (1, 2),
+            },
+            ChunkInfo {
+                key: None,
+                chunk_type: Chunk::ObjectEnd,
+                loc: (2, 6),
             },
         ]
     );
