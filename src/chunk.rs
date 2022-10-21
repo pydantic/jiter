@@ -1,46 +1,15 @@
-fn main() {
-    let data = b"[\"foo\", 123, {\"foobar\": true}]";
-    let mut chunker = Chunker::new(&data[..]);
-    loop {
-        let chunk = chunker.next().unwrap();
-        println!("error: {:?}", chunk);
-        if matches!(chunk.chunk_type, ChunkType::End) {
-            break;
-        }
-    }
+use std::ops::Range;
+
+use crate::{DonervanResult, Error, ErrorInfo};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Exponent {
+    pub positive: bool,
+    pub range: Range<usize>,
 }
 
-#[derive(Debug)]
-enum ErrorType {
-    UnexpectedCharacter,
-    UnexpectedEnd,
-    ExpectingColon,
-    ExpectingArrayNext,
-    ExpectingObjectNext,
-    ExpectingKey,
-    ExpectingValue,
-    InvalidTrue,
-    InvalidFalse,
-    InvalidNull,
-    InvalidString(usize),
-    InvalidNumber,
-}
-
-#[derive(Debug)]
-struct Error {
-    error_type: ErrorType,
-    line: usize,
-    col: usize,
-}
-
-#[derive(Debug)]
-struct Exponent {
-    positive: bool,
-    range: (usize, usize),
-}
-
-#[derive(Debug)]
-enum ChunkType {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Chunk {
     End,
     ObjectStart,
     ObjectEnd,
@@ -49,14 +18,14 @@ enum ChunkType {
     True,
     False,
     Null,
-    String(usize, usize),
+    String(Range<usize>),
     Int {
         positive: bool,
-        range: (usize, usize),
+        range: Range<usize>,
     },
     IntExponent {
         positive: bool,
-        range: (usize, usize),
+        range: Range<usize>,
         exponent: Exponent,
     },
     Float {
@@ -70,19 +39,18 @@ enum ChunkType {
     },
 }
 
-#[derive(Debug)]
-struct Chunk {
-    key: Option<(usize, usize)>,
-    chunk_type: ChunkType,
-    line: usize,
-    col: usize,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChunkInfo {
+    pub key: Option<Range<usize>>,
+    pub chunk_type: Chunk,
+    pub line: usize,
+    pub col: usize,
 }
-
-type ChunkerResult<T> = Result<T, ErrorType>;
 
 #[derive(Debug, Copy, Clone)]
 enum State {
     Start,
+    Finished,
     StartArray,
     MidArray,
     StartObject,
@@ -90,7 +58,7 @@ enum State {
 }
 
 #[derive(Debug)]
-struct Chunker<'a> {
+pub struct Chunker<'a> {
     data: &'a [u8],
     length: usize,
     state_heap: Vec<State>,
@@ -114,34 +82,51 @@ impl<'a> Chunker<'a> {
             col_offset: 0,
         };
     }
+}
 
-    pub fn next(&mut self) -> Result<Chunk, Error> {
+impl<'a> Iterator for Chunker<'a> {
+    type Item = DonervanResult<ChunkInfo>;
+
+    fn next(&mut self) -> Option<Self::Item> {
         self.eat_whitespace();
 
+        let start_index = self.index;
         let result = match self.state {
             State::Start => self.parse_next(),
             State::StartArray => self.array_start(),
             State::MidArray => self.array_mid(),
             State::StartObject => self.object_start(),
             State::MidObject => self.object_mid(),
+            State::Finished => return None,
         };
 
-        let col = self.index - self.col_offset;
+        let col = start_index - self.col_offset;
         match result {
-            Ok((key, chunk_type)) => Ok(Chunk {
-                key,
-                chunk_type,
-                line: self.line,
-                col,
-            }),
-            Err(error_type) => Err(Error {
+            Ok((key, chunk_type)) => {
+                if chunk_type == Chunk::End {
+                    self.state = State::Finished;
+                    None
+                } else {
+                    Some(Ok(ChunkInfo {
+                        key,
+                        chunk_type,
+                        line: self.line,
+                        col,
+                    }))
+                }
+            }
+            Err(error_type) => Some(Err(ErrorInfo {
                 error_type,
                 line: self.line,
                 col,
-            }),
+            })),
         }
     }
+}
 
+type ChunkerResult<T> = Result<T, Error>;
+
+impl<'a> Chunker<'a> {
     fn eat_whitespace(&mut self) {
         while self.index < self.length {
             let next = unsafe { self.data.get_unchecked(self.index) };
@@ -158,11 +143,11 @@ impl<'a> Chunker<'a> {
     }
 
     // if we're in an array consume the next comma and whitespace
-    fn array_start(&mut self) -> ChunkerResult<(Option<(usize, usize)>, ChunkType)> {
+    fn array_start(&mut self) -> ChunkerResult<(Option<Range<usize>>, Chunk)> {
         if self.next_is(b']')? {
             self.index += 1;
             self.state = self.state_heap.pop().unwrap();
-            Ok((None, ChunkType::ArrayEnd))
+            Ok((None, Chunk::ArrayEnd))
         } else {
             self.state = State::MidArray;
             self.parse_next()
@@ -170,83 +155,83 @@ impl<'a> Chunker<'a> {
     }
 
     // if we're in an array consume the next comma and whitespace
-    fn array_mid(&mut self) -> ChunkerResult<(Option<(usize, usize)>, ChunkType)> {
+    fn array_mid(&mut self) -> ChunkerResult<(Option<Range<usize>>, Chunk)> {
         if self.index >= self.length {
-            Err(ErrorType::UnexpectedEnd)
+            Err(Error::UnexpectedEnd)
         } else {
             let next = unsafe { self.data.get_unchecked(self.index) };
             if next == &b']' {
                 self.index += 1;
                 self.state = self.state_heap.pop().unwrap();
-                Ok((None, ChunkType::ArrayEnd))
+                Ok((None, Chunk::ArrayEnd))
             } else if next == &b',' {
                 self.index += 1;
                 self.eat_whitespace();
                 self.parse_next()
             } else {
-                Err(ErrorType::ExpectingArrayNext)
+                Err(Error::ExpectingArrayNext)
             }
         }
     }
 
-    fn object_start(&mut self) -> ChunkerResult<(Option<(usize, usize)>, ChunkType)> {
+    fn object_start(&mut self) -> ChunkerResult<(Option<Range<usize>>, Chunk)> {
         if self.next_is(b'}')? {
             self.index += 1;
             self.state = self.state_heap.pop().unwrap();
-            Ok((None, ChunkType::ObjectEnd))
+            Ok((None, Chunk::ObjectEnd))
         } else {
             self.state = State::MidObject;
             self.object_next()
         }
     }
 
-    fn object_mid(&mut self) -> ChunkerResult<(Option<(usize, usize)>, ChunkType)> {
+    fn object_mid(&mut self) -> ChunkerResult<(Option<Range<usize>>, Chunk)> {
         if self.index >= self.length {
-            Err(ErrorType::UnexpectedEnd)
+            Err(Error::UnexpectedEnd)
         } else {
             let next = unsafe { self.data.get_unchecked(self.index) };
             if next == &b'}' {
                 self.index += 1;
                 self.state = self.state_heap.pop().unwrap();
-                Ok((None, ChunkType::ObjectEnd))
+                Ok((None, Chunk::ObjectEnd))
             } else if next == &b',' {
                 self.index += 1;
                 self.eat_whitespace();
                 self.object_next()
             } else {
-                Err(ErrorType::ExpectingObjectNext)
+                Err(Error::ExpectingObjectNext)
             }
         }
     }
 
-    fn object_next(&mut self) -> ChunkerResult<(Option<(usize, usize)>, ChunkType)> {
+    fn object_next(&mut self) -> ChunkerResult<(Option<Range<usize>>, Chunk)> {
         if self.next_is(b'"')? {
-            let (key_start, key_end) = self.parse_string()?;
+            let string_range = self.parse_string()?;
             self.eat_whitespace();
             if self.next_is(b':')? {
                 self.index += 1;
                 self.eat_whitespace();
                 let (_, value) = self.parse_next()?;
-                Ok((Some((key_start, key_end)), value))
+                Ok((Some(string_range), value))
             } else {
-                Err(ErrorType::ExpectingColon)
+                Err(Error::ExpectingColon)
             }
         } else {
-            Err(ErrorType::ExpectingKey)
+            Err(Error::ExpectingKey)
         }
     }
 
-    fn parse_next(&mut self) -> ChunkerResult<(Option<(usize, usize)>, ChunkType)> {
+    fn parse_next(&mut self) -> ChunkerResult<(Option<Range<usize>>, Chunk)> {
         if self.index >= self.length {
             return match self.state {
                 State::Start => {
                     if self.started {
-                        Ok((None, ChunkType::End))
+                        Ok((None, Chunk::End))
                     } else {
-                        Err(ErrorType::UnexpectedEnd)
+                        Err(Error::UnexpectedEnd)
                     }
                 }
-                _ => Err(ErrorType::UnexpectedEnd),
+                _ => Err(Error::UnexpectedEnd),
             };
         }
 
@@ -256,113 +241,114 @@ impl<'a> Chunker<'a> {
                 self.index += 1;
                 self.state_heap.push(self.state);
                 self.state = State::StartObject;
-                Ok(ChunkType::ObjectStart)
+                Ok(Chunk::ObjectStart)
             }
             b'[' => {
                 self.index += 1;
                 self.state_heap.push(self.state);
                 self.state = State::StartArray;
-                Ok(ChunkType::ArrayStart)
+                Ok(Chunk::ArrayStart)
             }
             b't' => self.parse_true(),
             b'f' => self.parse_false(),
             b'n' => self.parse_null(),
             b'"' => {
-                let (start, end) = self.parse_string()?;
-                Ok(ChunkType::String(start, end))
+                let string_range = self.parse_string()?;
+                Ok(Chunk::String(string_range))
             }
-            b'0'..=b'9' => self.parse_number(),
-            _ => Err(ErrorType::UnexpectedCharacter),
+            b'0'..=b'9' => self.parse_number(true),
+            b'-' => self.parse_number(false),
+            _ => Err(Error::UnexpectedCharacter),
         }?;
         self.started = true;
         Ok((None, chunk_type))
     }
 
-    fn parse_true(&mut self) -> ChunkerResult<ChunkType> {
+    fn parse_true(&mut self) -> ChunkerResult<Chunk> {
         if self.index + 3 >= self.length {
-            return Err(ErrorType::UnexpectedEnd);
+            return Err(Error::UnexpectedEnd);
         }
         // this could be a SIMD operation and possibly faster?
         self.index += 1;
         let next = unsafe { self.data.get_unchecked(self.index) };
         if next != &b'r' {
-            return Err(ErrorType::InvalidTrue);
+            return Err(Error::InvalidTrue);
         }
         self.index += 1;
         let next = unsafe { self.data.get_unchecked(self.index) };
         if next != &b'u' {
-            return Err(ErrorType::InvalidTrue);
+            return Err(Error::InvalidTrue);
         }
         self.index += 1;
         let next = unsafe { self.data.get_unchecked(self.index) };
         if next != &b'e' {
-            return Err(ErrorType::InvalidTrue);
+            return Err(Error::InvalidTrue);
         }
         self.index += 1;
-        Ok(ChunkType::True)
+        Ok(Chunk::True)
     }
 
-    fn parse_false(&mut self) -> ChunkerResult<ChunkType> {
+    fn parse_false(&mut self) -> ChunkerResult<Chunk> {
         if self.index + 4 >= self.length {
-            return Err(ErrorType::UnexpectedEnd);
+            return Err(Error::UnexpectedEnd);
         }
         // this could be a SIMD operation and possibly faster?
         self.index += 1;
         let next = unsafe { self.data.get_unchecked(self.index) };
         if next != &b'a' {
-            return Err(ErrorType::InvalidFalse);
+            return Err(Error::InvalidFalse);
         }
         self.index += 1;
         let next = unsafe { self.data.get_unchecked(self.index) };
         if next != &b'l' {
-            return Err(ErrorType::InvalidFalse);
+            return Err(Error::InvalidFalse);
         }
         self.index += 1;
         let next = unsafe { self.data.get_unchecked(self.index) };
         if next != &b's' {
-            return Err(ErrorType::InvalidFalse);
+            return Err(Error::InvalidFalse);
         }
         self.index += 1;
         let next = unsafe { self.data.get_unchecked(self.index) };
         if next != &b'e' {
-            return Err(ErrorType::InvalidFalse);
+            return Err(Error::InvalidFalse);
         }
         self.index += 1;
-        Ok(ChunkType::False)
+        Ok(Chunk::False)
     }
 
-    fn parse_null(&mut self) -> ChunkerResult<ChunkType> {
+    fn parse_null(&mut self) -> ChunkerResult<Chunk> {
         if self.index + 3 >= self.length {
-            return Err(ErrorType::UnexpectedEnd);
+            return Err(Error::UnexpectedEnd);
         }
         // this could be a SIMD operation and possibly faster?
         self.index += 1;
         let next = unsafe { self.data.get_unchecked(self.index) };
         if next != &b'u' {
-            return Err(ErrorType::InvalidNull);
+            return Err(Error::InvalidNull);
         }
         self.index += 1;
         let next = unsafe { self.data.get_unchecked(self.index) };
         if next != &b'l' {
-            return Err(ErrorType::InvalidNull);
+            return Err(Error::InvalidNull);
         }
         self.index += 1;
         let next = unsafe { self.data.get_unchecked(self.index) };
         if next != &b'l' {
-            return Err(ErrorType::InvalidNull);
+            return Err(Error::InvalidNull);
         }
         self.index += 1;
-        Ok(ChunkType::Null)
+        Ok(Chunk::Null)
     }
 
-    fn parse_string(&mut self) -> ChunkerResult<(usize, usize)> {
+    fn parse_string(&mut self) -> ChunkerResult<Range<usize>> {
         self.index += 1;
         let start = self.index;
         while self.index < self.length {
             let next = unsafe { self.data.get_unchecked(self.index) };
             match next {
                 b'"' => {
-                    let r = (start, self.index);
+                    let r = start..self.index;
                     self.index += 1;
                     return Ok(r);
                 }
@@ -377,87 +363,69 @@ impl<'a> Chunker<'a> {
                         b'"' | b'\\' | b'/' | b'u' => (),
                         // 8 = backspace, 9 = tab, 10 = newline, 12 = formfeed, 13 = carriage return
                         8 | 9 | 10 | 12 | 13 => (),
-                        _ => return Err(self.string_error(start)),
+                        _ => return Err(Error::InvalidString(self.index - start)),
                     }
                 }
                 // 8 = backspace, 9 = tab, 10 = newline, 12 = formfeed, 13 = carriage return
-                8 | 9 | 10 | 12 | 13 => return Err(self.string_error(start)),
+                8 | 9 | 10 | 12 | 13 => return Err(Error::InvalidString(self.index - start)),
                 _ => (),
             }
             self.index += 1;
         }
-        Err(ErrorType::UnexpectedEnd)
+        Err(Error::UnexpectedEnd)
     }
 
-    fn string_error(&mut self, start: usize) -> ErrorType {
-        let location = self.index - start;
-        // reset index so the error appears at the start of the string
-        self.index = start;
-        ErrorType::InvalidString(location)
-    }
-
-    fn parse_number(&mut self) -> ChunkerResult<ChunkType> {
-        let mut start = self.index;
-        let mut first = true;
-        let mut positive = true;
+    fn parse_number(&mut self, positive: bool) -> ChunkerResult<Chunk> {
+        let start: usize = if positive {
+            self.index
+        } else {
+            // we started with a minus sign, so the first digit is at index + 1
+            self.index + 1
+        };
         self.index += 1;
         while self.index < self.length {
             let next = unsafe { self.data.get_unchecked(self.index) };
             match next {
-                b'-' => {
-                    if !first {
-                        return Err(ErrorType::InvalidNumber);
-                    }
-                    positive = false;
-                    start += 1;
-                }
                 b'0'..=b'9' => (),
-                b'.' => {
-                    return if first {
-                        Err(ErrorType::InvalidNumber)
-                    } else {
-                        self.float_decimal(start, positive)
-                    }
-                }
+                b'.' => return self.float_decimal(start, positive),
                 b'e' | b'E' => {
-                    return if first {
-                        Err(ErrorType::InvalidNumber)
-                    } else {
-                        let exponent = self.exponent()?;
-                        Ok(ChunkType::IntExponent {
-                            positive,
-                            range: (start, self.index),
-                            exponent,
-                        })
-                    }
+                    return Ok(Chunk::IntExponent {
+                        positive,
+                        range: start..self.index,
+                        exponent: self.exponent()?,
+                    })
                 }
                 _ => break,
             }
-            first = false;
             self.index += 1;
         }
-        Ok(ChunkType::Int {
-            positive,
-            range: (start, self.index),
-        })
+        if start == self.index {
+            Err(Error::InvalidNumber)
+        } else {
+            Ok(Chunk::Int {
+                positive,
+                range: start..self.index,
+            })
+        }
     }
 
-    fn float_decimal(&mut self, start: usize, positive: bool) -> ChunkerResult<ChunkType> {
+    fn float_decimal(&mut self, start: usize, positive: bool) -> ChunkerResult<Chunk> {
         let mut first = true;
         self.index += 1;
-        let mut decimal_start = self.index;
+        let decimal_start = self.index;
         while self.index < self.length {
             let next = unsafe { self.data.get_unchecked(self.index) };
             match next {
                 b'0'..=b'9' => (),
                 b'e' | b'E' => {
                     return if first {
-                        Err(ErrorType::InvalidNumber)
+                        Err(Error::InvalidNumber)
                     } else {
+                        let decimal_end = self.index;
                         let exponent = self.exponent()?;
-                        Ok(ChunkType::FloatExponent {
+                        Ok(Chunk::FloatExponent {
                             positive,
-                            range: (start, decimal_start, self.index),
+                            range: (start, decimal_start, decimal_end),
                             exponent,
                         })
                     }
@@ -468,9 +436,9 @@ impl<'a> Chunker<'a> {
             self.index += 1;
         }
         if decimal_start == self.index {
-            Err(ErrorType::InvalidNumber)
+            Err(Error::InvalidNumber)
         } else {
-            Ok(ChunkType::Float {
+            Ok(Chunk::Float {
                 positive,
                 range: (start, decimal_start, self.index),
             })
@@ -487,14 +455,14 @@ impl<'a> Chunker<'a> {
             match next {
                 b'-' => {
                     if !first {
-                        return Err(ErrorType::InvalidNumber);
+                        return Err(Error::InvalidNumber);
                     }
                     positive = false;
                     start += 1;
                 }
                 b'+' => {
                     if !first {
-                        return Err(ErrorType::InvalidNumber);
+                        return Err(Error::InvalidNumber);
                     }
                     start += 1;
                 }
@@ -506,18 +474,18 @@ impl<'a> Chunker<'a> {
         }
 
         if start == self.index {
-            Err(ErrorType::InvalidNumber)
+            Err(Error::InvalidNumber)
         } else {
             Ok(Exponent {
                 positive,
-                range: (start, self.index),
+                range: start..self.index,
             })
         }
     }
 
     fn next_is(&self, byte: u8) -> ChunkerResult<bool> {
         if self.index >= self.length {
-            Err(ErrorType::UnexpectedEnd)
+            Err(Error::UnexpectedEnd)
         } else {
             let next = unsafe { self.data.get_unchecked(self.index) };
             Ok(next == &byte)
