@@ -1,7 +1,6 @@
 use std::ops::Range;
 
-use crate::{JsonError};
-
+use crate::JsonError;
 
 pub fn parse_string(data: &[u8], range: Range<usize>) -> Result<String, JsonError> {
     let mut chars = Vec::with_capacity(range.end - range.start);
@@ -32,7 +31,7 @@ pub fn parse_string(data: &[u8], range: Range<usize>) -> Result<String, JsonErro
                                 for b in c.to_string().bytes() {
                                     chars.push(b);
                                 }
-                            },
+                            }
                             None => return Err(JsonError::InvalidString(index - range.start)),
                         }
                         index += 3;
@@ -88,7 +87,12 @@ pub fn parse_int(data: &[u8], positive: bool, range: Range<usize>) -> Result<i64
     }
 }
 
-pub fn parse_float(data: &[u8], positive: bool, int_range: Range<usize>, decimal_range: Range<usize>) -> Result<f64, JsonError> {
+pub fn parse_float(
+    data: &[u8],
+    positive: bool,
+    int_range: Range<usize>,
+    decimal_range: Range<usize>,
+) -> Result<f64, JsonError> {
     let mut result = parse_int(data, true, int_range)? as f64;
     if data.len() < decimal_range.end {
         return Err(JsonError::InternalError);

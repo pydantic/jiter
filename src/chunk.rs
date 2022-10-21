@@ -1,6 +1,7 @@
 use std::ops::Range;
 
-use crate::{JsonResult, JsonError, ErrorInfo};
+use crate::parse::{parse_float, parse_int, parse_string};
+use crate::{ErrorInfo, JsonError, JsonResult};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Exponent {
@@ -10,7 +11,6 @@ pub struct Exponent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Chunk {
-    End,
     ObjectStart,
     ObjectEnd,
     ArrayStart,
@@ -31,7 +31,6 @@ pub enum Chunk {
         exponent: Option<Exponent>,
     },
 }
-
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChunkInfo {
@@ -101,6 +100,33 @@ impl<'a> Chunker<'a> {
             col_offset: 0,
         };
     }
+
+    pub fn decode_string(&self, range: Range<usize>, loc: (usize, usize)) -> JsonResult<String> {
+        parse_string(&self.data, range).map_err(|e| ErrorInfo::new(e, loc))
+    }
+
+    pub fn decode_int(
+        &self,
+        positive: bool,
+        range: Range<usize>,
+        exponent: Option<Exponent>,
+        loc: (usize, usize),
+    ) -> JsonResult<i64> {
+        assert!(exponent.is_none());
+        parse_int(&self.data, positive, range).map_err(|e| ErrorInfo::new(e, loc))
+    }
+
+    pub fn decode_float(
+        &self,
+        positive: bool,
+        int_range: Range<usize>,
+        decimal_range: Range<usize>,
+        exponent: Option<Exponent>,
+        loc: (usize, usize),
+    ) -> JsonResult<f64> {
+        assert!(exponent.is_none());
+        parse_float(&self.data, positive, int_range, decimal_range).map_err(|e| ErrorInfo::new(e, loc))
+    }
 }
 
 impl<'a> Iterator for Chunker<'a> {
@@ -111,7 +137,7 @@ impl<'a> Iterator for Chunker<'a> {
 
         let start_index = self.index;
         let result = match self.state {
-            State::Start => self.parse_next(),
+            State::Start => self.next_value(),
             State::StartArray => self.array_start(),
             State::MidArray => self.array_mid(),
             State::StartObject => self.object_start(),
@@ -121,15 +147,15 @@ impl<'a> Iterator for Chunker<'a> {
 
         let loc = (self.line, start_index - self.col_offset);
         match result {
-            Ok((key, chunk_type)) => {
-                if chunk_type == Chunk::End {
+            Ok((key, chunk_type)) => Some(Ok(ChunkInfo { key, chunk_type, loc })),
+            Err(error_type) => {
+                if error_type == JsonError::End {
                     self.state = State::Finished;
                     None
                 } else {
-                    Some(Ok(ChunkInfo { key, chunk_type, loc }))
+                    Some(Err(ErrorInfo::new(error_type, loc)))
                 }
             }
-            Err(error_type) => Some(Err(ErrorInfo { error_type, loc })),
         }
     }
 }
@@ -160,7 +186,7 @@ impl<'a> Chunker<'a> {
             Ok((None, Chunk::ArrayEnd))
         } else {
             self.state = State::MidArray;
-            self.parse_next()
+            self.next_value()
         }
     }
 
@@ -177,7 +203,7 @@ impl<'a> Chunker<'a> {
             } else if next == &b',' {
                 self.index += 1;
                 self.eat_whitespace();
-                self.parse_next()
+                self.next_value()
             } else {
                 Err(JsonError::ExpectingArrayNext)
             }
@@ -216,12 +242,12 @@ impl<'a> Chunker<'a> {
 
     fn object_next(&mut self) -> ChunkerResult<(Option<Range<usize>>, Chunk)> {
         if self.next_is(b'"')? {
-            let string_range = self.parse_string()?;
+            let string_range = self.next_string()?;
             self.eat_whitespace();
             if self.next_is(b':')? {
                 self.index += 1;
                 self.eat_whitespace();
-                let (_, value) = self.parse_next()?;
+                let (_, value) = self.next_value()?;
                 Ok((Some(string_range), value))
             } else {
                 Err(JsonError::ExpectingColon)
@@ -231,12 +257,12 @@ impl<'a> Chunker<'a> {
         }
     }
 
-    fn parse_next(&mut self) -> ChunkerResult<(Option<Range<usize>>, Chunk)> {
+    fn next_value(&mut self) -> ChunkerResult<(Option<Range<usize>>, Chunk)> {
         if self.index >= self.length {
             return match self.state {
                 State::Start => {
                     if self.started {
-                        Ok((None, Chunk::End))
+                        Err(JsonError::End)
                     } else {
                         Err(JsonError::UnexpectedEnd)
                     }
@@ -259,22 +285,22 @@ impl<'a> Chunker<'a> {
                 self.state = State::StartArray;
                 Ok(Chunk::ArrayStart)
             }
-            b't' => self.parse_true(),
-            b'f' => self.parse_false(),
-            b'n' => self.parse_null(),
+            b't' => self.next_true(),
+            b'f' => self.next_false(),
+            b'n' => self.next_null(),
             b'"' => {
-                let string_range = self.parse_string()?;
+                let string_range = self.next_string()?;
                 Ok(Chunk::String(string_range))
             }
-            b'0'..=b'9' => self.parse_number(true),
-            b'-' => self.parse_number(false),
+            b'0'..=b'9' => self.next_number(true),
+            b'-' => self.next_number(false),
             _ => Err(JsonError::UnexpectedCharacter),
         }?;
         self.started = true;
         Ok((None, chunk_type))
     }
 
-    fn parse_true(&mut self) -> ChunkerResult<Chunk> {
+    fn next_true(&mut self) -> ChunkerResult<Chunk> {
         if self.index + 3 >= self.length {
             return Err(JsonError::UnexpectedEnd);
         }
@@ -298,7 +324,7 @@ impl<'a> Chunker<'a> {
         Ok(Chunk::True)
     }
 
-    fn parse_false(&mut self) -> ChunkerResult<Chunk> {
+    fn next_false(&mut self) -> ChunkerResult<Chunk> {
         if self.index + 4 >= self.length {
             return Err(JsonError::UnexpectedEnd);
         }
@@ -327,7 +353,7 @@ impl<'a> Chunker<'a> {
         Ok(Chunk::False)
     }
 
-    fn parse_null(&mut self) -> ChunkerResult<Chunk> {
+    fn next_null(&mut self) -> ChunkerResult<Chunk> {
         if self.index + 3 >= self.length {
             return Err(JsonError::UnexpectedEnd);
         }
@@ -351,7 +377,7 @@ impl<'a> Chunker<'a> {
         Ok(Chunk::Null)
     }
 
-    fn parse_string(&mut self) -> ChunkerResult<Range<usize>> {
+    fn next_string(&mut self) -> ChunkerResult<Range<usize>> {
         self.index += 1;
         let start = self.index;
         while self.index < self.length {
@@ -384,7 +410,7 @@ impl<'a> Chunker<'a> {
         Err(JsonError::UnexpectedEnd)
     }
 
-    fn parse_number(&mut self, positive: bool) -> ChunkerResult<Chunk> {
+    fn next_number(&mut self, positive: bool) -> ChunkerResult<Chunk> {
         let start: usize = if positive {
             self.index
         } else {

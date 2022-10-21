@@ -1,11 +1,12 @@
 [package]
-name = "donervan"
-version = "0.1.0"
-edition = "2021"
+name = 'donervan'
+version = '0.1.0'
+edition = '2021'
 
 [dependencies]
-strum = { version = "0.24.1", features = ["derive"] }
-strum_macros = "0.24.1"
+indexmap = '1.9.1'
+strum = { version = '0.24.1', features = ['derive'] }
+strum_macros = '0.24.1'
 
 [dev-dependencies]
-paste = "1.0.7"
+paste = '1.0.7'

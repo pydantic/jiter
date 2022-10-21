@@ -1,5 +1,7 @@
-use donervan::{Chunk, ChunkInfo, Chunker, JsonResult, JsonError};
-use donervan::parse::{parse_string, parse_int, parse_float};
+use indexmap::indexmap;
+
+use donervan::parse::{parse_float, parse_int, parse_string};
+use donervan::{Chunk, ChunkInfo, Chunker, JsonError, JsonResult, JsonValue};
 
 macro_rules! single_expect_ok_or_error {
     ($name:ident, ok, $json:literal, $expected:expr) => {
@@ -14,16 +16,16 @@ macro_rules! single_expect_ok_or_error {
         }
     };
     ($name:ident, err, $json:literal, $error:expr) => {
-       paste::item! {
-           #[test]
-           fn [< single_chunk_xerror_ $name _ $error:snake _error >]() {
-               let result: JsonResult<Vec<ChunkInfo>> = Chunker::new($json.as_bytes()).collect();
-               match result {
-                   Ok(t) => panic!("unexpectedly valid: {:?} -> {:?}", $json, t),
-                   Err(e) => assert_eq!(e.error_type, JsonError::$error),
-               }
-           }
-       }
+        paste::item! {
+            #[test]
+            fn [< single_chunk_xerror_ $name _ $error:snake _error >]() {
+                let result: JsonResult<Vec<ChunkInfo>> = Chunker::new($json.as_bytes()).collect();
+                match result {
+                    Ok(t) => panic!("unexpectedly valid: {:?} -> {:?}", $json, t),
+                    Err(e) => assert_eq!(e.error_type, JsonError::$error),
+                }
+            }
+        }
     };
 }
 
@@ -176,10 +178,14 @@ fn test_parse_int() {
         assert_eq!(chunks.len(), 1);
         let first_chunk = chunks[0].clone();
         let (positive, range) = match first_chunk.chunk_type {
-            Chunk::Int{positive, range, exponent} => {
+            Chunk::Int {
+                positive,
+                range,
+                exponent,
+            } => {
                 assert_eq!(exponent, None);
                 (positive, range)
-            },
+            }
             v => panic!("expected int, not {:?}", v),
         };
         let result_int = parse_int(data, positive, range).unwrap();
@@ -196,10 +202,15 @@ fn test_parse_float() {
         let chunks: Vec<ChunkInfo> = Chunker::new(data).collect::<JsonResult<_>>().unwrap();
         let first_chunk = chunks[0].clone();
         let (positive, int_range, decimal_range) = match first_chunk.clone().chunk_type {
-            Chunk::Float{positive, int_range, decimal_range, exponent} => {
+            Chunk::Float {
+                positive,
+                int_range,
+                decimal_range,
+                exponent,
+            } => {
                 assert_eq!(exponent, None);
                 (positive, int_range, decimal_range)
-            },
+            }
             v => panic!("expected float, not {:?} (json: {:?}", v, json),
         };
         let result_int = parse_float(data, positive, int_range, decimal_range).unwrap();
@@ -207,3 +218,21 @@ fn test_parse_float() {
     }
 }
 
+#[test]
+fn test_parse_value() {
+    let json = r#"{"foo": "bar", "spam": [1, null, true]}"#;
+    let v = JsonValue::parse(json.as_bytes()).unwrap();
+    assert_eq!(v, JsonValue::Object(
+        indexmap!{
+            "foo".to_string() => JsonValue::String("bar".to_string()),
+            "spam".to_string() => JsonValue::Array(
+                vec![
+                    JsonValue::Int(1),
+                    JsonValue::Null,
+                    JsonValue::Bool(true),
+                ],
+            ),
+        },
+        )
+    );
+}
