@@ -51,7 +51,7 @@ impl JsonValue {
                 Ok(JsonValue::Float(f))
             }
             Chunk::ArrayStart => {
-                let mut array = Vec::new();
+                let mut array = Vec::with_capacity(100);
                 loop {
                     let chunk = chunker.next().unwrap()?;
                     match chunk.chunk_type {
@@ -65,7 +65,7 @@ impl JsonValue {
                 Ok(JsonValue::Array(array))
             }
             Chunk::ObjectStart => {
-                let mut object = IndexMap::new();
+                let mut object = IndexMap::with_capacity(100);
                 loop {
                     let chunk = chunker.next().unwrap()?;
                     match chunk.chunk_type {

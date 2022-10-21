@@ -18,8 +18,12 @@ pub fn parse_string(data: &[u8], range: Range<usize>) -> Result<String, JsonErro
                 // again we can safely get the next byte
                 let next = unsafe { data.get_unchecked(index) };
                 match next {
-                    // 8 = backspace, 9 = tab, 10 = newline, 12 = form feed, 13 = carriage return
-                    8 | 9 | 10 | 12 | 13 | b'"' | b'\\' | b'/' => chars.push(*next),
+                    b'"' | b'\\' | b'/' => chars.push(*next),
+                    b'b' => chars.push(b'\x08'),
+                    b'f' => chars.push(b'\x0C'),
+                    b'n' => chars.push(b'\n'),
+                    b'r' => chars.push(b'\r'),
+                    b't' => chars.push(b'\t'),
                     b'u' => {
                         index += 1;
                         if index + 3 >= range.end {

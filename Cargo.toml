@@ -10,3 +10,5 @@ strum_macros = '0.24.1'
 
 [dev-dependencies]
 paste = '1.0.7'
+serde_json = {version = '1.0.87', features = ['preserve_order']}
+serde = '1.0.147'

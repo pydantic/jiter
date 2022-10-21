@@ -75,7 +75,7 @@ enum State {
     MidObject,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Chunker<'a> {
     data: &'a [u8],
     length: usize,
@@ -96,7 +96,7 @@ impl<'a> Chunker<'a> {
             state: State::Start,
             started: false,
             index: 0,
-            line: 0,
+            line: 1,
             col_offset: 0,
         };
     }
@@ -109,10 +109,10 @@ impl<'a> Chunker<'a> {
         &self,
         positive: bool,
         range: Range<usize>,
-        exponent: Option<Exponent>,
+        _exponent: Option<Exponent>,
         loc: (usize, usize),
     ) -> JsonResult<i64> {
-        assert!(exponent.is_none());
+        // assert!(exponent.is_none());
         parse_int(&self.data, positive, range).map_err(|e| ErrorInfo::new(e, loc))
     }
 
@@ -121,10 +121,10 @@ impl<'a> Chunker<'a> {
         positive: bool,
         int_range: Range<usize>,
         decimal_range: Range<usize>,
-        exponent: Option<Exponent>,
+        _exponent: Option<Exponent>,
         loc: (usize, usize),
     ) -> JsonResult<f64> {
-        assert!(exponent.is_none());
+        // assert!(exponent.is_none());
         parse_float(&self.data, positive, int_range, decimal_range).map_err(|e| ErrorInfo::new(e, loc))
     }
 }
@@ -145,7 +145,7 @@ impl<'a> Iterator for Chunker<'a> {
             State::Finished => return None,
         };
 
-        let loc = (self.line, start_index - self.col_offset);
+        let loc = (self.line, start_index - self.col_offset + 1);
         match result {
             Ok((key, chunk_type)) => Some(Ok(ChunkInfo { key, chunk_type, loc })),
             Err(error_type) => {
@@ -395,9 +395,8 @@ impl<'a> Chunker<'a> {
                     }
                     let next = unsafe { self.data.get_unchecked(self.index) };
                     match next {
-                        // 8 = backspace, 9 = tab, 10 = newline, 12 = form feed, 13 = carriage return
-                        // we don't check the 4 digit unicode escape sequence here, we just move on
-                        8 | 9 | 10 | 12 | 13 | b'"' | b'\\' | b'/' | b'u' => (),
+                        // TODO we need to make sure the 4 characters after u are valid hex to confirm is valid JSON
+                        b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't' | b'u' => (),
                         _ => return Err(JsonError::InvalidString(self.index - start)),
                     }
                 }

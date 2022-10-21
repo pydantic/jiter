@@ -38,17 +38,17 @@ macro_rules! single_tests {
 }
 
 single_tests! {
-    string: ok => r#""foobar""#, "ChunkInfo { key: None, chunk_type: String(1..7), loc: (0, 0) }";
-    int_neg: ok => "-1234", "ChunkInfo { key: None, chunk_type: Int { positive: false, range: 1..5, exponent: None }, loc: (0, 0) }";
-    int_pos: ok => "1234", "ChunkInfo { key: None, chunk_type: Int { positive: true, range: 0..4, exponent: None }, loc: (0, 0) }";
-    int_exp: ok => "20e10", "ChunkInfo { key: None, chunk_type: Int { positive: true, range: 0..2, exponent: Some(Exponent { positive: true, range: 3..5 }) }, loc: (0, 0) }";
-    float_pos: ok => "12.34", "ChunkInfo { key: None, chunk_type: Float { positive: true, int_range: 0..2, decimal_range: 3..5, exponent: None }, loc: (0, 0) }";
-    float_neg: ok => "-12.34", "ChunkInfo { key: None, chunk_type: Float { positive: false, int_range: 1..3, decimal_range: 4..6, exponent: None }, loc: (0, 0) }";
-    float_exp: ok => "2.2e10", "ChunkInfo { key: None, chunk_type: Float { positive: true, int_range: 0..1, decimal_range: 2..3, exponent: Some(Exponent { positive: true, range: 4..6 }) }, loc: (0, 0) }";
-    null: ok => "null", "ChunkInfo { key: None, chunk_type: Null, loc: (0, 0) }";
-    v_true: ok => "true", "ChunkInfo { key: None, chunk_type: True, loc: (0, 0) }";
-    v_false: ok => "false", "ChunkInfo { key: None, chunk_type: False, loc: (0, 0) }";
-    offset_true: ok => "  true", "ChunkInfo { key: None, chunk_type: True, loc: (0, 2) }";
+    string: ok => r#""foobar""#, "ChunkInfo { key: None, chunk_type: String(1..7), loc: (1, 1) }";
+    int_neg: ok => "-1234", "ChunkInfo { key: None, chunk_type: Int { positive: false, range: 1..5, exponent: None }, loc: (1, 1) }";
+    int_pos: ok => "1234", "ChunkInfo { key: None, chunk_type: Int { positive: true, range: 0..4, exponent: None }, loc: (1, 1) }";
+    int_exp: ok => "20e10", "ChunkInfo { key: None, chunk_type: Int { positive: true, range: 0..2, exponent: Some(Exponent { positive: true, range: 3..5 }) }, loc: (1, 1) }";
+    float_pos: ok => "12.34", "ChunkInfo { key: None, chunk_type: Float { positive: true, int_range: 0..2, decimal_range: 3..5, exponent: None }, loc: (1, 1) }";
+    float_neg: ok => "-12.34", "ChunkInfo { key: None, chunk_type: Float { positive: false, int_range: 1..3, decimal_range: 4..6, exponent: None }, loc: (1, 1) }";
+    float_exp: ok => "2.2e10", "ChunkInfo { key: None, chunk_type: Float { positive: true, int_range: 0..1, decimal_range: 2..3, exponent: Some(Exponent { positive: true, range: 4..6 }) }, loc: (1, 1) }";
+    null: ok => "null", "ChunkInfo { key: None, chunk_type: Null, loc: (1, 1) }";
+    v_true: ok => "true", "ChunkInfo { key: None, chunk_type: True, loc: (1, 1) }";
+    v_false: ok => "false", "ChunkInfo { key: None, chunk_type: False, loc: (1, 1) }";
+    offset_true: ok => "  true", "ChunkInfo { key: None, chunk_type: True, loc: (1, 3) }";
     string_unclosed: err => r#""foobar"#, UnexpectedEnd;
     bad_int: err => "-", InvalidNumber;
     bad_true: err => "truX", InvalidTrue;
@@ -57,6 +57,9 @@ single_tests! {
     bad_false: err => "fals", UnexpectedEnd;
     bad_null: err => "nulX", InvalidNull;
     bad_null: err => "nul", UnexpectedEnd;
+    object_trailing_comma: err => r#"{"foo": "bar",}"#, ExpectingKey;
+    array_trailing_comma: err => r#"[1, 2,]"#, UnexpectedCharacter;
+    // string_controls: ok => "\"\x08\x0c\n\r\t\"", InvalidString;
 }
 
 #[test]
@@ -69,22 +72,22 @@ fn chunk_array() {
             ChunkInfo {
                 key: None,
                 chunk_type: Chunk::ArrayStart,
-                loc: (0, 0),
+                loc: (1, 1),
             },
             ChunkInfo {
                 key: None,
                 chunk_type: Chunk::True,
-                loc: (0, 1),
+                loc: (1, 2),
             },
             ChunkInfo {
                 key: None,
                 chunk_type: Chunk::False,
-                loc: (0, 5),
+                loc: (1, 6),
             },
             ChunkInfo {
                 key: None,
                 chunk_type: Chunk::ArrayEnd,
-                loc: (0, 12),
+                loc: (1, 13),
             },
         ]
     );
@@ -100,17 +103,17 @@ fn chunk_object() {
             ChunkInfo {
                 key: None,
                 chunk_type: Chunk::ObjectStart,
-                loc: (0, 0),
+                loc: (1, 1),
             },
             ChunkInfo {
                 key: Some(2..8,),
                 chunk_type: Chunk::Null,
-                loc: (0, 1),
+                loc: (1, 2),
             },
             ChunkInfo {
                 key: None,
                 chunk_type: Chunk::ObjectEnd,
-                loc: (0, 15),
+                loc: (1, 16),
             },
         ]
     );
@@ -131,7 +134,7 @@ fn test_json_parse_str() {
     assert_eq!(chunks.len(), 1);
     let first_chunk = chunks[0].clone();
     let debug = format!("{:?}", first_chunk);
-    assert_eq!(debug, "ChunkInfo { key: None, chunk_type: String(2..8), loc: (0, 1) }");
+    assert_eq!(debug, "ChunkInfo { key: None, chunk_type: String(2..8), loc: (1, 2) }");
 
     let range = match first_chunk.chunk_type {
         Chunk::String(range) => range,
@@ -165,8 +168,12 @@ macro_rules! string_tests {
 
 string_tests! {
     simple: r#""foobar""# => "foobar";
-    newline: "\"foo\\\nbar\"" => "foo\nbar";
+    newline: "\"foo\\nbar\"" => "foo\nbar";
     pound_sign: "\"\\u00a3\"" => "£";
+    double_quote: r#""\"""# => r#"""#;
+    backslash: r#""\\""# => r#"\"#;
+    controls: "\"\\b\\f\\n\\r\\t\"" => "\u{8}\u{c}\n\r\t";
+    controls_python: "\"\\b\\f\\n\\r\\t\"" => "\x08\x0c\n\r\t";  // python notation for the same thing
 }
 
 #[test]
