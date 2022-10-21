@@ -32,11 +32,38 @@ pub enum Chunk {
     },
 }
 
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChunkInfo {
     pub key: Option<Range<usize>>,
     pub chunk_type: Chunk,
     pub loc: (usize, usize),
+}
+
+impl ChunkInfo {
+    pub fn as_bool(&self) -> Option<bool> {
+        match self.chunk_type {
+            Chunk::True => Some(true),
+            Chunk::False => Some(false),
+            _ => None,
+        }
+    }
+
+    pub fn is_null(&self) -> bool {
+        matches!(self.chunk_type, Chunk::Null)
+    }
+
+    pub fn is_string(&self) -> bool {
+        matches!(self.chunk_type, Chunk::String(_))
+    }
+
+    pub fn is_int(&self) -> bool {
+        matches!(self.chunk_type, Chunk::Int { .. })
+    }
+
+    pub fn is_float(&self) -> bool {
+        matches!(self.chunk_type, Chunk::Float { .. })
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -342,10 +369,9 @@ impl<'a> Chunker<'a> {
                     }
                     let next = unsafe { self.data.get_unchecked(self.index) };
                     match next {
+                        // 8 = backspace, 9 = tab, 10 = newline, 12 = form feed, 13 = carriage return
                         // we don't check the 4 digit unicode escape sequence here, we just move on
-                        b'"' | b'\\' | b'/' | b'u' => (),
-                        // 8 = backspace, 9 = tab, 10 = newline, 12 = formfeed, 13 = carriage return
-                        8 | 9 | 10 | 12 | 13 => (),
+                        8 | 9 | 10 | 12 | 13 | b'"' | b'\\' | b'/' | b'u' => (),
                         _ => return Err(JsonError::InvalidString(self.index - start)),
                     }
                 }

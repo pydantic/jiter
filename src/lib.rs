@@ -3,6 +3,8 @@
 use strum::{Display, EnumMessage};
 
 mod chunk;
+pub mod parse;
+// mod value;
 
 pub use chunk::{Chunk, ChunkInfo, Chunker, Exponent};
 
@@ -20,7 +22,10 @@ pub enum JsonError {
     InvalidFalse,
     InvalidNull,
     InvalidString(usize),
+    InvalidStringEscapeSequence(usize),
     InvalidNumber,
+    IntTooLarge,
+    InternalError,
 }
 
 #[derive(Debug)]
