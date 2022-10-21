@@ -59,7 +59,16 @@ single_tests! {
     bad_null: err => "nul", UnexpectedEnd;
     object_trailing_comma: err => r#"{"foo": "bar",}"#, ExpectingKey;
     array_trailing_comma: err => r#"[1, 2,]"#, UnexpectedCharacter;
-    // string_controls: ok => "\"\x08\x0c\n\r\t\"", InvalidString;
+}
+
+#[test]
+fn invalid_string_controls() {
+    let json = "\"123\x08\x0c\n\r\t\"";
+    let result: JsonResult<Vec<ChunkInfo>> = Chunker::new(json.as_bytes()).collect();
+    match result {
+        Ok(t) => panic!("unexpectedly valid: {:?} -> {:?}", json, t),
+        Err(e) => assert_eq!(e.error_type, JsonError::InvalidString(3)),
+    }
 }
 
 #[test]
