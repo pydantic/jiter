@@ -4,9 +4,9 @@ use std::io::Read;
 
 extern crate test;
 
-use test::{black_box, Bencher};
+use donervan::{Chunk, Chunker, JsonValue};
 use serde_json::Value;
-use donervan::{JsonValue, Chunker, Chunk};
+use test::{black_box, Bencher};
 
 fn read_file(path: &str) -> String {
     let mut file = File::open(path).unwrap();
@@ -38,7 +38,7 @@ fn donervan_chunker_parse(path: &str, bench: &mut Bencher) {
                 Chunk::True => {
                     black_box(true);
                     ()
-                },
+                }
                 Chunk::False => {
                     black_box(false);
                     ()
@@ -64,11 +64,13 @@ fn donervan_chunker_parse(path: &str, bench: &mut Bencher) {
                     decimal_range,
                     exponent,
                 } => {
-                    let f = chunker.decode_float(positive, int_range, decimal_range, exponent, chunk.loc).unwrap();
+                    let f = chunker
+                        .decode_float(positive, int_range, decimal_range, exponent, chunk.loc)
+                        .unwrap();
                     black_box(f);
                     ()
                 }
-                _ => ()
+                _ => (),
             }
         }
     })

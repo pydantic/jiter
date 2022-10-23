@@ -238,8 +238,9 @@ fn test_parse_float() {
 fn test_parse_value() {
     let json = r#"{"foo": "bar", "spam": [1, null, true]}"#;
     let v = JsonValue::parse(json.as_bytes()).unwrap();
-    assert_eq!(v, JsonValue::Object(
-        indexmap!{
+    assert_eq!(
+        v,
+        JsonValue::Object(indexmap! {
             "foo".to_string() => JsonValue::String("bar".to_string()),
             "spam".to_string() => JsonValue::Array(
                 vec![
@@ -248,7 +249,6 @@ fn test_parse_value() {
                     JsonValue::Bool(true),
                 ],
             ),
-        },
-        )
+        },)
     );
 }
