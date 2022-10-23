@@ -133,19 +133,21 @@ impl<'a> Iterator for Chunker<'a> {
     type Item = JsonResult<ChunkInfo>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.eat_whitespace();
+        let char = match self.eat_whitespace() {
+            Ok(c) => c,
+            Err(_) => return None,
+        };
 
-        let start_index = self.index;
+        let loc = (self.line, self.index - self.col_offset + 1);
         let result = match self.state {
-            State::Start => self.next_value(),
-            State::StartArray => self.array_start(),
-            State::MidArray => self.array_mid(),
-            State::StartObject => self.object_start(),
-            State::MidObject => self.object_mid(),
+            State::Start => self.next_value(char),
+            State::StartArray => self.array_start(char),
+            State::MidArray => self.array_mid(char),
+            State::StartObject => self.object_start(char),
+            State::MidObject => self.object_mid(char),
             State::Finished => return None,
         };
 
-        let loc = (self.line, start_index - self.col_offset + 1);
         match result {
             Ok((key, chunk_type)) => Some(Ok(ChunkInfo { key, chunk_type, loc })),
             Err(error_type) => {
@@ -163,91 +165,82 @@ impl<'a> Iterator for Chunker<'a> {
 type ChunkerResult<T> = Result<T, JsonError>;
 
 impl<'a> Chunker<'a> {
-    fn eat_whitespace(&mut self) {
+    fn eat_whitespace(&mut self) -> ChunkerResult<u8> {
         while self.index < self.length {
             let next = unsafe { self.data.get_unchecked(self.index) };
             match next {
-                b' ' | b'\r' | b'\t' => self.index += 1,
+                b' ' | b'\r' | b'\t' => (),
                 b'\n' => {
-                    self.index += 1;
                     self.line += 1;
-                    self.col_offset = self.index;
+                    self.col_offset = self.index + 1;
                 }
-                _ => break,
+                _ => return Ok(*next),
             }
+            self.index += 1;
         }
+        Err(JsonError::UnexpectedEnd)
     }
 
     // if we're in an array consume the next comma and whitespace
-    fn array_start(&mut self) -> ChunkerResult<(Option<Range<usize>>, Chunk)> {
-        if self.next_is(b']')? {
+    fn array_start(&mut self, char: u8) -> ChunkerResult<(Option<Range<usize>>, Chunk)> {
+        if char == b']' {
             self.index += 1;
             self.state = self.state_heap.pop().unwrap();
             Ok((None, Chunk::ArrayEnd))
         } else {
             self.state = State::MidArray;
-            self.next_value()
+            self.next_value(char)
         }
     }
 
     // if we're in an array consume the next comma and whitespace
-    fn array_mid(&mut self) -> ChunkerResult<(Option<Range<usize>>, Chunk)> {
-        if self.index >= self.length {
-            Err(JsonError::UnexpectedEnd)
+    fn array_mid(&mut self, char: u8) -> ChunkerResult<(Option<Range<usize>>, Chunk)> {
+        if char == b']' {
+            self.index += 1;
+            self.state = self.state_heap.pop().unwrap();
+            Ok((None, Chunk::ArrayEnd))
+        } else if char == b',' {
+            self.index += 1;
+            let next = self.eat_whitespace()?;
+            self.next_value(next)
         } else {
-            let next = unsafe { self.data.get_unchecked(self.index) };
-            if next == &b']' {
-                self.index += 1;
-                self.state = self.state_heap.pop().unwrap();
-                Ok((None, Chunk::ArrayEnd))
-            } else if next == &b',' {
-                self.index += 1;
-                self.eat_whitespace();
-                self.next_value()
-            } else {
-                Err(JsonError::ExpectingArrayNext)
-            }
+            Err(JsonError::ExpectingArrayNext)
         }
     }
 
-    fn object_start(&mut self) -> ChunkerResult<(Option<Range<usize>>, Chunk)> {
-        if self.next_is(b'}')? {
+    fn object_start(&mut self, char: u8) -> ChunkerResult<(Option<Range<usize>>, Chunk)> {
+        if char == b'}' {
             self.index += 1;
             self.state = self.state_heap.pop().unwrap();
             Ok((None, Chunk::ObjectEnd))
         } else {
             self.state = State::MidObject;
-            self.object_next()
+            self.object_next(char)
         }
     }
 
-    fn object_mid(&mut self) -> ChunkerResult<(Option<Range<usize>>, Chunk)> {
-        if self.index >= self.length {
-            Err(JsonError::UnexpectedEnd)
+    fn object_mid(&mut self, char: u8) -> ChunkerResult<(Option<Range<usize>>, Chunk)> {
+        if char == b'}' {
+            self.index += 1;
+            self.state = self.state_heap.pop().unwrap();
+            Ok((None, Chunk::ObjectEnd))
+        } else if char == b',' {
+            self.index += 1;
+            let next = self.eat_whitespace()?;
+            self.object_next(next)
         } else {
-            let next = unsafe { self.data.get_unchecked(self.index) };
-            if next == &b'}' {
-                self.index += 1;
-                self.state = self.state_heap.pop().unwrap();
-                Ok((None, Chunk::ObjectEnd))
-            } else if next == &b',' {
-                self.index += 1;
-                self.eat_whitespace();
-                self.object_next()
-            } else {
-                Err(JsonError::ExpectingObjectNext)
-            }
+            Err(JsonError::ExpectingObjectNext)
         }
     }
 
-    fn object_next(&mut self) -> ChunkerResult<(Option<Range<usize>>, Chunk)> {
-        if self.next_is(b'"')? {
+    fn object_next(&mut self, char: u8) -> ChunkerResult<(Option<Range<usize>>, Chunk)> {
+        if char == b'"' {
             let string_range = self.next_string()?;
-            self.eat_whitespace();
-            if self.next_is(b':')? {
+            let next = self.eat_whitespace()?;
+            if next == b':' {
                 self.index += 1;
-                self.eat_whitespace();
-                let (_, value) = self.next_value()?;
+                let next = self.eat_whitespace()?;
+                let (_, value) = self.next_value(next)?;
                 Ok((Some(string_range), value))
             } else {
                 Err(JsonError::ExpectingColon)
@@ -257,22 +250,8 @@ impl<'a> Chunker<'a> {
         }
     }
 
-    fn next_value(&mut self) -> ChunkerResult<(Option<Range<usize>>, Chunk)> {
-        if self.index >= self.length {
-            return match self.state {
-                State::Start => {
-                    if self.started {
-                        Err(JsonError::End)
-                    } else {
-                        Err(JsonError::UnexpectedEnd)
-                    }
-                }
-                _ => Err(JsonError::UnexpectedEnd),
-            };
-        }
-
-        let next = unsafe { self.data.get_unchecked(self.index) };
-        let chunk_type = match next {
+    fn next_value(&mut self, char: u8) -> ChunkerResult<(Option<Range<usize>>, Chunk)> {
+        let chunk_type = match char {
             b'{' => {
                 self.index += 1;
                 self.state_heap.push(self.state);
@@ -519,15 +498,6 @@ impl<'a> Chunker<'a> {
                 positive,
                 range: start..self.index,
             })
-        }
-    }
-
-    fn next_is(&self, byte: u8) -> ChunkerResult<bool> {
-        if self.index >= self.length {
-            Err(JsonError::UnexpectedEnd)
-        } else {
-            let next = unsafe { self.data.get_unchecked(self.index) };
-            Ok(next == &byte)
         }
     }
 }
