@@ -115,15 +115,15 @@ macro_rules! test_cases {
     ($file_name:ident) => {
         paste::item! {
             #[bench]
-            fn [< $file_name _donervan_value >](bench: &mut Bencher) {
+            fn [< $file_name _donervan >](bench: &mut Bencher) {
                 let file_path = format!("./benches/{}.json", stringify!($file_name));
-                donervan_value(&file_path, bench);
+                donervan_chunker_parse(&file_path, bench);
             }
 
             #[bench]
-            fn [< $file_name _donervan_chunker_parse >](bench: &mut Bencher) {
+            fn [< $file_name _donervan_value >](bench: &mut Bencher) {
                 let file_path = format!("./benches/{}.json", stringify!($file_name));
-                donervan_chunker_parse(&file_path, bench);
+                donervan_value(&file_path, bench);
             }
 
             #[bench]
