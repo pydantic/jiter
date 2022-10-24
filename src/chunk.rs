@@ -2,7 +2,6 @@ use std::fmt;
 use std::intrinsics::{likely, unlikely};
 use std::ops::Range;
 
-use crate::parse::{parse_float, parse_int, parse_string};
 use crate::{ErrorInfo, JsonError, JsonResult, Location};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -174,33 +173,6 @@ impl<'a> Chunker<'a> {
             col_offset: 0,
         };
     }
-
-    pub fn decode_string(&self, range: Range<usize>, loc: Location) -> JsonResult<String> {
-        parse_string(&self.data, range).map_err(|e| ErrorInfo::new(e, loc))
-    }
-
-    pub fn decode_int(
-        &self,
-        positive: bool,
-        range: Range<usize>,
-        _exponent: Option<Exponent>,
-        loc: Location,
-    ) -> JsonResult<i64> {
-        // assert!(exponent.is_none());
-        parse_int(&self.data, positive, range).map_err(|e| ErrorInfo::new(e, loc))
-    }
-
-    pub fn decode_float(
-        &self,
-        positive: bool,
-        int_range: Range<usize>,
-        decimal_range: Range<usize>,
-        _exponent: Option<Exponent>,
-        loc: Location,
-    ) -> JsonResult<f64> {
-        // assert!(exponent.is_none());
-        parse_float(&self.data, positive, int_range, decimal_range).map_err(|e| ErrorInfo::new(e, loc))
-    }
 }
 
 impl<'a> Iterator for Chunker<'a> {
@@ -224,7 +196,7 @@ impl<'a> Iterator for Chunker<'a> {
                 b'[' => {
                     let loc = self.loc();
 
-                    let push_state =  match self.state {
+                    let push_state = match self.state {
                         State::Start => State::Finished,
                         State::ArrayStart | State::ArrayPostComma => State::ArrayPostValue,
                         State::ObjectPostColon => State::ObjectPostValue,
@@ -296,18 +268,16 @@ impl<'a> Iterator for Chunker<'a> {
                                 Err(e) => Some(Err(e)),
                             }
                         }
-                        _ => {
-                            match self.on_value() {
-                                None => {
-                                    let range = match self.next_string(loc) {
-                                        Ok(range) => range,
-                                        Err(e) => return Some(Err(e)),
-                                    };
-                                    ChunkInfo::next(Chunk::String(range), loc)
-                                },
-                                Some(e) => Some(Err(e)),
+                        _ => match self.on_value() {
+                            None => {
+                                let range = match self.next_string(loc) {
+                                    Ok(range) => range,
+                                    Err(e) => return Some(Err(e)),
+                                };
+                                ChunkInfo::next(Chunk::String(range), loc)
                             }
-                        }
+                            Some(e) => Some(Err(e)),
+                        },
                     };
                 }
                 b't' => {

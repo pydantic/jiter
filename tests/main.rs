@@ -1,7 +1,6 @@
 use indexmap::indexmap;
 
-use donervan::parse::{parse_float, parse_int, parse_string};
-use donervan::{Chunk, ChunkInfo, Chunker, JsonError, JsonResult, JsonValue};
+use donervan::{Chunk, ChunkInfo, Chunker, Decoder, JsonError, JsonResult, JsonValue};
 
 macro_rules! single_expect_ok_or_error {
     ($name:ident, ok, $json:literal, $expected:expr) => {
@@ -81,7 +80,7 @@ fn invalid_string_controls() {
 #[test]
 fn test_parse_str() {
     let json = "foobar";
-    let result_string = parse_string(json.as_bytes(), 0..3).unwrap();
+    let result_string = Decoder::new(json.as_bytes()).decode_string(0..3, (0, 0)).unwrap();
     assert_eq!(result_string, "foo".to_string());
 }
 
@@ -99,7 +98,7 @@ fn test_json_parse_str() {
         Chunk::String(range) => range,
         _ => unreachable!(),
     };
-    let result_string = parse_string(data, range).unwrap();
+    let result_string = Decoder::new(data).decode_string(range, (0, 0)).unwrap();
     assert_eq!(result_string, "foobar");
 }
 
@@ -117,7 +116,7 @@ macro_rules! string_tests {
                         Chunk::String(range) => range,
                         v => panic!("expected string, not {:?}", v),
                     };
-                    let result_string = parse_string(data, range).unwrap();
+                    let result_string = Decoder::new(data).decode_string(range, (0, 0)).unwrap();
                     assert_eq!(result_string, $expected);
                 }
             }
@@ -154,7 +153,7 @@ fn test_parse_int() {
             }
             v => panic!("expected int, not {:?}", v),
         };
-        let result_int = parse_int(data, positive, range).unwrap();
+        let result_int = Decoder::new(data).decode_int(positive, range, None, (0, 0)).unwrap();
         assert_eq!(result_int, input_value);
     }
 }
@@ -179,7 +178,9 @@ fn test_parse_float() {
             }
             v => panic!("expected float, not {:?} (json: {:?}", v, json),
         };
-        let result_int = parse_float(data, positive, int_range, decimal_range).unwrap();
+        let result_int = Decoder::new(data)
+            .decode_float(positive, int_range, decimal_range, None, (0, 0))
+            .unwrap();
         assert!((result_int - input_value).abs() < 1e-6);
     }
 }
@@ -201,4 +202,20 @@ fn test_parse_value() {
             ),
         },)
     );
+}
+
+#[test]
+fn test_parse_value_nested() {
+    let json = r#"[1, 2, [3, 4], 5, 6]"#;
+    let v = JsonValue::parse(json.as_bytes()).unwrap();
+    assert_eq!(
+        v,
+        JsonValue::Array(vec![
+            JsonValue::Int(1),
+            JsonValue::Int(2),
+            JsonValue::Array(vec![JsonValue::Int(3), JsonValue::Int(4)]),
+            JsonValue::Int(5),
+            JsonValue::Int(6),
+        ],)
+    )
 }

@@ -4,7 +4,7 @@ use std::io::Read;
 
 extern crate test;
 
-use donervan::{Chunk, Chunker, JsonValue};
+use donervan::{Chunk, Chunker, Decoder, JsonValue};
 use serde_json::Value;
 use test::{black_box, Bencher};
 
@@ -27,6 +27,7 @@ fn donervan_value(path: &str, bench: &mut Bencher) {
 fn donervan_chunker_parse(path: &str, bench: &mut Bencher) {
     let json = read_file(path);
     let json_data = json.as_bytes();
+    let decoder = Decoder::new(json_data);
     bench.iter(|| {
         let mut chunker = Chunker::new(black_box(json_data));
         loop {
@@ -45,7 +46,7 @@ fn donervan_chunker_parse(path: &str, bench: &mut Bencher) {
                 }
                 Chunk::Null => (),
                 Chunk::String(range) => {
-                    let s = chunker.decode_string(range, chunk.loc).unwrap();
+                    let s = decoder.decode_string(range, chunk.loc).unwrap();
                     black_box(s);
                     ()
                 }
@@ -54,7 +55,7 @@ fn donervan_chunker_parse(path: &str, bench: &mut Bencher) {
                     range,
                     exponent,
                 } => {
-                    let i = chunker.decode_int(positive, range, exponent, chunk.loc).unwrap();
+                    let i = decoder.decode_int(positive, range, exponent, chunk.loc).unwrap();
                     black_box(i);
                     ()
                 }
@@ -64,7 +65,7 @@ fn donervan_chunker_parse(path: &str, bench: &mut Bencher) {
                     decimal_range,
                     exponent,
                 } => {
-                    let f = chunker
+                    let f = decoder
                         .decode_float(positive, int_range, decimal_range, exponent, chunk.loc)
                         .unwrap();
                     black_box(f);
