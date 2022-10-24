@@ -9,9 +9,8 @@ macro_rules! single_expect_ok_or_error {
             #[test]
             fn [< single_chunk_ok_ $name >]() {
                 let chunks: Vec<ChunkInfo> = Chunker::new($json.as_bytes()).collect::<JsonResult<_>>().unwrap();
-                assert_eq!(chunks.len(), 1);
-                let first_chunk = chunks[0].clone();
-                assert_eq!(format!("{:?}", first_chunk), $expected);
+                let chunks_str = chunks.iter().map(|c| c.to_string()).collect::<Vec<String>>().join(", ");
+                assert_eq!(chunks_str, $expected);
             }
         }
     };
@@ -38,17 +37,17 @@ macro_rules! single_tests {
 }
 
 single_tests! {
-    string: ok => r#""foobar""#, "ChunkInfo { key: None, chunk_type: String(1..7), loc: (1, 1) }";
-    int_pos: ok => "1234", "ChunkInfo { key: None, chunk_type: Int { positive: true, range: 0..4, exponent: None }, loc: (1, 1) }";
-    int_neg: ok => "-1234", "ChunkInfo { key: None, chunk_type: Int { positive: false, range: 1..5, exponent: None }, loc: (1, 1) }";
-    int_exp: ok => "20e10", "ChunkInfo { key: None, chunk_type: Int { positive: true, range: 0..2, exponent: Some(Exponent { positive: true, range: 3..5 }) }, loc: (1, 1) }";
-    float_pos: ok => "12.34", "ChunkInfo { key: None, chunk_type: Float { positive: true, int_range: 0..2, decimal_range: 3..5, exponent: None }, loc: (1, 1) }";
-    float_neg: ok => "-12.34", "ChunkInfo { key: None, chunk_type: Float { positive: false, int_range: 1..3, decimal_range: 4..6, exponent: None }, loc: (1, 1) }";
-    float_exp: ok => "2.2e10", "ChunkInfo { key: None, chunk_type: Float { positive: true, int_range: 0..1, decimal_range: 2..3, exponent: Some(Exponent { positive: true, range: 4..6 }) }, loc: (1, 1) }";
-    null: ok => "null", "ChunkInfo { key: None, chunk_type: Null, loc: (1, 1) }";
-    v_true: ok => "true", "ChunkInfo { key: None, chunk_type: True, loc: (1, 1) }";
-    v_false: ok => "false", "ChunkInfo { key: None, chunk_type: False, loc: (1, 1) }";
-    offset_true: ok => "  true", "ChunkInfo { key: None, chunk_type: True, loc: (1, 3) }";
+    string: ok => r#""foobar""#, "String(1..7) @ 1:1";
+    int_pos: ok => "1234", "+Int(0..4) @ 1:1";
+    int_neg: ok => "-1234", "-Int(1..5) @ 1:1";
+    int_exp: ok => "20e10", "+Int(0..2e+3..5) @ 1:1";
+    float_pos: ok => "12.34", "+Float(0..2.3..5) @ 1:3";
+    float_neg: ok => "-12.34", "-Float(1..3.4..6) @ 1:4";
+    float_exp: ok => "2.2e10", "+Float(0..1.2..3e+4..6) @ 1:2";
+    null: ok => "null", "null @ 1:1";
+    v_true: ok => "true", "true @ 1:1";
+    v_false: ok => "false", "false @ 1:1";
+    offset_true: ok => "  true", "true @ 1:3";
     string_unclosed: err => r#""foobar"#, UnexpectedEnd;
     bad_int: err => "-", InvalidNumber;
     bad_true: err => "truX", InvalidTrue;
@@ -57,8 +56,16 @@ single_tests! {
     bad_false: err => "fals", UnexpectedEnd;
     bad_null: err => "nulX", InvalidNull;
     bad_null: err => "nul", UnexpectedEnd;
-    object_trailing_comma: err => r#"{"foo": "bar",}"#, ExpectingKey;
+    object_trailing_comma: err => r#"{"foo": "bar",}"#, UnexpectedCharacter;
     array_trailing_comma: err => r#"[1, 2,]"#, UnexpectedCharacter;
+    array_bool: ok => "[true, false]", "[ @ 1:1, true @ 1:2, false @ 1:8, ] @ 1:13";
+    object_string: ok => r#"{"foo": "ba"}"#, "{ @ 1:1, Key(2..5) @ 1:2, String(9..11) @ 1:9, } @ 1:13";
+    object_null: ok => r#"{"foo": null}"#, "{ @ 1:1, Key(2..5) @ 1:2, null @ 1:9, } @ 1:13";
+    object_bool_compact: ok => r#"{"foo":true}"#, "{ @ 1:1, Key(2..5) @ 1:2, true @ 1:8, } @ 1:12";
+    deep_array: ok => r#"[["Not too deep"]]"#, "[ @ 1:1, [ @ 1:2, String(3..15) @ 1:3, ] @ 1:17, ] @ 1:18";
+    deep_array: err => r#"{4: 4}"#, UnexpectedCharacter;
+    array_no_close: err => r#"["#, UnexpectedEnd;
+    array_double_close: err => r#"[1]]"#, UnexpectedCharacter;
 }
 
 #[test]
@@ -69,90 +76,6 @@ fn invalid_string_controls() {
         Ok(t) => panic!("unexpectedly valid: {:?} -> {:?}", json, t),
         Err(e) => assert_eq!(e.error_type, JsonError::InvalidString(3)),
     }
-}
-
-#[test]
-fn chunk_array() {
-    let json = "[true, false]";
-    let chunks: Vec<ChunkInfo> = Chunker::new(json.as_bytes()).collect::<JsonResult<_>>().unwrap();
-    assert_eq!(
-        chunks,
-        vec![
-            ChunkInfo {
-                key: None,
-                chunk_type: Chunk::ArrayStart,
-                loc: (1, 1),
-            },
-            ChunkInfo {
-                key: None,
-                chunk_type: Chunk::True,
-                loc: (1, 2),
-            },
-            ChunkInfo {
-                key: None,
-                chunk_type: Chunk::False,
-                loc: (1, 6),
-            },
-            ChunkInfo {
-                key: None,
-                chunk_type: Chunk::ArrayEnd,
-                loc: (1, 13),
-            },
-        ]
-    );
-}
-
-#[test]
-fn chunk_object() {
-    let json = r#"{"foobar": null}"#;
-    let chunks: Vec<ChunkInfo> = Chunker::new(json.as_bytes()).collect::<JsonResult<_>>().unwrap();
-    assert_eq!(
-        chunks,
-        vec![
-            ChunkInfo {
-                key: None,
-                chunk_type: Chunk::ObjectStart,
-                loc: (1, 1),
-            },
-            ChunkInfo {
-                key: Some(2..8,),
-                chunk_type: Chunk::Null,
-                loc: (1, 2),
-            },
-            ChunkInfo {
-                key: None,
-                chunk_type: Chunk::ObjectEnd,
-                loc: (1, 16),
-            },
-        ]
-    );
-}
-
-#[test]
-fn chunk_object_compact() {
-    let json = "{\"object with 1 member\"\n:true}";
-    let chunks: Vec<ChunkInfo> = Chunker::new(json.as_bytes()).collect::<JsonResult<_>>().unwrap();
-    // println!("{:#?}", chunks);
-    assert_eq!(
-        chunks,
-        vec![
-            ChunkInfo {
-                key: None,
-                chunk_type: Chunk::ObjectStart,
-                loc: (1, 1),
-            },
-            ChunkInfo {
-                key: Some(2..22,),
-                chunk_type: Chunk::True,
-                loc: (1, 2),
-            },
-            ChunkInfo {
-                key: None,
-                chunk_type: Chunk::ObjectEnd,
-                loc: (2, 6),
-            },
-        ]
-    );
 }
 
 #[test]
@@ -169,8 +92,8 @@ fn test_json_parse_str() {
     let chunks: Vec<ChunkInfo> = Chunker::new(data).collect::<JsonResult<_>>().unwrap();
     assert_eq!(chunks.len(), 1);
     let first_chunk = chunks[0].clone();
-    let debug = format!("{:?}", first_chunk);
-    assert_eq!(debug, "ChunkInfo { key: None, chunk_type: String(2..8), loc: (1, 2) }");
+    let debug = format!("{}", first_chunk);
+    assert_eq!(debug, "String(2..8) @ 1:2");
 
     let range = match first_chunk.chunk_type {
         Chunk::String(range) => range,

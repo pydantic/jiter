@@ -4,10 +4,10 @@ use strum::{Display, EnumMessage};
 
 mod chunk;
 pub mod parse;
-// mod value;
+mod value;
 
 pub use chunk::{Chunk, ChunkInfo, Chunker, Exponent};
-// pub use value::{JsonArray, JsonObject, JsonValue};
+pub use value::{JsonArray, JsonObject, JsonValue};
 
 #[derive(Debug, Display, EnumMessage, PartialEq, Eq, Clone)]
 #[strum(serialize_all = "snake_case")]

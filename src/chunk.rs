@@ -1,3 +1,4 @@
+use std::fmt;
 use std::ops::Range;
 
 use crate::parse::{parse_float, parse_int, parse_string};
@@ -7,6 +8,17 @@ use crate::{ErrorInfo, JsonError, JsonResult, Location};
 pub struct Exponent {
     pub positive: bool,
     pub range: Range<usize>,
+}
+
+impl fmt::Display for Exponent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.positive {
+            write!(f, "e+")?;
+        } else {
+            write!(f, "e-")?;
+        }
+        write!(f, "{:?}", self.range)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,10 +45,55 @@ pub enum Chunk {
     },
 }
 
+impl fmt::Display for Chunk {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ObjectStart => write!(f, "{{"),
+            Self::ObjectEnd => write!(f, "}}"),
+            Self::ArrayStart => write!(f, "["),
+            Self::ArrayEnd => write!(f, "]"),
+            Self::True => write!(f, "true"),
+            Self::False => write!(f, "false"),
+            Self::Null => write!(f, "null"),
+            Self::Key(range) => write!(f, "Key({:?})", range),
+            Self::String(range) => write!(f, "String({:?})", range),
+            Self::Int {
+                positive,
+                range,
+                exponent,
+            } => {
+                let prefix = if *positive { "+" } else { "-" };
+                match exponent {
+                    Some(exp) => write!(f, "{}Int({:?}{})", prefix, range, exp),
+                    None => write!(f, "{}Int({:?})", prefix, range),
+                }
+            }
+            Self::Float {
+                positive,
+                int_range,
+                decimal_range,
+                exponent,
+            } => {
+                let prefix = if *positive { "+" } else { "-" };
+                match exponent {
+                    Some(exp) => write!(f, "{}Float({:?}.{:?}{})", prefix, int_range, decimal_range, exp),
+                    None => write!(f, "{}Float({:?}.{:?})", prefix, int_range, decimal_range),
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChunkInfo {
     pub chunk_type: Chunk,
     pub loc: Location,
+}
+
+impl fmt::Display for ChunkInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} @ {}:{}", self.chunk_type, self.loc.0, self.loc.1)
+    }
 }
 
 impl ChunkInfo {
@@ -152,6 +209,7 @@ impl<'a> Iterator for Chunker<'a> {
         while self.index < self.length {
             let next = unsafe { self.data.get_unchecked(self.index) };
             match next {
+                // this method is called from whitespace, more whitespace is always fine
                 b' ' | b'\r' | b'\t' => (),
                 b'\n' => {
                     self.line += 1;
@@ -159,27 +217,38 @@ impl<'a> Iterator for Chunker<'a> {
                 }
                 b'[' => {
                     let loc = self.loc();
+
                     return match self.state {
-                        State::Start | State::ArrayPostComma | State::ObjectPostColon => {
-                            self.push_state();
+                        State::Start => {
+                            self.state_heap.push(State::Finished);
+                            self.state = State::ArrayStart;
+                            self.index += 1;
+                            ChunkInfo::next(Chunk::ArrayStart, loc)
+                        }
+                        State::ArrayStart | State::ArrayPostComma => {
+                            self.state_heap.push(State::ArrayPostValue);
+                            self.state = State::ArrayStart;
+                            self.index += 1;
+                            ChunkInfo::next(Chunk::ArrayStart, loc)
+                        }
+                        State::ObjectPostColon => {
+                            self.state_heap.push(State::ObjectPostValue);
                             self.state = State::ArrayStart;
                             self.index += 1;
                             ChunkInfo::next(Chunk::ArrayStart, loc)
                         }
                         _ => ErrorInfo::next(JsonError::UnexpectedCharacter, loc),
-                    }
+                    };
                 }
-                b',' => {
-                    match self.state {
-                        State::ArrayPostValue => {
-                            self.state = State::ArrayPostComma;
-                        }
-                        State::ObjectPostValue => {
-                            self.state = State::ObjectPostComma;
-                        }
-                        _ => return ErrorInfo::next(JsonError::UnexpectedCharacter, self.loc()),
+                b',' => match self.state {
+                    State::ArrayPostValue => {
+                        self.state = State::ArrayPostComma;
                     }
-                }
+                    State::ObjectPostValue => {
+                        self.state = State::ObjectPostComma;
+                    }
+                    _ => return ErrorInfo::next(JsonError::UnexpectedCharacter, self.loc()),
+                },
                 b']' => {
                     let loc = self.loc();
                     return match self.state {
@@ -189,28 +258,38 @@ impl<'a> Iterator for Chunker<'a> {
                             ChunkInfo::next(Chunk::ArrayEnd, loc)
                         }
                         _ => ErrorInfo::next(JsonError::UnexpectedCharacter, loc),
-                    }
+                    };
                 }
                 b'{' => {
                     let loc = self.loc();
                     return match self.state {
-                        State::Start | State::ArrayPostComma | State::ObjectPostColon => {
-                            self.push_state();
+                        State::Start => {
+                            self.state_heap.push(State::Finished);
+                            self.state = State::ObjectStart;
+                            self.index += 1;
+                            ChunkInfo::next(Chunk::ObjectStart, loc)
+                        }
+                        State::ArrayStart | State::ArrayPostComma => {
+                            self.state_heap.push(State::ArrayPostValue);
+                            self.state = State::ObjectStart;
+                            self.index += 1;
+                            ChunkInfo::next(Chunk::ObjectStart, loc)
+                        }
+                        State::ObjectPostColon => {
+                            self.state_heap.push(State::ObjectPostValue);
                             self.state = State::ObjectStart;
                             self.index += 1;
                             ChunkInfo::next(Chunk::ObjectStart, loc)
                         }
                         _ => ErrorInfo::next(JsonError::UnexpectedCharacter, loc),
-                    }
+                    };
                 }
-                b':' => {
-                    match self.state {
-                        State::ObjectPreColon => {
-                            self.state = State::ObjectPostColon;
-                        }
-                        _ => return ErrorInfo::next(JsonError::UnexpectedCharacter, self.loc()),
+                b':' => match self.state {
+                    State::ObjectPreColon => {
+                        self.state = State::ObjectPostColon;
                     }
-                }
+                    _ => return ErrorInfo::next(JsonError::UnexpectedCharacter, self.loc()),
+                },
                 b'}' => {
                     let loc = self.loc();
                     return match self.state {
@@ -220,13 +299,16 @@ impl<'a> Iterator for Chunker<'a> {
                             ChunkInfo::next(Chunk::ObjectEnd, loc)
                         }
                         _ => ErrorInfo::next(JsonError::UnexpectedCharacter, loc),
-                    }
+                    };
                 }
                 b'"' => {
                     let loc = self.loc();
                     return match self.state {
                         State::Start | State::ArrayStart | State::ArrayPostComma | State::ObjectPostColon => {
-                            self.on_value();
+                            match self.on_value() {
+                                Ok(_) => (),
+                                Err(e) => return Some(Err(e)),
+                            };
                             let range = match self.next_string(loc) {
                                 Ok(range) => range,
                                 Err(e) => return Some(Err(e)),
@@ -243,27 +325,42 @@ impl<'a> Iterator for Chunker<'a> {
                             ChunkInfo::next(Chunk::Key(range), loc)
                         }
                         _ => ErrorInfo::next(JsonError::UnexpectedCharacter, loc),
-                    }
+                    };
                 }
                 b't' => {
-                    self.on_value();
-                    return self.next_true()
+                    match self.on_value() {
+                        Ok(_) => (),
+                        Err(e) => return Some(Err(e)),
+                    };
+                    return self.next_true();
                 }
                 b'f' => {
-                    self.on_value();
-                    return self.next_false()
+                    match self.on_value() {
+                        Ok(_) => (),
+                        Err(e) => return Some(Err(e)),
+                    };
+                    return self.next_false();
                 }
                 b'n' => {
-                    self.on_value();
-                    return self.next_null()
+                    match self.on_value() {
+                        Ok(_) => (),
+                        Err(e) => return Some(Err(e)),
+                    };
+                    return self.next_null();
                 }
                 b'0'..=b'9' => {
-                    self.on_value();
-                    return self.next_number(true)
+                    match self.on_value() {
+                        Ok(_) => (),
+                        Err(e) => return Some(Err(e)),
+                    };
+                    return self.next_number(true);
                 }
                 b'-' => {
-                    self.on_value();
-                    return self.next_number(false)
+                    match self.on_value() {
+                        Ok(_) => (),
+                        Err(e) => return Some(Err(e)),
+                    };
+                    return self.next_number(false);
                 }
                 _ => return ErrorInfo::next(JsonError::UnexpectedCharacter, self.loc()),
             }
@@ -278,27 +375,18 @@ impl<'a> Iterator for Chunker<'a> {
 
 impl<'a> Chunker<'a> {
     fn loc(&self) -> Location {
-        (self.line, self.index - self.col_offset)
+        (self.line, self.index - self.col_offset + 1)
     }
 
-    fn push_state(&mut self) {
-        let s = match self.state {
-            State::Start => State::Finished,
-            State::ArrayPostComma => State::ArrayPostValue,
-            State::ObjectPostColon => State::ObjectPostValue,
-            _ => unreachable!(),
-        };
-        self.state_heap.push(s);
-    }
-
-    fn on_value(&mut self) {
+    fn on_value(&mut self) -> JsonResult<()> {
         self.state = match self.state {
             State::Start => State::Finished,
             State::ArrayStart => State::ArrayPostValue,
             State::ArrayPostComma => State::ArrayPostValue,
             State::ObjectPostColon => State::ObjectPostValue,
-            _ => unreachable!(),
+            _ => return Err(ErrorInfo::new(JsonError::UnexpectedCharacter, self.loc())),
         };
+        Ok(())
     }
 
     fn next_true(&mut self) -> Option<JsonResult<ChunkInfo>> {
@@ -437,7 +525,7 @@ impl<'a> Chunker<'a> {
                     let chunk = Chunk::Int {
                         positive,
                         range: start..end,
-                        exponent
+                        exponent,
                     };
                     return ChunkInfo::next(chunk, loc);
                 }

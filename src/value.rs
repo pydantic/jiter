@@ -67,20 +67,21 @@ impl JsonValue {
             Chunk::ObjectStart => {
                 let mut object = IndexMap::with_capacity(100);
                 loop {
-                    let chunk = chunker.next().unwrap()?;
-                    match chunk.chunk_type {
+                    let key = chunker.next().unwrap()?;
+                    match key.chunk_type {
                         Chunk::ObjectEnd => break,
-                        _ => {
-                            let key_range = chunk.key.clone().unwrap();
-                            let key = chunker.decode_string(key_range, chunk.loc)?;
-                            let value = Self::parse_chunk(chunk, chunker)?;
+                        Chunk::Key(key_range) => {
+                            let key = chunker.decode_string(key_range, key.loc)?;
+                            let value_chunk = chunker.next().unwrap()?;
+                            let value = Self::parse_chunk(value_chunk, chunker)?;
                             object.insert(key, value);
                         }
+                        _ => unreachable!(),
                     }
                 }
                 Ok(JsonValue::Object(object))
             }
-            Chunk::ObjectEnd | Chunk::ArrayEnd => unreachable!(),
+            Chunk::ObjectEnd | Chunk::ArrayEnd | Chunk::Key(_) => unreachable!(),
         }
     }
 }
