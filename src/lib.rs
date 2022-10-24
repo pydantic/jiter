@@ -1,4 +1,5 @@
 #![doc = include_str ! ("../README.md")]
+#![feature(core_intrinsics)]
 
 use strum::{Display, EnumMessage};
 

@@ -1,4 +1,5 @@
 use std::fmt;
+use std::intrinsics::{likely, unlikely};
 use std::ops::Range;
 
 use crate::parse::{parse_float, parse_int, parse_string};
@@ -350,6 +351,10 @@ impl<'a> Iterator for Chunker<'a> {
     }
 }
 
+static TRUE_REST: [u8; 3] = [b'r', b'u', b'e'];
+static FALSE_REST: [u8; 4] = [b'a', b'l', b's', b'e'];
+static NULL_REST: [u8; 3] = [b'u', b'l', b'l'];
+
 impl<'a> Chunker<'a> {
     fn loc(&self) -> Location {
         (self.line, self.index - self.col_offset + 1)
@@ -368,82 +373,63 @@ impl<'a> Chunker<'a> {
 
     fn next_true(&mut self) -> Option<JsonResult<ChunkInfo>> {
         let loc = self.loc();
-        if self.index + 3 >= self.length {
+        if unlikely(self.index + 3 >= self.length) {
             return ErrorInfo::next(JsonError::UnexpectedEnd, loc);
         }
-        // this could be a SIMD operation and possibly faster?
-        self.index += 1;
-        let next = unsafe { self.data.get_unchecked(self.index) };
-        if next != &b'r' {
-            return ErrorInfo::next(JsonError::InvalidTrue, loc);
+        let v = unsafe {
+            [
+                *self.data.get_unchecked(self.index + 1),
+                *self.data.get_unchecked(self.index + 2),
+                *self.data.get_unchecked(self.index + 3),
+            ]
+        };
+        if likely(v == TRUE_REST) {
+            self.index += 4;
+            ChunkInfo::next(Chunk::True, loc)
+        } else {
+            ErrorInfo::next(JsonError::InvalidTrue, loc)
         }
-        self.index += 1;
-        let next = unsafe { self.data.get_unchecked(self.index) };
-        if next != &b'u' {
-            return ErrorInfo::next(JsonError::InvalidTrue, loc);
-        }
-        self.index += 1;
-        let next = unsafe { self.data.get_unchecked(self.index) };
-        if next != &b'e' {
-            return ErrorInfo::next(JsonError::InvalidTrue, loc);
-        }
-        self.index += 1;
-        ChunkInfo::next(Chunk::True, loc)
     }
 
     fn next_false(&mut self) -> Option<JsonResult<ChunkInfo>> {
         let loc = self.loc();
-        if self.index + 4 >= self.length {
+        if unlikely(self.index + 4 >= self.length) {
             return ErrorInfo::next(JsonError::UnexpectedEnd, loc);
         }
-        // this could be a SIMD operation and possibly faster?
-        self.index += 1;
-        let next = unsafe { self.data.get_unchecked(self.index) };
-        if next != &b'a' {
-            return ErrorInfo::next(JsonError::InvalidFalse, loc);
+        let v = unsafe {
+            [
+                *self.data.get_unchecked(self.index + 1),
+                *self.data.get_unchecked(self.index + 2),
+                *self.data.get_unchecked(self.index + 3),
+                *self.data.get_unchecked(self.index + 4),
+            ]
+        };
+        if likely(v == FALSE_REST) {
+            self.index += 5;
+            ChunkInfo::next(Chunk::False, loc)
+        } else {
+            ErrorInfo::next(JsonError::InvalidFalse, loc)
         }
-        self.index += 1;
-        let next = unsafe { self.data.get_unchecked(self.index) };
-        if next != &b'l' {
-            return ErrorInfo::next(JsonError::InvalidFalse, loc);
-        }
-        self.index += 1;
-        let next = unsafe { self.data.get_unchecked(self.index) };
-        if next != &b's' {
-            return ErrorInfo::next(JsonError::InvalidFalse, loc);
-        }
-        self.index += 1;
-        let next = unsafe { self.data.get_unchecked(self.index) };
-        if next != &b'e' {
-            return ErrorInfo::next(JsonError::InvalidFalse, loc);
-        }
-        self.index += 1;
-        ChunkInfo::next(Chunk::False, loc)
     }
 
     fn next_null(&mut self) -> Option<JsonResult<ChunkInfo>> {
         let loc = self.loc();
-        if self.index + 3 >= self.length {
+        if unlikely(self.index + 3 >= self.length) {
             return ErrorInfo::next(JsonError::UnexpectedEnd, loc);
         }
-        // this could be a SIMD operation and possibly faster?
-        self.index += 1;
-        let next = unsafe { self.data.get_unchecked(self.index) };
-        if next != &b'u' {
-            return ErrorInfo::next(JsonError::InvalidNull, loc);
+        let v = unsafe {
+            [
+                *self.data.get_unchecked(self.index + 1),
+                *self.data.get_unchecked(self.index + 2),
+                *self.data.get_unchecked(self.index + 3),
+            ]
+        };
+        if likely(v == NULL_REST) {
+            self.index += 4;
+            ChunkInfo::next(Chunk::Null, loc)
+        } else {
+            ErrorInfo::next(JsonError::InvalidNull, loc)
         }
-        self.index += 1;
-        let next = unsafe { self.data.get_unchecked(self.index) };
-        if next != &b'l' {
-            return ErrorInfo::next(JsonError::InvalidNull, loc);
-        }
-        self.index += 1;
-        let next = unsafe { self.data.get_unchecked(self.index) };
-        if next != &b'l' {
-            return ErrorInfo::next(JsonError::InvalidNull, loc);
-        }
-        self.index += 1;
-        ChunkInfo::next(Chunk::Null, loc)
     }
 
     fn next_string(&mut self, loc: Location) -> JsonResult<Range<usize>> {
@@ -462,10 +448,10 @@ impl<'a> Chunker<'a> {
                 }
                 b'\\' => {
                     self.index += 1;
-                    if self.index >= self.length {
-                        break;
-                    }
-                    let next = unsafe { self.data.get_unchecked(self.index) };
+                    let next = match self.data.get(self.index) {
+                        Some(n) => n,
+                        None => break,
+                    };
                     match next {
                         // TODO we need to make sure the 4 characters after u are valid hex to confirm is valid JSON
                         b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't' | b'u' => (),
