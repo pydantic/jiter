@@ -63,7 +63,7 @@ single_tests! {
     object_null: ok => r#"{"foo": null}"#, "{ @ 1:1, Key(2..5) @ 1:2, null @ 1:9, } @ 1:13";
     object_bool_compact: ok => r#"{"foo":true}"#, "{ @ 1:1, Key(2..5) @ 1:2, true @ 1:8, } @ 1:12";
     deep_array: ok => r#"[["Not too deep"]]"#, "[ @ 1:1, [ @ 1:2, String(3..15) @ 1:3, ] @ 1:17, ] @ 1:18";
-    deep_array: err => r#"{4: 4}"#, UnexpectedCharacter;
+    object_key_int: err => r#"{4: 4}"#, UnexpectedCharacter;
     array_no_close: err => r#"["#, UnexpectedEnd;
     array_double_close: err => r#"[1]]"#, UnexpectedCharacter;
 }

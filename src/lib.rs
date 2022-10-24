@@ -43,7 +43,7 @@ impl ErrorInfo {
         Self { error_type, loc }
     }
 
-    pub(crate) fn next(error_type: JsonError, loc: Location) -> Option<JsonResult<ChunkInfo>> {
+    pub(crate) fn next<T>(error_type: JsonError, loc: Location) -> Option<JsonResult<T>> {
         Some(Err(Self::new(error_type, loc)))
     }
 }
