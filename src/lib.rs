@@ -1,4 +1,5 @@
 #![doc = include_str ! ("../README.md")]
+#![feature(core_intrinsics)]
 
 use strum::{Display, EnumMessage};
 
@@ -29,15 +30,22 @@ pub enum JsonError {
     InternalError,
     End,
 }
+
+type Location = (usize, usize);
+
 #[derive(Debug)]
 pub struct ErrorInfo {
     pub error_type: JsonError,
-    pub loc: (usize, usize),
+    pub loc: Location,
 }
 
 impl ErrorInfo {
-    pub fn new(error_type: JsonError, loc: (usize, usize)) -> Self {
+    pub fn new(error_type: JsonError, loc: Location) -> Self {
         Self { error_type, loc }
+    }
+
+    pub(crate) fn next<T>(error_type: JsonError, loc: Location) -> Option<JsonResult<T>> {
+        Some(Err(Self::new(error_type, loc)))
     }
 }
 

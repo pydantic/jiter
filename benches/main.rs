@@ -97,6 +97,7 @@ fn donervan_chunker_skip(path: &str, bench: &mut Bencher) {
                 Chunk::ObjectEnd => black_box("x"),
                 Chunk::ArrayStart => black_box("x"),
                 Chunk::ArrayEnd => black_box("x"),
+                Chunk::Key(_) => black_box("k"),
             };
         }
     })
