@@ -1,9 +1,9 @@
 use indexmap::IndexMap;
 
 use crate::decode::Decoder;
-use crate::parse::{Element, ElementInfo, Parser};
+use crate::element::{Element, ElementInfo, JsonResult};
+use crate::parse::Parser;
 use crate::threaded::threaded_parse;
-use crate::JsonResult;
 
 /// similar to serde `Value` but with int and float split
 #[derive(Clone, Debug, PartialEq)]

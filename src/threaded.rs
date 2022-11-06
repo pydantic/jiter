@@ -4,8 +4,8 @@ use std::time::Duration;
 use crossbeam_utils::thread::scope;
 use rtrb::{Consumer, PopError, Producer, PushError, RingBuffer};
 
-use crate::parse::ElementInfo;
-use crate::{JsonResult, Parser};
+use crate::element::{JsonResult, ElementInfo};
+use crate::parse::Parser;
 
 type OptRJson = Option<JsonResult<ElementInfo>>;
 const GROUP_SIZE: usize = 32;

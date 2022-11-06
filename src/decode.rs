@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use crate::{ErrorInfo, Exponent, JsonError, JsonResult, Location};
+use crate::element::{ErrorInfo, Exponent, JsonError, JsonResult, Location};
 
 pub struct Decoder<'a> {
     data: &'a [u8],

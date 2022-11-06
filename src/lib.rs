@@ -1,54 +1,13 @@
 #![doc = include_str ! ("../README.md")]
 #![feature(core_intrinsics)]
 
-use strum::{Display, EnumMessage};
-
 mod decode;
+mod element;
 mod parse;
 mod threaded;
 mod value;
 
 pub use decode::Decoder;
-pub use parse::{Element, ElementInfo, Exponent, Parser};
+pub use element::{Element, ElementInfo, JsonError, JsonResult};
+pub use parse::Parser;
 pub use value::{JsonArray, JsonObject, JsonValue};
-
-#[derive(Debug, Display, EnumMessage, PartialEq, Eq, Clone)]
-#[strum(serialize_all = "snake_case")]
-pub enum JsonError {
-    UnexpectedCharacter,
-    UnexpectedEnd,
-    ExpectingColon,
-    ExpectingArrayNext,
-    ExpectingObjectNext,
-    ExpectingKey,
-    ExpectingValue,
-    InvalidTrue,
-    InvalidFalse,
-    InvalidNull,
-    InvalidString(usize),
-    InvalidStringEscapeSequence(usize),
-    InvalidNumber,
-    IntTooLarge,
-    InternalError,
-    End,
-}
-
-type Location = (usize, usize);
-
-#[derive(Debug, Clone)]
-pub struct ErrorInfo {
-    pub error_type: JsonError,
-    pub loc: Location,
-}
-
-impl ErrorInfo {
-    pub fn new(error_type: JsonError, loc: Location) -> Self {
-        Self { error_type, loc }
-    }
-
-    pub(crate) fn next<T>(error_type: JsonError, loc: Location) -> Option<JsonResult<T>> {
-        Some(Err(Self::new(error_type, loc)))
-    }
-}
-
-pub type JsonResult<T> = Result<T, ErrorInfo>;
