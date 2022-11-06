@@ -1,3 +1,5 @@
+use std::fs::File;
+use std::io::Read;
 use indexmap::indexmap;
 
 use donervan::{Chunk, ChunkInfo, Chunker, Decoder, JsonError, JsonResult, JsonValue};
@@ -78,14 +80,14 @@ fn invalid_string_controls() {
 }
 
 #[test]
-fn test_parse_str() {
+fn parse_str() {
     let json = "foobar";
     let result_string = Decoder::new(json.as_bytes()).decode_string(0..3, (0, 0)).unwrap();
     assert_eq!(result_string, "foo".to_string());
 }
 
 #[test]
-fn test_json_parse_str() {
+fn json_parse_str() {
     let json = r#" "foobar" "#;
     let data = json.as_bytes();
     let chunks: Vec<ChunkInfo> = Chunker::new(data).collect::<JsonResult<_>>().unwrap();
@@ -135,7 +137,7 @@ string_tests! {
 }
 
 #[test]
-fn test_parse_int() {
+fn parse_int() {
     for input_value in -1000i64..1000 {
         let json = format!(" {} ", input_value);
         let data = json.as_bytes();
@@ -159,7 +161,7 @@ fn test_parse_int() {
 }
 
 #[test]
-fn test_parse_float() {
+fn parse_float() {
     for i in -1000..1000 {
         let input_value = i as f64 * 0.1;
         let json = format!("{:.4}", input_value);
@@ -186,7 +188,7 @@ fn test_parse_float() {
 }
 
 #[test]
-fn test_parse_value() {
+fn parse_value() {
     let json = r#"{"foo": "bar", "spam": [1, null, true]}"#;
     let v = JsonValue::parse(json.as_bytes()).unwrap();
     assert_eq!(
@@ -205,7 +207,7 @@ fn test_parse_value() {
 }
 
 #[test]
-fn test_parse_value_nested() {
+fn parse_value_nested() {
     let json = r#"[1, 2, [3, 4], 5, 6]"#;
     let v = JsonValue::parse(json.as_bytes()).unwrap();
     assert_eq!(
@@ -218,4 +220,24 @@ fn test_parse_value_nested() {
             JsonValue::Int(6),
         ],)
     )
+}
+
+fn read_file(path: &str) -> String {
+    let mut file = File::open(path).unwrap();
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+    contents
+}
+
+#[test]
+fn pass1_to_value() {
+    let json = read_file("./benches/pass1.json");
+    let json_data = json.as_bytes();
+    let v = JsonValue::parse(json_data).unwrap();
+    let array = match v {
+        JsonValue::Array(array) => array,
+        v => panic!("expected array, not {:?}", v),
+    };
+    assert_eq!(array.len(), 20);
+    assert_eq!(array[0], JsonValue::String("JSON Test Pattern pass1".to_string()));
 }

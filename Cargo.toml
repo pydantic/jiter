@@ -16,3 +16,8 @@ ringbuf = '0.3.1'
 paste = '1.0.7'
 serde_json = {version = '1.0.87', features = ['preserve_order']}
 serde = '1.0.147'
+
+[profile.bench]
+lto = true
+opt-level = 3
+codegen-units = 1

@@ -146,6 +146,8 @@ macro_rules! test_cases {
 // https://json.org/JSON_checker/test/pass1.json
 // see https://github.com/python/cpython/blob/main/Lib/test/test_json/test_pass1.py
 test_cases!(pass1);
+// this needs ./benches/generate_big.py to be called
+test_cases!(big);
 // https://json.org/JSON_checker/test/pass2.json
 test_cases!(pass2);
 test_cases!(string_array);

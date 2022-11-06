@@ -1,4 +1,4 @@
-use std::thread::sleep;
+use std::thread::{sleep};
 use std::mem::MaybeUninit;
 use std::sync::{Arc};
 use std::time::Duration;
@@ -7,6 +7,7 @@ use indexmap::IndexMap;
 // use crossbeam_channel::{bounded, Receiver};
 use crossbeam_utils::thread;
 use ringbuf::{Consumer, HeapRb, SharedRb};
+use ringbuf::ring_buffer::{RbReadCache, RbWrap};
 
 use crate::chunk::{Chunk, ChunkInfo, Chunker};
 use crate::decode::Decoder;
@@ -28,18 +29,22 @@ pub type JsonObject = IndexMap<String, JsonValue>;
 
 type OptRJson = Option<JsonResult<ChunkInfo>>;
 
-struct JsonConsumer(Consumer<OptRJson, Arc<SharedRb<OptRJson, Vec<MaybeUninit<OptRJson>>>>>);
+struct JsonConsumer(Consumer<OptRJson, RbWrap<RbReadCache<OptRJson, Arc<SharedRb<OptRJson, Vec<MaybeUninit<OptRJson>>>>>>>);
+// struct JsonConsumer(Consumer<OptRJson, Arc<SharedRb<OptRJson, Vec<MaybeUninit<OptRJson>>>>>);
 
-impl Iterator for JsonConsumer {
-    type Item = JsonResult<ChunkInfo>;
-
-    fn next(&mut self) -> Option<Self::Item> {
+impl JsonConsumer {
+    fn next(&mut self) -> OptRJson {
         let mut r = self.0.pop();
+        let i: usize = 0;
         loop {
+            if i % 50 == 0 {
+                self.0.sync();
+            }
             r = match r {
                 Some(v) => return v,
                 None => {
-                    sleep(Duration::from_micros(1));
+                    sleep(Duration::from_nanos(100));
+                    self.0.sync();
                     self.0.pop()
                 }
             };
@@ -50,21 +55,28 @@ impl Iterator for JsonConsumer {
 impl JsonValue {
     pub fn parse(data: &[u8]) -> JsonResult<Self> {
         thread::scope(|scope| {
-            let buf = HeapRb::<OptRJson>::new(32);
-            let (mut producer, consumer) = buf.split();
+            let buf = HeapRb::<OptRJson>::new(200);
+            let (producer, consumer) = buf.split();
+            let mut producer = producer.into_postponed();
             let handle = scope.spawn(move |_| {
                 let chunker = Chunker::new(data);
-                for chunk in chunker {
+                for (i, chunk) in chunker.enumerate() {
+                // for chunk in chunker {
                     let mut r = producer.push(Some(chunk));
                     while let Err(e) = r {
-                        sleep(Duration::from_micros(1));
+                        sleep(Duration::from_nanos(100));
+                        producer.sync();
                         r = producer.push(e);
                     }
+                    if i % 50 == 0 {
+                        producer.sync();
+                    }
                 }
+                producer.sync();
             });
 
             let decoder = Decoder::new(data);
-            let mut consumer = JsonConsumer(consumer);
+            let mut consumer = JsonConsumer(consumer.into_postponed());
             let chunk = consumer.next().unwrap()?;
             let s = take_chunk(chunk, &mut consumer, &decoder);
             handle.join().unwrap();
@@ -105,7 +117,7 @@ fn take_chunk(
             Ok(JsonValue::Float(f))
         }
         Chunk::ArrayStart => {
-            let mut array: Vec<JsonValue> = Vec::new();
+            let mut array: Vec<JsonValue> = Vec::with_capacity(25);
             loop {
                 let chunk = consumer.next().unwrap()?;
                 match chunk.chunk_type {
@@ -119,7 +131,7 @@ fn take_chunk(
             Ok(JsonValue::Array(array))
         }
         Chunk::ObjectStart => {
-            let mut object = IndexMap::with_capacity(100);
+            let mut object = IndexMap::with_capacity(25);
             loop {
                 let key = consumer.next().unwrap()?;
                 match key.chunk_type {
