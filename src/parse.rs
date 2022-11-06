@@ -288,22 +288,15 @@ impl<'a> Parser<'a> {
                     return Ok(r);
                 }
                 b'\\' => {
-                    self.index += 1;
-                    let next = match self.data.get(self.index) {
-                        Some(n) => n,
-                        None => break,
-                    };
-                    match next {
-                        // TODO we need to make sure the 4 characters after u are valid hex to confirm is valid JSON
-                        b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't' | b'u' => (),
-                        _ => return Err(ErrorInfo::new(JsonError::InvalidString(self.index - start), loc)),
-                    }
+                    self.index += 2;
+                    // we don't do any further checks on the next character here,
+                    // instead we leave checks to string decoding
                 }
-                // 8 = backspace, 9 = tab, 10 = newline, 12 = formfeed, 13 = carriage return
-                8 | 9 | 10 | 12 | 13 => return Err(ErrorInfo::new(JsonError::InvalidString(self.index - start), loc)),
-                _ => (),
+                // similarly, we don't check for control characters here and just leave it to decoding
+                _ => {
+                    self.index += 1;
+                }
             }
-            self.index += 1;
         }
         Err(ErrorInfo::new(JsonError::UnexpectedEnd, loc))
     }

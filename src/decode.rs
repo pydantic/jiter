@@ -80,6 +80,8 @@ fn parse_string(data: &[u8], range: Range<usize>) -> Result<String, JsonError> {
                     _ => return Err(JsonError::InvalidString(index - range.start)),
                 }
             }
+            // 8 = backspace, 9 = tab, 10 = newline, 12 = formfeed, 13 = carriage return
+            8 | 9 | 10 | 12 | 13 => return Err(JsonError::InvalidString(index - range.start)),
             _ => chars.push(*next),
         }
         index += 1;

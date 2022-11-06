@@ -72,7 +72,15 @@ single_tests! {
 #[test]
 fn invalid_string_controls() {
     let json = "\"123\x08\x0c\n\r\t\"";
-    let result: JsonResult<Vec<ElementInfo>> = Parser::new(json.as_bytes()).collect();
+    let b = json.as_bytes();
+    let result: Vec<ElementInfo> = Parser::new(b).collect::<JsonResult<_>>().unwrap();
+    assert_eq!(result.len(), 1);
+    let first = &result[0];
+    let string_element = match &first.element {
+        Element::String(s) => s.clone(),
+        _ => panic!("unexpected element: {:?}, expected string", first),
+    };
+    let result = Decoder::new(b).decode_string(string_element, first.loc);
     match result {
         Ok(t) => panic!("unexpectedly valid: {:?} -> {:?}", json, t),
         Err(e) => assert_eq!(e.error_type, JsonError::InvalidString(3)),
