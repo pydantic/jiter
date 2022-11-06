@@ -34,7 +34,7 @@ pub enum JsonError {
 
 type Location = (usize, usize);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ErrorInfo {
     pub error_type: JsonError,
     pub loc: Location,

@@ -1,13 +1,9 @@
 use std::thread::{sleep};
-use std::mem::MaybeUninit;
-use std::sync::{Arc};
 use std::time::Duration;
 use indexmap::IndexMap;
 
-// use crossbeam_channel::{bounded, Receiver};
 use crossbeam_utils::thread;
-use ringbuf::{Consumer, HeapRb, SharedRb};
-use ringbuf::ring_buffer::{RbReadCache, RbWrap};
+use rtrb::{RingBuffer, PushError, PopError, Consumer};
 
 use crate::chunk::{Chunk, ChunkInfo, Chunker};
 use crate::decode::Decoder;
@@ -28,55 +24,97 @@ pub type JsonArray = Vec<JsonValue>;
 pub type JsonObject = IndexMap<String, JsonValue>;
 
 type OptRJson = Option<JsonResult<ChunkInfo>>;
+const GROUP_SIZE: usize = 32;
+type ResultGroup = [OptRJson; GROUP_SIZE];
 
-struct JsonConsumer(Consumer<OptRJson, RbWrap<RbReadCache<OptRJson, Arc<SharedRb<OptRJson, Vec<MaybeUninit<OptRJson>>>>>>>);
-// struct JsonConsumer(Consumer<OptRJson, Arc<SharedRb<OptRJson, Vec<MaybeUninit<OptRJson>>>>>);
+fn create_group() -> ResultGroup {
+    // let v: Vec<OptRJson> = (0..GROUP_SIZE).map(|_| None).collect();
+    // v.try_into().unwrap()
+    Default::default()
+}
+
+struct JsonConsumer {
+    consumer: Consumer<ResultGroup>,
+    counter: usize,
+    cache: ResultGroup,
+}
 
 impl JsonConsumer {
-    fn next(&mut self) -> OptRJson {
-        let mut r = self.0.pop();
-        let i: usize = 0;
-        loop {
-            if i % 50 == 0 {
-                self.0.sync();
-            }
-            r = match r {
-                Some(v) => return v,
-                None => {
-                    sleep(Duration::from_nanos(100));
-                    self.0.sync();
-                    self.0.pop()
-                }
-            };
+    fn new(consumer: Consumer<ResultGroup>) -> Self {
+        Self {
+            consumer,
+            counter: 0,
+            cache: create_group(),
         }
+    }
+    fn next(&mut self) -> OptRJson {
+        let index = self.counter % GROUP_SIZE;
+        if index == 0 {
+            let mut r = self.consumer.pop();
+            loop {
+                match r {
+                    Ok(v) => {
+                        self.cache = v;
+                        break;
+                    },
+                    Err(e) => {
+                        sleep(Duration::from_nanos(50));
+                        r = match e {
+                            PopError::Empty => self.consumer.pop(),
+                        };
+                    }
+                };
+            }
+        }
+        let r = self.cache[index].take();
+        self.counter += 1;
+        r
     }
 }
 
 impl JsonValue {
     pub fn parse(data: &[u8]) -> JsonResult<Self> {
         thread::scope(|scope| {
-            let buf = HeapRb::<OptRJson>::new(200);
-            let (producer, consumer) = buf.split();
-            let mut producer = producer.into_postponed();
+            let (mut producer, consumer) = RingBuffer::<ResultGroup>::new(100);
             let handle = scope.spawn(move |_| {
                 let chunker = Chunker::new(data);
-                for (i, chunk) in chunker.enumerate() {
-                // for chunk in chunker {
-                    let mut r = producer.push(Some(chunk));
-                    while let Err(e) = r {
-                        sleep(Duration::from_nanos(100));
-                        producer.sync();
-                        r = producer.push(e);
+                let mut group: ResultGroup = create_group();
+                let mut i: usize = 0;
+                for chunk in chunker {
+                    let index = i % GROUP_SIZE;
+                    i += 1;
+                    group[index] = Some(chunk);
+                    if index != GROUP_SIZE - 1 {
+                        continue;
                     }
-                    if i % 50 == 0 {
-                        producer.sync();
+                    let mut r = producer.push(group.clone());
+                    while let Err(e) = r {
+                        sleep(Duration::from_nanos(50));
+                        r = match e {
+                            PushError::Full(e) => producer.push(e),
+                        };
                     }
                 }
-                producer.sync();
+                let next_index = i % GROUP_SIZE;
+                if next_index != GROUP_SIZE {
+                    // we need to send the remaining chunks in a final group
+                    for index in i % GROUP_SIZE + 1..GROUP_SIZE {
+                        group[index] = None;
+                    }
+                    let mut r = producer.push(group.clone());
+                    while let Err(e) = r {
+                        sleep(Duration::from_nanos(50));
+                        // producer.sync();
+                        r = match e {
+                            PushError::Full(e) => producer.push(e),
+                        };
+                    }
+                }
             });
 
             let decoder = Decoder::new(data);
-            let mut consumer = JsonConsumer(consumer.into_postponed());
+            // let mut consumer = JsonConsumer(consumer.into_postponed());
+            let mut consumer = JsonConsumer::new(consumer);
             let chunk = consumer.next().unwrap()?;
             let s = take_chunk(chunk, &mut consumer, &decoder);
             handle.join().unwrap();
