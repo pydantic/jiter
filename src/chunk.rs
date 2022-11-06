@@ -45,6 +45,12 @@ pub enum Chunk {
     },
 }
 
+impl Default for Chunk {
+    fn default() -> Self {
+        Chunk::Null
+    }
+}
+
 impl fmt::Display for Chunk {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -84,7 +90,7 @@ impl fmt::Display for Chunk {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct ChunkInfo {
     pub chunk_type: Chunk,
     pub loc: Location,

@@ -10,6 +10,7 @@ strum_macros = '0.24.1'
 crossbeam = '0.8.2'
 crossbeam-utils = '0.8.12'
 crossbeam-channel = '0.5.6'
+ringbuf = '0.3.1'
 
 [dev-dependencies]
 paste = '1.0.7'
