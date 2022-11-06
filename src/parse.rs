@@ -45,7 +45,7 @@ impl<'a> Parser<'a> {
         Self {
             data,
             length: data.len(),
-            state_heap: vec![],
+            state_heap: Vec::with_capacity(16),
             state: State::Start,
             index: 0,
             line: 1,
@@ -71,25 +71,24 @@ impl<'a> Iterator for Parser<'a> {
                 b'[' => {
                     let loc = self.loc();
 
-                    let push_state = match self.state {
+                    // `next_state` here refers to the state we'll be in after leaving this array
+                    let next_state = match self.state {
                         State::Start => State::Finished,
                         State::ArrayStart | State::ArrayPostComma => State::ArrayPostValue,
                         State::ObjectPostColon => State::ObjectPostValue,
                         _ => return ErrorInfo::next(JsonError::UnexpectedCharacter, loc),
                     };
-                    self.state_heap.push(push_state);
+                    self.state_heap.push(next_state);
                     self.state = State::ArrayStart;
                     self.index += 1;
                     return ElementInfo::next(Element::ArrayStart, loc);
                 }
-                b',' => match self.state {
-                    State::ArrayPostValue => {
-                        self.state = State::ArrayPostComma;
+                b',' => {
+                    self.state = match self.state {
+                        State::ArrayPostValue => State::ArrayPostComma,
+                        State::ObjectPostValue => State::ObjectPostComma,
+                        _ => return ErrorInfo::next(JsonError::UnexpectedCharacter, self.loc()),
                     }
-                    State::ObjectPostValue => {
-                        self.state = State::ObjectPostComma;
-                    }
-                    _ => return ErrorInfo::next(JsonError::UnexpectedCharacter, self.loc()),
                 },
                 b']' => {
                     let loc = self.loc();
@@ -104,13 +103,15 @@ impl<'a> Iterator for Parser<'a> {
                 }
                 b'{' => {
                     let loc = self.loc();
-                    let push_state = match self.state {
+
+                    // `next_state` here refers to the state we'll be in after leaving this array
+                    let next_state = match self.state {
                         State::Start => State::Finished,
                         State::ArrayStart | State::ArrayPostComma => State::ArrayPostValue,
                         State::ObjectPostColon => State::ObjectPostValue,
                         _ => return ErrorInfo::next(JsonError::UnexpectedCharacter, loc),
                     };
-                    self.state_heap.push(push_state);
+                    self.state_heap.push(next_state);
                     self.state = State::ObjectStart;
                     self.index += 1;
                     return ElementInfo::next(Element::ObjectStart, loc);
@@ -123,7 +124,7 @@ impl<'a> Iterator for Parser<'a> {
                 },
                 b'}' => {
                     let loc = self.loc();
-                    return match self.state {
+        q              return match self.state {
                         State::ObjectStart | State::ObjectPostValue => {
                             self.state = self.state_heap.pop().unwrap();
                             self.index += 1;
@@ -208,8 +209,7 @@ impl<'a> Parser<'a> {
     fn on_value(&mut self) -> Option<ErrorInfo> {
         self.state = match self.state {
             State::Start => State::Finished,
-            State::ArrayStart => State::ArrayPostValue,
-            State::ArrayPostComma => State::ArrayPostValue,
+            State::ArrayStart | State::ArrayPostComma => State::ArrayPostValue,
             State::ObjectPostColon => State::ObjectPostValue,
             _ => return Some(ErrorInfo::new(JsonError::UnexpectedCharacter, self.loc())),
         };
