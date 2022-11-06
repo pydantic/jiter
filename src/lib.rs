@@ -4,10 +4,12 @@
 use strum::{Display, EnumMessage};
 
 mod chunk;
-pub mod parse;
+mod decode;
+mod threaded;
 mod value;
 
 pub use chunk::{Chunk, ChunkInfo, Chunker, Exponent};
+pub use decode::Decoder;
 pub use value::{JsonArray, JsonObject, JsonValue};
 
 #[derive(Debug, Display, EnumMessage, PartialEq, Eq, Clone)]
@@ -33,7 +35,7 @@ pub enum JsonError {
 
 type Location = (usize, usize);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ErrorInfo {
     pub error_type: JsonError,
     pub loc: Location,

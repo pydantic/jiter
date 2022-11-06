@@ -1,7 +1,8 @@
 use indexmap::indexmap;
+use std::fs::File;
+use std::io::Read;
 
-use donervan::parse::{parse_float, parse_int, parse_string};
-use donervan::{Chunk, ChunkInfo, Chunker, JsonError, JsonResult, JsonValue};
+use donervan::{Chunk, ChunkInfo, Chunker, Decoder, JsonError, JsonResult, JsonValue};
 
 macro_rules! single_expect_ok_or_error {
     ($name:ident, ok, $json:literal, $expected:expr) => {
@@ -79,14 +80,14 @@ fn invalid_string_controls() {
 }
 
 #[test]
-fn test_parse_str() {
+fn parse_str() {
     let json = "foobar";
-    let result_string = parse_string(json.as_bytes(), 0..3).unwrap();
+    let result_string = Decoder::new(json.as_bytes()).decode_string(0..3, (0, 0)).unwrap();
     assert_eq!(result_string, "foo".to_string());
 }
 
 #[test]
-fn test_json_parse_str() {
+fn json_parse_str() {
     let json = r#" "foobar" "#;
     let data = json.as_bytes();
     let chunks: Vec<ChunkInfo> = Chunker::new(data).collect::<JsonResult<_>>().unwrap();
@@ -99,7 +100,7 @@ fn test_json_parse_str() {
         Chunk::String(range) => range,
         _ => unreachable!(),
     };
-    let result_string = parse_string(data, range).unwrap();
+    let result_string = Decoder::new(data).decode_string(range, (0, 0)).unwrap();
     assert_eq!(result_string, "foobar");
 }
 
@@ -117,7 +118,7 @@ macro_rules! string_tests {
                         Chunk::String(range) => range,
                         v => panic!("expected string, not {:?}", v),
                     };
-                    let result_string = parse_string(data, range).unwrap();
+                    let result_string = Decoder::new(data).decode_string(range, (0, 0)).unwrap();
                     assert_eq!(result_string, $expected);
                 }
             }
@@ -136,7 +137,7 @@ string_tests! {
 }
 
 #[test]
-fn test_parse_int() {
+fn parse_int() {
     for input_value in -1000i64..1000 {
         let json = format!(" {} ", input_value);
         let data = json.as_bytes();
@@ -154,13 +155,13 @@ fn test_parse_int() {
             }
             v => panic!("expected int, not {:?}", v),
         };
-        let result_int = parse_int(data, positive, range).unwrap();
+        let result_int = Decoder::new(data).decode_int(positive, range, None, (0, 0)).unwrap();
         assert_eq!(result_int, input_value);
     }
 }
 
 #[test]
-fn test_parse_float() {
+fn parse_float() {
     for i in -1000..1000 {
         let input_value = i as f64 * 0.1;
         let json = format!("{:.4}", input_value);
@@ -179,13 +180,15 @@ fn test_parse_float() {
             }
             v => panic!("expected float, not {:?} (json: {:?}", v, json),
         };
-        let result_int = parse_float(data, positive, int_range, decimal_range).unwrap();
+        let result_int = Decoder::new(data)
+            .decode_float(positive, int_range, decimal_range, None, (0, 0))
+            .unwrap();
         assert!((result_int - input_value).abs() < 1e-6);
     }
 }
 
 #[test]
-fn test_parse_value() {
+fn parse_value() {
     let json = r#"{"foo": "bar", "spam": [1, null, true]}"#;
     let v = JsonValue::parse(json.as_bytes()).unwrap();
     assert_eq!(
@@ -201,4 +204,40 @@ fn test_parse_value() {
             ),
         },)
     );
+}
+
+#[test]
+fn parse_value_nested() {
+    let json = r#"[1, 2, [3, 4], 5, 6]"#;
+    let v = JsonValue::parse(json.as_bytes()).unwrap();
+    assert_eq!(
+        v,
+        JsonValue::Array(vec![
+            JsonValue::Int(1),
+            JsonValue::Int(2),
+            JsonValue::Array(vec![JsonValue::Int(3), JsonValue::Int(4)]),
+            JsonValue::Int(5),
+            JsonValue::Int(6),
+        ],)
+    )
+}
+
+fn read_file(path: &str) -> String {
+    let mut file = File::open(path).unwrap();
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+    contents
+}
+
+#[test]
+fn pass1_to_value() {
+    let json = read_file("./benches/pass1.json");
+    let json_data = json.as_bytes();
+    let v = JsonValue::parse(json_data).unwrap();
+    let array = match v {
+        JsonValue::Array(array) => array,
+        v => panic!("expected array, not {:?}", v),
+    };
+    assert_eq!(array.len(), 20);
+    assert_eq!(array[0], JsonValue::String("JSON Test Pattern pass1".to_string()));
 }

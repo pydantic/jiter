@@ -7,8 +7,15 @@ edition = '2021'
 indexmap = '1.9.1'
 strum = { version = '0.24.1', features = ['derive'] }
 strum_macros = '0.24.1'
+crossbeam-utils = '0.8.12'
+rtrb = '0.2.2'
 
 [dev-dependencies]
 paste = '1.0.7'
 serde_json = {version = '1.0.87', features = ['preserve_order']}
 serde = '1.0.147'
+
+[profile.bench]
+lto = true
+opt-level = 3
+codegen-units = 1

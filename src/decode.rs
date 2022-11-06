@@ -1,8 +1,45 @@
 use std::ops::Range;
 
-use crate::JsonError;
+use crate::{ErrorInfo, Exponent, JsonError, JsonResult, Location};
 
-pub fn parse_string(data: &[u8], range: Range<usize>) -> Result<String, JsonError> {
+pub struct Decoder<'a> {
+    data: &'a [u8],
+}
+
+impl<'a> Decoder<'a> {
+    pub fn new(data: &'a [u8]) -> Self {
+        Self { data }
+    }
+
+    pub fn decode_string(&self, range: Range<usize>, loc: Location) -> JsonResult<String> {
+        parse_string(self.data, range).map_err(|e| ErrorInfo::new(e, loc))
+    }
+
+    pub fn decode_int(
+        &self,
+        positive: bool,
+        range: Range<usize>,
+        _exponent: Option<Exponent>,
+        loc: Location,
+    ) -> JsonResult<i64> {
+        // assert!(exponent.is_none());
+        parse_int(self.data, positive, range).map_err(|e| ErrorInfo::new(e, loc))
+    }
+
+    pub fn decode_float(
+        &self,
+        positive: bool,
+        int_range: Range<usize>,
+        decimal_range: Range<usize>,
+        _exponent: Option<Exponent>,
+        loc: Location,
+    ) -> JsonResult<f64> {
+        // assert!(exponent.is_none());
+        parse_float(self.data, positive, int_range, decimal_range).map_err(|e| ErrorInfo::new(e, loc))
+    }
+}
+
+fn parse_string(data: &[u8], range: Range<usize>) -> Result<String, JsonError> {
     let mut chars = Vec::with_capacity(range.end - range.start);
     let mut index = range.start;
     if data.len() < range.end {
@@ -47,7 +84,7 @@ pub fn parse_string(data: &[u8], range: Range<usize>) -> Result<String, JsonErro
         }
         index += 1;
     }
-    Ok(String::from_utf8(chars).map_err(|_| JsonError::InternalError)?)
+    String::from_utf8(chars).map_err(|_| JsonError::InternalError)
 }
 
 /// borrowed from serde-json unless we can do something faster?
@@ -66,7 +103,7 @@ fn decode_hex_escape(data: &[u8], index: usize, range: &Range<usize>) -> Result<
     Ok(n)
 }
 
-pub fn parse_int(data: &[u8], positive: bool, range: Range<usize>) -> Result<i64, JsonError> {
+fn parse_int(data: &[u8], positive: bool, range: Range<usize>) -> Result<i64, JsonError> {
     let mut result: u64 = 0;
     if data.len() < range.end {
         return Err(JsonError::InternalError);
@@ -91,7 +128,7 @@ pub fn parse_int(data: &[u8], positive: bool, range: Range<usize>) -> Result<i64
     }
 }
 
-pub fn parse_float(
+fn parse_float(
     data: &[u8],
     positive: bool,
     int_range: Range<usize>,
