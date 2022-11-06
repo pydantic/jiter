@@ -2,24 +2,24 @@ use indexmap::indexmap;
 use std::fs::File;
 use std::io::Read;
 
-use donervan::{Chunk, ChunkInfo, Chunker, Decoder, JsonError, JsonResult, JsonValue};
+use donervan::{Decoder, Element, ElementInfo, JsonError, JsonResult, JsonValue, Parser};
 
 macro_rules! single_expect_ok_or_error {
     ($name:ident, ok, $json:literal, $expected:expr) => {
         paste::item! {
             #[test]
-            fn [< single_chunk_ok_ $name >]() {
-                let chunks: Vec<ChunkInfo> = Chunker::new($json.as_bytes()).collect::<JsonResult<_>>().unwrap();
-                let chunks_str = chunks.iter().map(|c| c.to_string()).collect::<Vec<String>>().join(", ");
-                assert_eq!(chunks_str, $expected);
+            fn [< single_element_ok_ $name >]() {
+                let elements: Vec<ElementInfo> = Parser::new($json.as_bytes()).collect::<JsonResult<_>>().unwrap();
+                let elements_str = elements.iter().map(|c| c.to_string()).collect::<Vec<String>>().join(", ");
+                assert_eq!(elements_str, $expected);
             }
         }
     };
     ($name:ident, err, $json:literal, $error:expr) => {
         paste::item! {
             #[test]
-            fn [< single_chunk_xerror_ $name _ $error:snake _error >]() {
-                let result: JsonResult<Vec<ChunkInfo>> = Chunker::new($json.as_bytes()).collect();
+            fn [< single_element_xerror_ $name _ $error:snake _error >]() {
+                let result: JsonResult<Vec<ElementInfo>> = Parser::new($json.as_bytes()).collect();
                 match result {
                     Ok(t) => panic!("unexpectedly valid: {:?} -> {:?}", $json, t),
                     Err(e) => assert_eq!(e.error_type, JsonError::$error),
@@ -72,7 +72,7 @@ single_tests! {
 #[test]
 fn invalid_string_controls() {
     let json = "\"123\x08\x0c\n\r\t\"";
-    let result: JsonResult<Vec<ChunkInfo>> = Chunker::new(json.as_bytes()).collect();
+    let result: JsonResult<Vec<ElementInfo>> = Parser::new(json.as_bytes()).collect();
     match result {
         Ok(t) => panic!("unexpectedly valid: {:?} -> {:?}", json, t),
         Err(e) => assert_eq!(e.error_type, JsonError::InvalidString(3)),
@@ -90,14 +90,14 @@ fn parse_str() {
 fn json_parse_str() {
     let json = r#" "foobar" "#;
     let data = json.as_bytes();
-    let chunks: Vec<ChunkInfo> = Chunker::new(data).collect::<JsonResult<_>>().unwrap();
-    assert_eq!(chunks.len(), 1);
-    let first_chunk = chunks[0].clone();
-    let debug = format!("{}", first_chunk);
+    let elements: Vec<ElementInfo> = Parser::new(data).collect::<JsonResult<_>>().unwrap();
+    assert_eq!(elements.len(), 1);
+    let first_element = elements[0].clone();
+    let debug = format!("{}", first_element);
     assert_eq!(debug, "String(2..8) @ 1:2");
 
-    let range = match first_chunk.chunk_type {
-        Chunk::String(range) => range,
+    let range = match first_element.element {
+        Element::String(range) => range,
         _ => unreachable!(),
     };
     let result_string = Decoder::new(data).decode_string(range, (0, 0)).unwrap();
@@ -111,11 +111,11 @@ macro_rules! string_tests {
                 #[test]
                 fn [< string_parsing_ $name >]() {
                     let data = $json.as_bytes();
-                    let chunks: Vec<ChunkInfo> = Chunker::new(data).collect::<JsonResult<_>>().unwrap();
-                    assert_eq!(chunks.len(), 1);
-                    let first_chunk = chunks[0].clone();
-                    let range = match first_chunk.chunk_type {
-                        Chunk::String(range) => range,
+                    let elements: Vec<ElementInfo> = Parser::new(data).collect::<JsonResult<_>>().unwrap();
+                    assert_eq!(elements.len(), 1);
+                    let first_element = elements[0].clone();
+                    let range = match first_element.element {
+                        Element::String(range) => range,
                         v => panic!("expected string, not {:?}", v),
                     };
                     let result_string = Decoder::new(data).decode_string(range, (0, 0)).unwrap();
@@ -141,11 +141,11 @@ fn parse_int() {
     for input_value in -1000i64..1000 {
         let json = format!(" {} ", input_value);
         let data = json.as_bytes();
-        let chunks: Vec<ChunkInfo> = Chunker::new(data).collect::<JsonResult<_>>().unwrap();
-        assert_eq!(chunks.len(), 1);
-        let first_chunk = chunks[0].clone();
-        let (positive, range) = match first_chunk.chunk_type {
-            Chunk::Int {
+        let elements: Vec<ElementInfo> = Parser::new(data).collect::<JsonResult<_>>().unwrap();
+        assert_eq!(elements.len(), 1);
+        let first_element = elements[0].clone();
+        let (positive, range) = match first_element.element {
+            Element::Int {
                 positive,
                 range,
                 exponent,
@@ -166,10 +166,10 @@ fn parse_float() {
         let input_value = i as f64 * 0.1;
         let json = format!("{:.4}", input_value);
         let data = json.as_bytes();
-        let chunks: Vec<ChunkInfo> = Chunker::new(data).collect::<JsonResult<_>>().unwrap();
-        let first_chunk = chunks[0].clone();
-        let (positive, int_range, decimal_range) = match first_chunk.clone().chunk_type {
-            Chunk::Float {
+        let elements: Vec<ElementInfo> = Parser::new(data).collect::<JsonResult<_>>().unwrap();
+        let first_element = elements[0].clone();
+        let (positive, int_range, decimal_range) = match first_element.clone().element {
+            Element::Float {
                 positive,
                 int_range,
                 decimal_range,

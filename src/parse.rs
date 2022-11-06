@@ -22,7 +22,7 @@ impl fmt::Display for Exponent {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Chunk {
+pub enum Element {
     ObjectStart,
     ObjectEnd,
     ArrayStart,
@@ -45,13 +45,13 @@ pub enum Chunk {
     },
 }
 
-impl Default for Chunk {
+impl Default for Element {
     fn default() -> Self {
-        Chunk::Null
+        Element::Null
     }
 }
 
-impl fmt::Display for Chunk {
+impl fmt::Display for Element {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::ObjectStart => write!(f, "{{"),
@@ -91,44 +91,20 @@ impl fmt::Display for Chunk {
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
-pub struct ChunkInfo {
-    pub chunk_type: Chunk,
+pub struct ElementInfo {
+    pub element: Element,
     pub loc: Location,
 }
 
-impl fmt::Display for ChunkInfo {
+impl fmt::Display for ElementInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} @ {}:{}", self.chunk_type, self.loc.0, self.loc.1)
+        write!(f, "{} @ {}:{}", self.element, self.loc.0, self.loc.1)
     }
 }
 
-impl ChunkInfo {
-    pub fn as_bool(&self) -> Option<bool> {
-        match self.chunk_type {
-            Chunk::True => Some(true),
-            Chunk::False => Some(false),
-            _ => None,
-        }
-    }
-
-    pub fn is_null(&self) -> bool {
-        matches!(self.chunk_type, Chunk::Null)
-    }
-
-    pub fn is_string(&self) -> bool {
-        matches!(self.chunk_type, Chunk::String(_))
-    }
-
-    pub fn is_int(&self) -> bool {
-        matches!(self.chunk_type, Chunk::Int { .. })
-    }
-
-    pub fn is_float(&self) -> bool {
-        matches!(self.chunk_type, Chunk::Float { .. })
-    }
-
-    fn next(chunk_type: Chunk, loc: Location) -> Option<JsonResult<Self>> {
-        Some(Ok(Self { chunk_type, loc }))
+impl ElementInfo {
+    fn next(element: Element, loc: Location) -> Option<JsonResult<Self>> {
+        Some(Ok(Self { element, loc }))
     }
 }
 
@@ -157,7 +133,7 @@ enum State {
 }
 
 #[derive(Debug, Clone)]
-pub struct Chunker<'a> {
+pub struct Parser<'a> {
     data: &'a [u8],
     length: usize,
     state_heap: Vec<State>,
@@ -167,7 +143,7 @@ pub struct Chunker<'a> {
     col_offset: usize,
 }
 
-impl<'a> Chunker<'a> {
+impl<'a> Parser<'a> {
     pub fn new(data: &'a [u8]) -> Self {
         Self {
             data,
@@ -181,11 +157,11 @@ impl<'a> Chunker<'a> {
     }
 }
 
-impl<'a> Iterator for Chunker<'a> {
-    type Item = JsonResult<ChunkInfo>;
+impl<'a> Iterator for Parser<'a> {
+    type Item = JsonResult<ElementInfo>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // annoyingly, doing it this way instead of calling a method which returns `JsonResult<Option<ChunkInfo>>`
+        // annoyingly, doing it this way instead of calling a method which returns `JsonResult<Option<ElementInfo>>`
         // is significantly quicker so we keep it like this although it's uglier
         while let Some(next) = self.data.get(self.index) {
             match next {
@@ -207,7 +183,7 @@ impl<'a> Iterator for Chunker<'a> {
                     self.state_heap.push(push_state);
                     self.state = State::ArrayStart;
                     self.index += 1;
-                    return ChunkInfo::next(Chunk::ArrayStart, loc);
+                    return ElementInfo::next(Element::ArrayStart, loc);
                 }
                 b',' => match self.state {
                     State::ArrayPostValue => {
@@ -224,7 +200,7 @@ impl<'a> Iterator for Chunker<'a> {
                         State::ArrayStart | State::ArrayPostValue => {
                             self.state = self.state_heap.pop().unwrap();
                             self.index += 1;
-                            ChunkInfo::next(Chunk::ArrayEnd, loc)
+                            ElementInfo::next(Element::ArrayEnd, loc)
                         }
                         _ => ErrorInfo::next(JsonError::UnexpectedCharacter, loc),
                     };
@@ -240,7 +216,7 @@ impl<'a> Iterator for Chunker<'a> {
                     self.state_heap.push(push_state);
                     self.state = State::ObjectStart;
                     self.index += 1;
-                    return ChunkInfo::next(Chunk::ObjectStart, loc);
+                    return ElementInfo::next(Element::ObjectStart, loc);
                 }
                 b':' => match self.state {
                     State::ObjectPreColon => {
@@ -254,7 +230,7 @@ impl<'a> Iterator for Chunker<'a> {
                         State::ObjectStart | State::ObjectPostValue => {
                             self.state = self.state_heap.pop().unwrap();
                             self.index += 1;
-                            ChunkInfo::next(Chunk::ObjectEnd, loc)
+                            ElementInfo::next(Element::ObjectEnd, loc)
                         }
                         _ => ErrorInfo::next(JsonError::UnexpectedCharacter, loc),
                     };
@@ -266,7 +242,7 @@ impl<'a> Iterator for Chunker<'a> {
                             self.state = State::ObjectPreColon;
                             let loc = self.loc();
                             match self.next_string(loc) {
-                                Ok(range) => ChunkInfo::next(Chunk::Key(range), loc),
+                                Ok(range) => ElementInfo::next(Element::Key(range), loc),
                                 Err(e) => Some(Err(e)),
                             }
                         }
@@ -276,7 +252,7 @@ impl<'a> Iterator for Chunker<'a> {
                                     Ok(range) => range,
                                     Err(e) => return Some(Err(e)),
                                 };
-                                ChunkInfo::next(Chunk::String(range), loc)
+                                ElementInfo::next(Element::String(range), loc)
                             }
                             Some(e) => Some(Err(e)),
                         },
@@ -327,7 +303,7 @@ static TRUE_REST: [u8; 3] = [b'r', b'u', b'e'];
 static FALSE_REST: [u8; 4] = [b'a', b'l', b's', b'e'];
 static NULL_REST: [u8; 3] = [b'u', b'l', b'l'];
 
-impl<'a> Chunker<'a> {
+impl<'a> Parser<'a> {
     fn loc(&self) -> Location {
         (self.line, self.index - self.col_offset + 1)
     }
@@ -343,7 +319,7 @@ impl<'a> Chunker<'a> {
         None
     }
 
-    fn next_true(&mut self) -> Option<JsonResult<ChunkInfo>> {
+    fn next_true(&mut self) -> Option<JsonResult<ElementInfo>> {
         let loc = self.loc();
         if unlikely(self.index + 3 >= self.length) {
             return ErrorInfo::next(JsonError::UnexpectedEnd, loc);
@@ -357,13 +333,13 @@ impl<'a> Chunker<'a> {
         };
         if likely(v == TRUE_REST) {
             self.index += 4;
-            ChunkInfo::next(Chunk::True, loc)
+            ElementInfo::next(Element::True, loc)
         } else {
             ErrorInfo::next(JsonError::InvalidTrue, loc)
         }
     }
 
-    fn next_false(&mut self) -> Option<JsonResult<ChunkInfo>> {
+    fn next_false(&mut self) -> Option<JsonResult<ElementInfo>> {
         let loc = self.loc();
         if unlikely(self.index + 4 >= self.length) {
             return ErrorInfo::next(JsonError::UnexpectedEnd, loc);
@@ -378,13 +354,13 @@ impl<'a> Chunker<'a> {
         };
         if likely(v == FALSE_REST) {
             self.index += 5;
-            ChunkInfo::next(Chunk::False, loc)
+            ElementInfo::next(Element::False, loc)
         } else {
             ErrorInfo::next(JsonError::InvalidFalse, loc)
         }
     }
 
-    fn next_null(&mut self) -> Option<JsonResult<ChunkInfo>> {
+    fn next_null(&mut self) -> Option<JsonResult<ElementInfo>> {
         let loc = self.loc();
         if unlikely(self.index + 3 >= self.length) {
             return ErrorInfo::next(JsonError::UnexpectedEnd, loc);
@@ -398,7 +374,7 @@ impl<'a> Chunker<'a> {
         };
         if likely(v == NULL_REST) {
             self.index += 4;
-            ChunkInfo::next(Chunk::Null, loc)
+            ElementInfo::next(Element::Null, loc)
         } else {
             ErrorInfo::next(JsonError::InvalidNull, loc)
         }
@@ -435,7 +411,7 @@ impl<'a> Chunker<'a> {
         Err(ErrorInfo::new(JsonError::UnexpectedEnd, loc))
     }
 
-    fn next_number(&mut self, positive: bool) -> Option<JsonResult<ChunkInfo>> {
+    fn next_number(&mut self, positive: bool) -> Option<JsonResult<ElementInfo>> {
         let loc = self.loc();
         let start: usize = if positive {
             self.index
@@ -455,12 +431,12 @@ impl<'a> Chunker<'a> {
                         Ok(exponent) => Some(exponent),
                         Err(e) => return Some(Err(e)),
                     };
-                    let chunk = Chunk::Int {
+                    let element = Element::Int {
                         positive,
                         range: start..end,
                         exponent,
                     };
-                    return ChunkInfo::next(chunk, loc);
+                    return ElementInfo::next(element, loc);
                 }
                 _ => break,
             }
@@ -469,16 +445,16 @@ impl<'a> Chunker<'a> {
         if start == self.index {
             ErrorInfo::next(JsonError::InvalidNumber, loc)
         } else {
-            let chunk = Chunk::Int {
+            let element = Element::Int {
                 positive,
                 range: start..self.index,
                 exponent: None,
             };
-            ChunkInfo::next(chunk, loc)
+            ElementInfo::next(element, loc)
         }
     }
 
-    fn float_decimal(&mut self, start: usize, positive: bool) -> Option<JsonResult<ChunkInfo>> {
+    fn float_decimal(&mut self, start: usize, positive: bool) -> Option<JsonResult<ElementInfo>> {
         let loc = self.loc();
         let mut first = true;
         self.index += 1;
@@ -496,13 +472,13 @@ impl<'a> Chunker<'a> {
                             Ok(exponent) => Some(exponent),
                             Err(e) => return Some(Err(e)),
                         };
-                        let chunk = Chunk::Float {
+                        let element = Element::Float {
                             positive,
                             int_range,
                             decimal_range: decimal_start..decimal_end,
                             exponent,
                         };
-                        ChunkInfo::next(chunk, loc)
+                        ElementInfo::next(element, loc)
                     }
                 }
                 _ => break,
@@ -513,13 +489,13 @@ impl<'a> Chunker<'a> {
         if decimal_start == self.index {
             ErrorInfo::next(JsonError::InvalidNumber, loc)
         } else {
-            let chunk = Chunk::Float {
+            let element = Element::Float {
                 positive,
                 int_range,
                 decimal_range: decimal_start..self.index,
                 exponent: None,
             };
-            ChunkInfo::next(chunk, loc)
+            ElementInfo::next(element, loc)
         }
     }
 

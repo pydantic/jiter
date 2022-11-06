@@ -4,10 +4,10 @@ use std::time::Duration;
 use crossbeam_utils::thread::scope;
 use rtrb::{Consumer, PopError, Producer, PushError, RingBuffer};
 
-use crate::chunk::ChunkInfo;
-use crate::{Chunker, JsonResult};
+use crate::parse::ElementInfo;
+use crate::{JsonResult, Parser};
 
-type OptRJson = Option<JsonResult<ChunkInfo>>;
+type OptRJson = Option<JsonResult<ElementInfo>>;
 const GROUP_SIZE: usize = 32;
 const RING_BUFFER_CAPACITY: usize = 100;
 type ResultGroup = [OptRJson; GROUP_SIZE];
@@ -19,9 +19,9 @@ where
     scope(|scope| {
         let (mut producer, mut consumer) = create_ring_buffer();
         let handle = scope.spawn(move |_| {
-            let chunker = Chunker::new(data);
-            for chunk_result in chunker {
-                producer.push(chunk_result);
+            let parser = Parser::new(data);
+            for element_result in parser {
+                producer.push(element_result);
             }
             producer.finish();
         });
@@ -56,10 +56,10 @@ pub struct JsonProducer {
 }
 
 impl JsonProducer {
-    pub fn push(&mut self, chunk_result: JsonResult<ChunkInfo>) {
+    pub fn push(&mut self, element_result: JsonResult<ElementInfo>) {
         let index = self.counter % GROUP_SIZE;
         self.counter += 1;
-        self.group[index] = Some(chunk_result);
+        self.group[index] = Some(element_result);
         if index == GROUP_SIZE - 1 {
             self._push()
         }
@@ -68,7 +68,7 @@ impl JsonProducer {
     pub fn finish(&mut self) {
         let next_index = self.counter % GROUP_SIZE + 1;
         if next_index != GROUP_SIZE {
-            // we need to send the remaining chunks in a final group
+            // we need to send the remaining elements in a final group
             for index in next_index..GROUP_SIZE {
                 self.group[index] = None;
             }
@@ -95,7 +95,7 @@ pub struct JsonConsumer {
 }
 
 impl Iterator for JsonConsumer {
-    type Item = JsonResult<ChunkInfo>;
+    type Item = JsonResult<ElementInfo>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let index = self.counter % GROUP_SIZE;

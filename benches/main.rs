@@ -4,7 +4,7 @@ use std::io::Read;
 
 extern crate test;
 
-use donervan::{Chunk, Chunker, Decoder, JsonValue};
+use donervan::{Decoder, Element, JsonValue, Parser};
 use serde_json::Value;
 use test::{black_box, Bencher};
 
@@ -33,42 +33,42 @@ fn donervan_value_threaded(path: &str, bench: &mut Bencher) {
     })
 }
 
-fn donervan_chunker_parse(path: &str, bench: &mut Bencher) {
+fn donervan_parser_parse(path: &str, bench: &mut Bencher) {
     let json = read_file(path);
     let json_data = json.as_bytes();
     let decoder = Decoder::new(json_data);
     bench.iter(|| {
-        let mut chunker = Chunker::new(black_box(json_data));
-        while let Some(chunk_result) = chunker.next() {
-            let chunk = chunk_result.unwrap();
-            match chunk.chunk_type {
-                Chunk::True => {
+        let mut parser = Parser::new(black_box(json_data));
+        while let Some(element_result) = parser.next() {
+            let element = element_result.unwrap();
+            match element.element {
+                Element::True => {
                     black_box(true);
                 }
-                Chunk::False => {
+                Element::False => {
                     black_box(false);
                 }
-                Chunk::Null => (),
-                Chunk::String(range) => {
-                    let s = decoder.decode_string(range, chunk.loc).unwrap();
+                Element::Null => (),
+                Element::String(range) => {
+                    let s = decoder.decode_string(range, element.loc).unwrap();
                     black_box(s);
                 }
-                Chunk::Int {
+                Element::Int {
                     positive,
                     range,
                     exponent,
                 } => {
-                    let i = decoder.decode_int(positive, range, exponent, chunk.loc).unwrap();
+                    let i = decoder.decode_int(positive, range, exponent, element.loc).unwrap();
                     black_box(i);
                 }
-                Chunk::Float {
+                Element::Float {
                     positive,
                     int_range,
                     decimal_range,
                     exponent,
                 } => {
                     let f = decoder
-                        .decode_float(positive, int_range, decimal_range, exponent, chunk.loc)
+                        .decode_float(positive, int_range, decimal_range, exponent, element.loc)
                         .unwrap();
                     black_box(f);
                 }
@@ -78,25 +78,25 @@ fn donervan_chunker_parse(path: &str, bench: &mut Bencher) {
     })
 }
 
-fn donervan_chunker_skip(path: &str, bench: &mut Bencher) {
+fn donervan_parse_skip(path: &str, bench: &mut Bencher) {
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
     bench.iter(|| {
-        let mut chunker = Chunker::new(json_data);
-        while let Some(chunk_result) = chunker.next() {
-            let chunk = chunk_result.unwrap();
-            match chunk.chunk_type {
-                Chunk::True => black_box("t"),
-                Chunk::False => black_box("f"),
-                Chunk::Null => black_box("n"),
-                Chunk::String(_) => black_box("s"),
-                Chunk::Int { .. } => black_box("i"),
-                Chunk::Float { .. } => black_box("f"),
-                Chunk::ObjectStart => black_box("x"),
-                Chunk::ObjectEnd => black_box("x"),
-                Chunk::ArrayStart => black_box("x"),
-                Chunk::ArrayEnd => black_box("x"),
-                Chunk::Key(_) => black_box("k"),
+        let mut parser = Parser::new(json_data);
+        while let Some(element_result) = parser.next() {
+            let element = element_result.unwrap();
+            match element.element {
+                Element::True => black_box("t"),
+                Element::False => black_box("f"),
+                Element::Null => black_box("n"),
+                Element::String(_) => black_box("s"),
+                Element::Int { .. } => black_box("i"),
+                Element::Float { .. } => black_box("f"),
+                Element::ObjectStart => black_box("x"),
+                Element::ObjectEnd => black_box("x"),
+                Element::ArrayStart => black_box("x"),
+                Element::ArrayEnd => black_box("x"),
+                Element::Key(_) => black_box("k"),
             };
         }
     })
@@ -117,7 +117,7 @@ macro_rules! test_cases {
             #[bench]
             fn [< $file_name _donervan >](bench: &mut Bencher) {
                 let file_path = format!("./benches/{}.json", stringify!($file_name));
-                donervan_chunker_parse(&file_path, bench);
+                donervan_parser_parse(&file_path, bench);
             }
 
             #[bench]
@@ -133,9 +133,9 @@ macro_rules! test_cases {
             }
 
             #[bench]
-            fn [< $file_name _donervan_chunker_skip >](bench: &mut Bencher) {
+            fn [< $file_name _donervan_parse_skip >](bench: &mut Bencher) {
                 let file_path = format!("./benches/{}.json", stringify!($file_name));
-                donervan_chunker_skip(&file_path, bench);
+                donervan_parse_skip(&file_path, bench);
             }
 
             #[bench]

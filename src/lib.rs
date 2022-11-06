@@ -3,13 +3,13 @@
 
 use strum::{Display, EnumMessage};
 
-mod chunk;
 mod decode;
+mod parse;
 mod threaded;
 mod value;
 
-pub use chunk::{Chunk, ChunkInfo, Chunker, Exponent};
 pub use decode::Decoder;
+pub use parse::{Element, ElementInfo, Exponent, Parser};
 pub use value::{JsonArray, JsonObject, JsonValue};
 
 #[derive(Debug, Display, EnumMessage, PartialEq, Eq, Clone)]

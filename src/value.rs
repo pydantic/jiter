@@ -1,7 +1,7 @@
 use indexmap::IndexMap;
 
-use crate::chunk::{Chunk, ChunkInfo, Chunker};
 use crate::decode::Decoder;
+use crate::parse::{Element, ElementInfo, Parser};
 use crate::threaded::threaded_parse;
 use crate::JsonResult;
 
@@ -30,7 +30,7 @@ impl JsonValue {
     }
 
     pub fn parse(data: &[u8]) -> JsonResult<Self> {
-        let mut chunker = Chunker::new(data);
+        let mut chunker = Parser::new(data);
         let decoder = Decoder::new(data);
         let chunk = chunker.next().unwrap()?;
         take_chunk(chunk, &mut chunker, &decoder)
@@ -38,19 +38,19 @@ impl JsonValue {
 }
 
 fn take_chunk(
-    chunk: ChunkInfo,
-    json_iter: &mut impl Iterator<Item = JsonResult<ChunkInfo>>,
+    chunk: ElementInfo,
+    json_iter: &mut impl Iterator<Item = JsonResult<ElementInfo>>,
     decoder: &Decoder,
 ) -> JsonResult<JsonValue> {
-    match chunk.chunk_type {
-        Chunk::True => Ok(JsonValue::Bool(true)),
-        Chunk::False => Ok(JsonValue::Bool(false)),
-        Chunk::Null => Ok(JsonValue::Null),
-        Chunk::String(range) => {
+    match chunk.element {
+        Element::True => Ok(JsonValue::Bool(true)),
+        Element::False => Ok(JsonValue::Bool(false)),
+        Element::Null => Ok(JsonValue::Null),
+        Element::String(range) => {
             let s = decoder.decode_string(range, chunk.loc)?;
             Ok(JsonValue::String(s))
         }
-        Chunk::Int {
+        Element::Int {
             positive,
             range,
             exponent,
@@ -58,7 +58,7 @@ fn take_chunk(
             let i = decoder.decode_int(positive, range, exponent, chunk.loc)?;
             Ok(JsonValue::Int(i))
         }
-        Chunk::Float {
+        Element::Float {
             positive,
             int_range,
             decimal_range,
@@ -67,13 +67,13 @@ fn take_chunk(
             let f = decoder.decode_float(positive, int_range, decimal_range, exponent, chunk.loc)?;
             Ok(JsonValue::Float(f))
         }
-        Chunk::ArrayStart => {
+        Element::ArrayStart => {
             // we could do something clever about guessing the size of the array
             let mut array: Vec<JsonValue> = Vec::new();
             loop {
                 let chunk = json_iter.next().unwrap()?;
-                match chunk.chunk_type {
-                    Chunk::ArrayEnd => break,
+                match chunk.element {
+                    Element::ArrayEnd => break,
                     _ => {
                         let v = take_chunk(chunk, json_iter, decoder)?;
                         array.push(v);
@@ -82,14 +82,14 @@ fn take_chunk(
             }
             Ok(JsonValue::Array(array))
         }
-        Chunk::ObjectStart => {
+        Element::ObjectStart => {
             // same for objects
             let mut object = IndexMap::new();
             loop {
                 let key = json_iter.next().unwrap()?;
-                match key.chunk_type {
-                    Chunk::ObjectEnd => break,
-                    Chunk::Key(key_range) => {
+                match key.element {
+                    Element::ObjectEnd => break,
+                    Element::Key(key_range) => {
                         let key = decoder.decode_string(key_range, key.loc)?;
                         let value_chunk = json_iter.next().unwrap()?;
                         let value = take_chunk(value_chunk, json_iter, decoder)?;
@@ -100,7 +100,6 @@ fn take_chunk(
             }
             Ok(JsonValue::Object(object))
         }
-        Chunk::ObjectEnd | Chunk::ArrayEnd | Chunk::Key(_) => unreachable!(),
+        Element::ObjectEnd | Element::ArrayEnd | Element::Key(_) => unreachable!(),
     }
 }
-
