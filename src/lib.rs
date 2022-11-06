@@ -5,6 +5,7 @@ use strum::{Display, EnumMessage};
 
 mod chunk;
 mod decode;
+mod threaded;
 mod value;
 
 pub use chunk::{Chunk, ChunkInfo, Chunker, Exponent};

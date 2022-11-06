@@ -169,7 +169,7 @@ pub struct Chunker<'a> {
 
 impl<'a> Chunker<'a> {
     pub fn new(data: &'a [u8]) -> Self {
-        return Self {
+        Self {
             data,
             length: data.len(),
             state_heap: vec![],
@@ -177,7 +177,7 @@ impl<'a> Chunker<'a> {
             index: 0,
             line: 1,
             col_offset: 0,
-        };
+        }
     }
 }
 
@@ -187,11 +187,7 @@ impl<'a> Iterator for Chunker<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         // annoyingly, doing it this way instead of calling a method which returns `JsonResult<Option<ChunkInfo>>`
         // is significantly quicker so we keep it like this although it's uglier
-        loop {
-            let next = match self.data.get(self.index) {
-                Some(n) => n,
-                None => break,
-            };
+        while let Some(next) = self.data.get(self.index) {
             match next {
                 // this method is called from whitespace, more whitespace is always fine
                 b' ' | b'\r' | b'\t' => (),
@@ -411,11 +407,7 @@ impl<'a> Chunker<'a> {
     fn next_string(&mut self, loc: Location) -> JsonResult<Range<usize>> {
         self.index += 1;
         let start = self.index;
-        loop {
-            let next = match self.data.get(self.index) {
-                Some(n) => n,
-                None => break,
-            };
+        while let Some(next) = self.data.get(self.index) {
             match next {
                 b'"' => {
                     let r = start..self.index;
@@ -452,11 +444,7 @@ impl<'a> Chunker<'a> {
             self.index + 1
         };
         self.index += 1;
-        loop {
-            let next = match self.data.get(self.index) {
-                Some(n) => n,
-                None => break,
-            };
+        while let Some(next) = self.data.get(self.index) {
             match next {
                 b'0'..=b'9' => (),
                 b'.' => return self.float_decimal(start, positive),
@@ -486,7 +474,7 @@ impl<'a> Chunker<'a> {
                 range: start..self.index,
                 exponent: None,
             };
-            return ChunkInfo::next(chunk, loc);
+            ChunkInfo::next(chunk, loc)
         }
     }
 
@@ -496,11 +484,7 @@ impl<'a> Chunker<'a> {
         self.index += 1;
         let int_range = start..self.index - 1;
         let decimal_start = self.index;
-        loop {
-            let next = match self.data.get(self.index) {
-                Some(n) => n,
-                None => break,
-            };
+        while let Some(next) = self.data.get(self.index) {
             match next {
                 b'0'..=b'9' => (),
                 b'e' | b'E' => {
@@ -544,11 +528,7 @@ impl<'a> Chunker<'a> {
         let mut positive = true;
         self.index += 1;
         let mut start = self.index;
-        loop {
-            let next = match self.data.get(self.index) {
-                Some(n) => n,
-                None => break,
-            };
+        while let Some(next) = self.data.get(self.index) {
             match next {
                 b'-' => {
                     if !first {

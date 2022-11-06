@@ -24,31 +24,34 @@ fn donervan_value(path: &str, bench: &mut Bencher) {
     })
 }
 
+fn donervan_value_threaded(path: &str, bench: &mut Bencher) {
+    let json = read_file(path);
+    let json_data = json.as_bytes();
+    bench.iter(|| {
+        let v = JsonValue::threaded_parse(black_box(json_data)).unwrap();
+        black_box(v);
+    })
+}
+
 fn donervan_chunker_parse(path: &str, bench: &mut Bencher) {
     let json = read_file(path);
     let json_data = json.as_bytes();
     let decoder = Decoder::new(json_data);
     bench.iter(|| {
         let mut chunker = Chunker::new(black_box(json_data));
-        loop {
-            let chunk = match chunker.next() {
-                Some(c) => c.unwrap(),
-                _ => break,
-            };
+        while let Some(chunk_result) = chunker.next() {
+            let chunk = chunk_result.unwrap();
             match chunk.chunk_type {
                 Chunk::True => {
                     black_box(true);
-                    ()
                 }
                 Chunk::False => {
                     black_box(false);
-                    ()
                 }
                 Chunk::Null => (),
                 Chunk::String(range) => {
                     let s = decoder.decode_string(range, chunk.loc).unwrap();
                     black_box(s);
-                    ()
                 }
                 Chunk::Int {
                     positive,
@@ -57,7 +60,6 @@ fn donervan_chunker_parse(path: &str, bench: &mut Bencher) {
                 } => {
                     let i = decoder.decode_int(positive, range, exponent, chunk.loc).unwrap();
                     black_box(i);
-                    ()
                 }
                 Chunk::Float {
                     positive,
@@ -69,7 +71,6 @@ fn donervan_chunker_parse(path: &str, bench: &mut Bencher) {
                         .decode_float(positive, int_range, decimal_range, exponent, chunk.loc)
                         .unwrap();
                     black_box(f);
-                    ()
                 }
                 _ => (),
             }
@@ -82,11 +83,8 @@ fn donervan_chunker_skip(path: &str, bench: &mut Bencher) {
     let json_data = black_box(json.as_bytes());
     bench.iter(|| {
         let mut chunker = Chunker::new(json_data);
-        loop {
-            let chunk = match chunker.next() {
-                Some(c) => c.unwrap(),
-                _ => break,
-            };
+        while let Some(chunk_result) = chunker.next() {
+            let chunk = chunk_result.unwrap();
             match chunk.chunk_type {
                 Chunk::True => black_box("t"),
                 Chunk::False => black_box("f"),
@@ -126,6 +124,12 @@ macro_rules! test_cases {
             fn [< $file_name _donervan_value >](bench: &mut Bencher) {
                 let file_path = format!("./benches/{}.json", stringify!($file_name));
                 donervan_value(&file_path, bench);
+            }
+
+            #[bench]
+            fn [< $file_name _donervan_value_threaded >](bench: &mut Bencher) {
+                let file_path = format!("./benches/{}.json", stringify!($file_name));
+                donervan_value_threaded(&file_path, bench);
             }
 
             #[bench]

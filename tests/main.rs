@@ -1,6 +1,6 @@
+use indexmap::indexmap;
 use std::fs::File;
 use std::io::Read;
-use indexmap::indexmap;
 
 use donervan::{Chunk, ChunkInfo, Chunker, Decoder, JsonError, JsonResult, JsonValue};
 
