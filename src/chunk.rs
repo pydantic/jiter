@@ -111,10 +111,6 @@ impl ChunkInfo {
         }
     }
 
-    fn next(chunk_type: Chunk, loc: Location) -> Option<JsonResult<Self>> {
-        Some(Ok(Self { chunk_type, loc }))
-    }
-
     pub fn is_null(&self) -> bool {
         matches!(self.chunk_type, Chunk::Null)
     }
@@ -129,6 +125,10 @@ impl ChunkInfo {
 
     pub fn is_float(&self) -> bool {
         matches!(self.chunk_type, Chunk::Float { .. })
+    }
+
+    fn next(chunk_type: Chunk, loc: Location) -> Option<JsonResult<Self>> {
+        Some(Ok(Self { chunk_type, loc }))
     }
 }
 

@@ -68,7 +68,8 @@ fn take_chunk(
             Ok(JsonValue::Float(f))
         }
         Chunk::ArrayStart => {
-            let mut array: Vec<JsonValue> = Vec::with_capacity(25);
+            // we could do something clever about guessing the size of the array
+            let mut array: Vec<JsonValue> = Vec::new();
             loop {
                 let chunk = json_iter.next().unwrap()?;
                 match chunk.chunk_type {
@@ -82,7 +83,8 @@ fn take_chunk(
             Ok(JsonValue::Array(array))
         }
         Chunk::ObjectStart => {
-            let mut object = IndexMap::with_capacity(25);
+            // same for objects
+            let mut object = IndexMap::new();
             loop {
                 let key = json_iter.next().unwrap()?;
                 match key.chunk_type {
@@ -101,3 +103,4 @@ fn take_chunk(
         Chunk::ObjectEnd | Chunk::ArrayEnd | Chunk::Key(_) => unreachable!(),
     }
 }
+
