@@ -4,7 +4,7 @@ use std::time::Duration;
 use crossbeam_utils::thread::scope;
 use rtrb::{Consumer, PopError, Producer, PushError, RingBuffer};
 
-use crate::element::{JsonResult, ElementInfo};
+use crate::element::{ElementInfo, JsonResult};
 use crate::parse::Parser;
 
 type OptRJson = Option<JsonResult<ElementInfo>>;

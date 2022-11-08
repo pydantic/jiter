@@ -1,9 +1,7 @@
 use std::intrinsics::{likely, unlikely};
 use std::ops::Range;
 
-use crate::element::{ErrorInfo, JsonError, JsonResult, Location};
-use crate::element::{Element, ElementInfo, Exponent};
-
+use crate::element::{Element, ElementInfo, ErrorInfo, Exponent, JsonError, JsonResult, Location};
 
 #[derive(Debug, Copy, Clone)]
 enum State {
@@ -89,7 +87,7 @@ impl<'a> Iterator for Parser<'a> {
                         State::ObjectPostValue => State::ObjectPostComma,
                         _ => return ErrorInfo::next(JsonError::UnexpectedCharacter, self.loc()),
                     }
-                },
+                }
                 b']' => {
                     let loc = self.loc();
                     return match self.state {
@@ -124,7 +122,7 @@ impl<'a> Iterator for Parser<'a> {
                 },
                 b'}' => {
                     let loc = self.loc();
-        q              return match self.state {
+                    return match self.state {
                         State::ObjectStart | State::ObjectPostValue => {
                             self.state = self.state_heap.pop().unwrap();
                             self.index += 1;

@@ -1,6 +1,6 @@
 use std::fmt;
-use strum::{Display, EnumMessage};
 use std::ops::Range;
+use strum::{Display, EnumMessage};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Exponent {

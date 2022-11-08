@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import json
 from random import random
 from pathlib import Path
