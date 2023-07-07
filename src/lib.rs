@@ -4,7 +4,6 @@
 mod decode;
 mod element;
 mod parse;
-mod threaded;
 mod value;
 
 pub use decode::Decoder;

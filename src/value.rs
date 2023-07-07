@@ -3,7 +3,6 @@ use indexmap::IndexMap;
 use crate::decode::Decoder;
 use crate::element::{Element, ElementInfo, JsonResult};
 use crate::parse::Parser;
-use crate::threaded::threaded_parse;
 
 /// similar to serde `Value` but with int and float split
 #[derive(Clone, Debug, PartialEq)]
@@ -20,15 +19,6 @@ pub type JsonArray = Vec<JsonValue>;
 pub type JsonObject = IndexMap<String, JsonValue>;
 
 impl JsonValue {
-    pub fn threaded_parse(data: &[u8]) -> JsonResult<Self> {
-        threaded_parse(data, |consumer| {
-            let decoder = Decoder::new(data);
-            let chunk = consumer.next().unwrap()?;
-            take_chunk(chunk, consumer, &decoder)
-        })
-        .unwrap()
-    }
-
     pub fn parse(data: &[u8]) -> JsonResult<Self> {
         let mut chunker = Parser::new(data);
         let decoder = Decoder::new(data);
