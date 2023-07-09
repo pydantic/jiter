@@ -2,7 +2,7 @@ use indexmap::indexmap;
 use std::fs::File;
 use std::io::Read;
 
-use donervan::{Decoder, Element, ElementInfo, JsonError, JsonResult, JsonValue, Parser};
+use donervan::{Decoder, Element, ElementInfo, Fleece, FleeceError, JsonError, JsonResult, JsonValue, Parser};
 
 macro_rules! single_expect_ok_or_error {
     ($name:ident, ok, $json:literal, $expected:expr) => {
@@ -248,4 +248,22 @@ fn pass1_to_value() {
     };
     assert_eq!(array.len(), 20);
     assert_eq!(array[0], JsonValue::String("JSON Test Pattern pass1".to_string()));
+}
+
+#[test]
+fn fleece() {
+    let mut fleece = Fleece::new(br#"{"foo": "bar", "spam": [1, 2, "x"]}"#);
+    assert_eq!(fleece.next_object().unwrap(), ());
+    assert_eq!(fleece.next_key().unwrap(), "foo");
+    assert_eq!(fleece.next_str().unwrap(), "bar");
+    assert_eq!(fleece.next_key().unwrap(), "spam");
+    assert_eq!(fleece.next_array().unwrap(), ());
+    assert_eq!(fleece.next_int_strict().unwrap(), 1);
+    assert_eq!(fleece.next_int_strict().unwrap(), 2);
+    assert_eq!(fleece.next_bytes().unwrap(), b"x");
+    assert_eq!(fleece.next_int_strict().err().unwrap(), FleeceError::ArrayEnd);
+    assert_eq!(fleece.next_key().err().unwrap(), FleeceError::ObjectEnd);
+    // carry on
+    assert_eq!(fleece.next_key().err().unwrap(), FleeceError::EndReached);
+    assert_eq!(fleece.next_key().err().unwrap(), FleeceError::EndReached);
 }

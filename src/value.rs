@@ -20,14 +20,14 @@ pub type JsonObject = IndexMap<String, JsonValue>;
 
 impl JsonValue {
     pub fn parse(data: &[u8]) -> JsonResult<Self> {
-        let mut chunker = Parser::new(data);
+        let mut parser = Parser::new(data);
         let decoder = Decoder::new(data);
-        let chunk = chunker.next().unwrap()?;
-        take_chunk(chunk, &mut chunker, &decoder)
+        let chunk = parser.next().unwrap()?;
+        take_value(chunk, &mut parser, &decoder)
     }
 }
 
-fn take_chunk(
+pub(crate) fn take_value(
     chunk: ElementInfo,
     json_iter: &mut impl Iterator<Item = JsonResult<ElementInfo>>,
     decoder: &Decoder,
@@ -65,7 +65,7 @@ fn take_chunk(
                 match chunk.element {
                     Element::ArrayEnd => break,
                     _ => {
-                        let v = take_chunk(chunk, json_iter, decoder)?;
+                        let v = take_value(chunk, json_iter, decoder)?;
                         array.push(v);
                     }
                 }
@@ -82,7 +82,7 @@ fn take_chunk(
                     Element::Key(key_range) => {
                         let key = decoder.decode_string(key_range, key.loc)?;
                         let value_chunk = json_iter.next().unwrap()?;
-                        let value = take_chunk(value_chunk, json_iter, decoder)?;
+                        let value = take_value(value_chunk, json_iter, decoder)?;
                         object.insert(key, value);
                     }
                     _ => unreachable!(),
