@@ -226,6 +226,10 @@ impl<'a> Fleece<'a> {
             Err(e) => Err(e.into())
         }
     }
+
+    pub fn finish(&mut self) -> FleeceResult<()> {
+        Ok(self.parser.finish()?)
+    }
 }
 
 fn wrong_type(expected: JsonType, chunk: ElementInfo) -> FleeceError {

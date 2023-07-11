@@ -2,7 +2,7 @@ use indexmap::indexmap;
 use std::fs::File;
 use std::io::Read;
 
-use donervan::{Decoder, Element, ElementInfo, Fleece, JsonError, JsonResult, JsonValue, Parser};
+use donervan::{Decoder, Element, ElementInfo, Fleece, FleeceError, JsonError, JsonResult, JsonValue, Parser};
 
 fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
     let mut v = Vec::new();
@@ -317,7 +317,23 @@ fn fleece() {
     assert_eq!(fleece.next_bytes().unwrap(), b"x");
     assert_eq!(fleece.array_step().unwrap(), false);
     assert_eq!(fleece.next_key().unwrap(), None);
-    // carry on
-    // assert_eq!(fleece.next_key().err().unwrap(), FleeceError::EndReached);
-    // assert_eq!(fleece.next_key().err().unwrap(), FleeceError::EndReached);
+    fleece.finish().unwrap();
+}
+
+
+#[test]
+fn fleece_trailing_bracket() {
+    let mut fleece = Fleece::new(b"[1]]");
+    assert_eq!(fleece.next_array().unwrap(), ());
+    assert_eq!(fleece.next_int_strict().unwrap(), 1);
+    assert_eq!(fleece.array_step().unwrap(), false);
+    let result = fleece.finish();
+    match result {
+        Ok(t) => panic!("unexpectedly valid: {:?}", t),
+        Err(FleeceError::JsonError(e)) => {
+            assert_eq!(e.error_type, JsonError::UnexpectedCharacter);
+            assert_eq!(e.loc, (1, 4));
+        },
+        Err(other_err) => panic!("unexpected error: {:?}", other_err)
+    }
 }
