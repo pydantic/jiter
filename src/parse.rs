@@ -1,7 +1,7 @@
 use std::intrinsics::{likely, unlikely};
 use std::ops::Range;
 
-use crate::element::{Element, ElementInfo, ErrorInfo, Exponent, JsonError, JsonResult, Location};
+use crate::element::{Element, ElementInfo, ElementKey, ErrorInfo, Exponent, JsonError, JsonResult, Location};
 
 #[derive(Debug, Copy, Clone)]
 enum State {
@@ -74,18 +74,18 @@ impl<'a> Iterator for Parser<'a> {
                         State::Start => State::Finished,
                         State::ArrayStart | State::ArrayPostComma => State::ArrayPostValue,
                         State::ObjectPostColon => State::ObjectPostValue,
-                        _ => return ErrorInfo::next(JsonError::UnexpectedCharacter, loc),
+                        _ => return ErrorInfo::next_op(JsonError::UnexpectedCharacter, loc),
                     };
                     self.state_heap.push(next_state);
                     self.state = State::ArrayStart;
                     self.index += 1;
-                    return ElementInfo::next(Element::ArrayStart, loc);
+                    return ElementInfo::next_op(Element::ArrayStart, loc);
                 }
                 b',' => {
                     self.state = match self.state {
                         State::ArrayPostValue => State::ArrayPostComma,
                         State::ObjectPostValue => State::ObjectPostComma,
-                        _ => return ErrorInfo::next(JsonError::UnexpectedCharacter, self.loc()),
+                        _ => return ErrorInfo::next_op(JsonError::UnexpectedCharacter, self.loc()),
                     }
                 }
                 b']' => {
@@ -94,9 +94,9 @@ impl<'a> Iterator for Parser<'a> {
                         State::ArrayStart | State::ArrayPostValue => {
                             self.state = self.state_heap.pop().unwrap();
                             self.index += 1;
-                            ElementInfo::next(Element::ArrayEnd, loc)
+                            ElementInfo::next_op(Element::ArrayEnd, loc)
                         }
-                        _ => ErrorInfo::next(JsonError::UnexpectedCharacter, loc),
+                        _ => ErrorInfo::next_op(JsonError::UnexpectedCharacter, loc),
                     };
                 }
                 b'{' => {
@@ -107,18 +107,18 @@ impl<'a> Iterator for Parser<'a> {
                         State::Start => State::Finished,
                         State::ArrayStart | State::ArrayPostComma => State::ArrayPostValue,
                         State::ObjectPostColon => State::ObjectPostValue,
-                        _ => return ErrorInfo::next(JsonError::UnexpectedCharacter, loc),
+                        _ => return ErrorInfo::next_op(JsonError::UnexpectedCharacter, loc),
                     };
                     self.state_heap.push(next_state);
                     self.state = State::ObjectStart;
                     self.index += 1;
-                    return ElementInfo::next(Element::ObjectStart, loc);
+                    return ElementInfo::next_op(Element::ObjectStart, loc);
                 }
                 b':' => match self.state {
                     State::ObjectPreColon => {
                         self.state = State::ObjectPostColon;
                     }
-                    _ => return ErrorInfo::next(JsonError::UnexpectedCharacter, self.loc()),
+                    _ => return ErrorInfo::next_op(JsonError::UnexpectedCharacter, self.loc()),
                 },
                 b'}' => {
                     let loc = self.loc();
@@ -126,9 +126,9 @@ impl<'a> Iterator for Parser<'a> {
                         State::ObjectStart | State::ObjectPostValue => {
                             self.state = self.state_heap.pop().unwrap();
                             self.index += 1;
-                            ElementInfo::next(Element::ObjectEnd, loc)
+                            ElementInfo::next_op(Element::ObjectEnd, loc)
                         }
-                        _ => ErrorInfo::next(JsonError::UnexpectedCharacter, loc),
+                        _ => ErrorInfo::next_op(JsonError::UnexpectedCharacter, loc),
                     };
                 }
                 b'"' => {
@@ -138,7 +138,7 @@ impl<'a> Iterator for Parser<'a> {
                             self.state = State::ObjectPreColon;
                             let loc = self.loc();
                             match self.next_string(loc) {
-                                Ok(range) => ElementInfo::next(Element::Key(range), loc),
+                                Ok(range) => ElementInfo::next_op(Element::Key(range), loc),
                                 Err(e) => Some(Err(e)),
                             }
                         }
@@ -148,7 +148,7 @@ impl<'a> Iterator for Parser<'a> {
                                     Ok(range) => range,
                                     Err(e) => return Some(Err(e)),
                                 };
-                                ElementInfo::next(Element::String(range), loc)
+                                ElementInfo::next_op(Element::String(range), loc)
                             }
                             Some(e) => Some(Err(e)),
                         },
@@ -156,35 +156,35 @@ impl<'a> Iterator for Parser<'a> {
                 }
                 b't' => {
                     return match self.on_value() {
-                        None => self.next_true(),
+                        None => Some(self.next_true()),
                         Some(e) => Some(Err(e)),
                     }
                 }
                 b'f' => {
                     return match self.on_value() {
-                        None => self.next_false(),
+                        None => Some(self.next_false()),
                         Some(e) => Some(Err(e)),
                     };
                 }
                 b'n' => {
                     return match self.on_value() {
-                        None => self.next_null(),
+                        None => Some(self.next_null()),
                         Some(e) => Some(Err(e)),
                     };
                 }
                 b'0'..=b'9' => {
                     return match self.on_value() {
-                        None => self.next_number(true),
+                        None => Some(self.next_number(true)),
                         Some(e) => Some(Err(e)),
                     };
                 }
                 b'-' => {
                     return match self.on_value() {
-                        None => self.next_number(false),
+                        None => Some(self.next_number(false)),
                         Some(e) => Some(Err(e)),
                     };
                 }
-                _ => return ErrorInfo::next(JsonError::UnexpectedCharacter, self.loc()),
+                _ => return ErrorInfo::next_op(JsonError::UnexpectedCharacter, self.loc()),
             }
             self.index += 1;
         }
@@ -200,6 +200,135 @@ static FALSE_REST: [u8; 4] = [b'a', b'l', b's', b'e'];
 static NULL_REST: [u8; 3] = [b'u', b'l', b'l'];
 
 impl<'a> Parser<'a> {
+    pub fn next_value(&mut self) -> JsonResult<ElementInfo> {
+        while let Some(next) = self.data.get(self.index) {
+            match next {
+                // this method is called from whitespace, more whitespace is always fine
+                b' ' | b'\r' | b'\t' => (),
+                b'\n' => {
+                    self.line += 1;
+                    self.col_offset = self.index + 1;
+                }
+                b'[' => {
+                    let loc = self.loc();
+                    self.index += 1;
+                    return ElementInfo::next(Element::ArrayStart, loc);
+                }
+                b'{' => {
+                    let loc = self.loc();
+                    self.index += 1;
+                    return ElementInfo::next(Element::ObjectStart, loc);
+                }
+                b'"' => {
+                    let loc = self.loc();
+                    return match self.next_string(loc) {
+                        Ok(range) => ElementInfo::next(Element::String(range), loc),
+                        Err(e) => Err(e),
+                    }
+                }
+                b't' => return self.next_true(),
+                b'f' => return self.next_false(),
+                b'n' => return self.next_null(),
+                b'0'..=b'9' => return self.next_number(true),
+                b'-' => return self.next_number(false),
+                _ => return ErrorInfo::next(JsonError::UnexpectedCharacter, self.loc()),
+            }
+            self.index += 1;
+        }
+        ErrorInfo::next(JsonError::End, self.loc())
+    }
+
+    pub fn array_step(&mut self) -> JsonResult<bool> {
+        while let Some(next) = self.data.get(self.index) {
+            match next {
+                // this method is called from whitespace, more whitespace is always fine
+                b' ' | b'\r' | b'\t' => (),
+                b'\n' => {
+                    self.line += 1;
+                    self.col_offset = self.index + 1;
+                }
+                b',' => {
+                    self.index += 1;
+                    return Ok(true)
+                },
+                b']' => {
+                    self.index += 1;
+                    return Ok(false)
+                }
+                _ => return ErrorInfo::next(JsonError::UnexpectedCharacter, self.loc()),
+            }
+            self.index += 1;
+        }
+        ErrorInfo::next(JsonError::End, self.loc())
+    }
+
+    pub fn object_step(&mut self) -> JsonResult<Option<ElementKey>> {
+        loop {
+            if let Some(next) = self.data.get(self.index) {
+                match next {
+                    // this method is called from whitespace, more whitespace is always fine
+                    b' ' | b'\r' | b'\t' => (),
+                    b'\n' => {
+                        self.line += 1;
+                        self.col_offset = self.index + 1;
+                    }
+                    b',' => {
+                        self.index += 1;
+                        return self.object_key();
+                    },
+                    b'}' => {
+                        self.index += 1;
+                        return Ok(None);
+                    },
+                    _ => return ErrorInfo::next(JsonError::UnexpectedCharacter, self.loc()),
+                }
+                self.index += 1;
+            } else {
+                return ErrorInfo::next(JsonError::UnexpectedEnd, self.loc())
+            }
+        }
+    }
+
+    pub fn object_key(&mut self) -> JsonResult<Option<ElementKey>> {
+        while let Some(next) = self.data.get(self.index) {
+            match next {
+                // this method is called from whitespace, more whitespace is always fine
+                b' ' | b'\r' | b'\t' => (),
+                b'\n' => {
+                    self.line += 1;
+                    self.col_offset = self.index + 1;
+                }
+                b'"' => {
+                    let loc = self.loc();
+                    let range = self.next_string(loc)?;
+                    let key = ElementKey { range, loc };
+                    loop {
+                        if let Some(next) = self.data.get(self.index) {
+                            match next {
+                                b' ' | b'\r' | b'\t' => (),
+                                b'\n' => {
+                                    self.line += 1;
+                                    self.col_offset = self.index + 1;
+                                }
+                                b':' => {
+                                    self.index += 1;
+                                    return Ok(Some(key));
+                                },
+                                _ => return ErrorInfo::next(JsonError::UnexpectedCharacter, self.loc()),
+                            }
+                            self.index += 1;
+                        } else {
+                            return ErrorInfo::next(JsonError::UnexpectedEnd, self.loc())
+                        }
+                    }
+                },
+                _ => return ErrorInfo::next(JsonError::UnexpectedCharacter, self.loc()),
+            }
+            self.index += 1;
+        }
+        ErrorInfo::next(JsonError::UnexpectedEnd, self.loc())
+    }
+
     fn loc(&self) -> Location {
         (self.line, self.index - self.col_offset + 1)
     }
@@ -214,7 +343,7 @@ impl<'a> Parser<'a> {
         None
     }
 
-    fn next_true(&mut self) -> Option<JsonResult<ElementInfo>> {
+    fn next_true(&mut self) -> JsonResult<ElementInfo> {
         let loc = self.loc();
         if unlikely(self.index + 3 >= self.length) {
             return ErrorInfo::next(JsonError::UnexpectedEnd, loc);
@@ -234,7 +363,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn next_false(&mut self) -> Option<JsonResult<ElementInfo>> {
+    fn next_false(&mut self) -> JsonResult<ElementInfo> {
         let loc = self.loc();
         if unlikely(self.index + 4 >= self.length) {
             return ErrorInfo::next(JsonError::UnexpectedEnd, loc);
@@ -255,7 +384,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn next_null(&mut self) -> Option<JsonResult<ElementInfo>> {
+    fn next_null(&mut self) -> JsonResult<ElementInfo> {
         let loc = self.loc();
         if unlikely(self.index + 3 >= self.length) {
             return ErrorInfo::next(JsonError::UnexpectedEnd, loc);
@@ -299,7 +428,7 @@ impl<'a> Parser<'a> {
         Err(ErrorInfo::new(JsonError::UnexpectedEnd, loc))
     }
 
-    fn next_number(&mut self, positive: bool) -> Option<JsonResult<ElementInfo>> {
+    fn next_number(&mut self, positive: bool) -> JsonResult<ElementInfo> {
         let loc = self.loc();
         let start: usize = if positive {
             self.index
@@ -317,7 +446,7 @@ impl<'a> Parser<'a> {
                     let end = self.index;
                     let exponent = match self.exponent() {
                         Ok(exponent) => Some(exponent),
-                        Err(e) => return Some(Err(e)),
+                        Err(e) => return Err(e),
                     };
                     let element = Element::Int {
                         positive,
@@ -342,7 +471,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn float_decimal(&mut self, start: usize, positive: bool) -> Option<JsonResult<ElementInfo>> {
+    fn float_decimal(&mut self, start: usize, positive: bool) -> JsonResult<ElementInfo> {
         let loc = self.loc();
         let mut first = true;
         self.index += 1;
@@ -358,7 +487,7 @@ impl<'a> Parser<'a> {
                         let decimal_end = self.index;
                         let exponent = match self.exponent() {
                             Ok(exponent) => Some(exponent),
-                            Err(e) => return Some(Err(e)),
+                            Err(e) => return Err(e),
                         };
                         let element = Element::Float {
                             positive,

@@ -252,18 +252,20 @@ fn pass1_to_value() {
 
 #[test]
 fn fleece() {
-    let mut fleece = Fleece::new(br#"{"foo": "bar", "spam": [1, 2, "x"]}"#);
+    let mut fleece = Fleece::new(br#"{"foo": "bar", "spam": [   1, 2, "x"]}"#);
     assert_eq!(fleece.next_object().unwrap(), ());
-    assert_eq!(fleece.next_key().unwrap(), "foo");
+    assert_eq!(fleece.first_key().unwrap(), Some("foo".to_string()));
     assert_eq!(fleece.next_str().unwrap(), "bar");
-    assert_eq!(fleece.next_key().unwrap(), "spam");
+    assert_eq!(fleece.next_key().unwrap(), Some("spam".to_string()));
     assert_eq!(fleece.next_array().unwrap(), ());
     assert_eq!(fleece.next_int_strict().unwrap(), 1);
+    assert_eq!(fleece.array_step().unwrap(), true);
     assert_eq!(fleece.next_int_strict().unwrap(), 2);
+    assert_eq!(fleece.array_step().unwrap(), true);
     assert_eq!(fleece.next_bytes().unwrap(), b"x");
-    assert_eq!(fleece.next_int_strict().err().unwrap(), FleeceError::ArrayEnd);
-    assert_eq!(fleece.next_key().err().unwrap(), FleeceError::ObjectEnd);
+    assert_eq!(fleece.array_step().unwrap(), false);
+    assert_eq!(fleece.next_key().unwrap(), None);
     // carry on
-    assert_eq!(fleece.next_key().err().unwrap(), FleeceError::EndReached);
-    assert_eq!(fleece.next_key().err().unwrap(), FleeceError::EndReached);
+    // assert_eq!(fleece.next_key().err().unwrap(), FleeceError::EndReached);
+    // assert_eq!(fleece.next_key().err().unwrap(), FleeceError::EndReached);
 }

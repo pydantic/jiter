@@ -4,7 +4,7 @@ use std::io::Read;
 
 extern crate test;
 
-use donervan::{Decoder, Element, JsonValue, Parser};
+use donervan::{Decoder, Element, JsonValue, Parser, Fleece};
 use serde_json::Value;
 use test::{black_box, Bencher};
 
@@ -20,15 +20,6 @@ fn donervan_value(path: &str, bench: &mut Bencher) {
     let json_data = json.as_bytes();
     bench.iter(|| {
         let v = JsonValue::parse(black_box(json_data)).unwrap();
-        black_box(v);
-    })
-}
-
-fn donervan_value_threaded(path: &str, bench: &mut Bencher) {
-    let json = read_file(path);
-    let json_data = json.as_bytes();
-    bench.iter(|| {
-        let v = JsonValue::threaded_parse(black_box(json_data)).unwrap();
         black_box(v);
     })
 }
@@ -102,6 +93,42 @@ fn donervan_parse_skip(path: &str, bench: &mut Bencher) {
     })
 }
 
+fn donervan_fleece_string_array(path: &str, bench: &mut Bencher) {
+    let json = read_file(path);
+    let json_data = black_box(json.as_bytes());
+    bench.iter(|| {
+        let mut fleece = Fleece::new(json_data);
+        fleece.next_array().unwrap();
+        let mut v = Vec::new();
+        loop {
+            let i = fleece.next_str().unwrap();
+            v.push(i);
+            if !fleece.array_step().unwrap() {
+                break;
+            }
+        }
+        black_box(v)
+    })
+}
+
+fn donervan_fleece_true_array(path: &str, bench: &mut Bencher) {
+    let json = read_file(path);
+    let json_data = black_box(json.as_bytes());
+    bench.iter(|| {
+        let mut fleece = Fleece::new(json_data);
+        fleece.next_array().unwrap();
+        let mut v = Vec::new();
+        loop {
+            let i = fleece.next_bool_strict().unwrap();
+            v.push(i);
+            if !fleece.array_step().unwrap() {
+                break;
+            }
+        }
+        black_box(v)
+    })
+}
+
 fn serde_value(path: &str, bench: &mut Bencher) {
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
@@ -127,15 +154,20 @@ macro_rules! test_cases {
             }
 
             #[bench]
-            fn [< $file_name _donervan_value_threaded >](bench: &mut Bencher) {
-                let file_path = format!("./benches/{}.json", stringify!($file_name));
-                donervan_value_threaded(&file_path, bench);
-            }
-
-            #[bench]
             fn [< $file_name _donervan_parse_skip >](bench: &mut Bencher) {
                 let file_path = format!("./benches/{}.json", stringify!($file_name));
                 donervan_parse_skip(&file_path, bench);
+            }
+
+            #[bench]
+            fn [< $file_name _donervan_fleece >](bench: &mut Bencher) {
+                let file_name = stringify!($file_name);
+                let file_path = format!("./benches/{}.json", file_name);
+                if file_name == "string_array" {
+                    donervan_fleece_string_array(&file_path, bench);
+                } else if file_name == "true_array" {
+                    donervan_fleece_true_array(&file_path, bench);
+                }
             }
 
             #[bench]

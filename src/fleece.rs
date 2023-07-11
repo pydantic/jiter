@@ -67,7 +67,7 @@ impl<'a> Fleece<'a> {
     }
 
     pub fn next_null(&mut self) -> FleeceResult<()> {
-        let chunk = self.next_element()?;
+        let chunk = self.parser.next_value()?;
         match chunk.element {
             Element::Null => Ok(()),
             _ => Err(wrong_type(JsonType::Null, chunk))
@@ -75,7 +75,7 @@ impl<'a> Fleece<'a> {
     }
 
     pub fn next_bool_strict(&mut self) -> FleeceResult<bool> {
-        let chunk = self.next_element()?;
+        let chunk = self.parser.next_value()?;
         match chunk.element {
             Element::True => Ok(true),
             Element::False => Ok(false),
@@ -84,7 +84,7 @@ impl<'a> Fleece<'a> {
     }
 
     pub fn next_bool_lax(&mut self) -> FleeceResult<bool> {
-        let chunk = self.next_element()?;
+        let chunk = self.parser.next_value()?;
         match chunk.element {
             Element::True => Ok(true),
             Element::False => Ok(false),
@@ -128,7 +128,7 @@ impl<'a> Fleece<'a> {
     }
 
     pub fn next_int_strict(&mut self) -> FleeceResult<i64> {
-        let chunk = self.next_element()?;
+        let chunk = self.parser.next_value()?;
         match chunk.element {
             Element::Int {positive, range, exponent} => {
                 Ok(self.decoder.decode_int(positive, range, exponent, chunk.loc)?)
@@ -142,7 +142,7 @@ impl<'a> Fleece<'a> {
     }
 
     pub fn next_float_strict(&mut self) -> FleeceResult<f64> {
-        let chunk = self.next_element()?;
+        let chunk = self.parser.next_value()?;
         match chunk.element {
             Element::Float {positive, int_range, decimal_range, exponent} => {
                 Ok(self.decoder.decode_float(positive, int_range, decimal_range, exponent, chunk.loc)?)
@@ -156,7 +156,7 @@ impl<'a> Fleece<'a> {
     }
 
     pub fn next_str(&mut self) -> FleeceResult<String> {
-        let chunk = self.next_element()?;
+        let chunk = self.parser.next_value()?;
         match chunk.element {
             Element::String(range) => {
                 Ok(self.decoder.decode_string(range, chunk.loc)?)
@@ -166,7 +166,7 @@ impl<'a> Fleece<'a> {
     }
 
     pub fn next_bytes(&mut self) -> FleeceResult<&[u8]> {
-        let chunk = self.next_element()?;
+        let chunk = self.parser.next_value()?;
         match chunk.element {
             Element::String(range) => Ok(&self.data[range]),
             _ => Err(wrong_type(JsonType::String, chunk))
@@ -187,41 +187,43 @@ impl<'a> Fleece<'a> {
     // }
 
     pub fn next_value(&mut self) -> FleeceResult<JsonValue> {
-        let chunk = self.next_element()?;
+        let chunk = self.parser.next_value()?;
         Ok(take_value(chunk, &mut self.parser, &self.decoder)?)
     }
 
     pub fn next_array(&mut self) -> FleeceResult<()> {
-        let chunk = self.next_element()?;
+        let chunk = self.parser.next_value()?;
         match chunk.element {
             Element::ArrayStart => Ok(()),
             _ => Err(wrong_type(JsonType::Array, chunk))
         }
     }
 
+    pub fn array_step(&mut self) -> FleeceResult<bool> {
+        Ok(self.parser.array_step()?)
+    }
+
     pub fn next_object(&mut self) -> FleeceResult<()> {
-        let chunk = self.next_element()?;
+        let chunk = self.parser.next_value()?;
         match chunk.element {
             Element::ObjectStart => Ok(()),
             _ => Err(wrong_type(JsonType::Object, chunk))
         }
     }
 
-    pub fn next_key(&mut self) -> FleeceResult<String> {
-        let chunk = self.next_element()?;
-        match chunk.element {
-            Element::Key(range) => {
-                Ok(self.decoder.decode_string(range, chunk.loc)?)
-            },
-            _ => Err(wrong_type(JsonType::Key, chunk))
+    pub fn first_key(&mut self) -> FleeceResult<Option<String>> {
+        match self.parser.object_key() {
+            Ok(Some(key)) => Ok(Some(self.decoder.decode_string(key.range, key.loc)?)),
+            Ok(None) => Ok(None),
+            Err(e) => Err(e.into())
         }
     }
 
-    fn next_element(&mut self) -> FleeceResult<ElementInfo> {
-        match self.parser.next() {
-            Some(Ok(chunk)) => Ok(chunk),
-            Some(Err(err)) => Err(err.into()),
-            None => Err(FleeceError::EndReached),
+    pub fn next_key(&mut self) -> FleeceResult<Option<String>> {
+        match self.parser.object_step() {
+            Ok(Some(key)) => Ok(Some(self.decoder.decode_string(key.range, key.loc)?)),
+            Ok(None) => Ok(None),
+            Err(e) => Err(e.into())
         }
     }
 }
