@@ -212,7 +212,7 @@ impl<'a> Fleece<'a> {
     }
 
     pub fn first_key(&mut self) -> FleeceResult<Option<String>> {
-        match self.parser.object_key() {
+        match self.parser.object_first() {
             Ok(Some(key)) => Ok(Some(self.decoder.decode_string(key.range, key.loc)?)),
             Ok(None) => Ok(None),
             Err(e) => Err(e.into())

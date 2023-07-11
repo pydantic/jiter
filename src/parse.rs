@@ -3,36 +3,10 @@ use std::ops::Range;
 
 use crate::element::{Element, ElementInfo, ElementKey, ErrorInfo, Exponent, JsonError, JsonResult, Location};
 
-#[derive(Debug, Copy, Clone)]
-enum State {
-    // new data to parse
-    Start,
-    // after `[`, expecting value or `]`
-    ArrayStart,
-    // after a value in an array, before `,` or `]`
-    ArrayPostValue,
-    // after `,` in an array, expecting a value
-    ArrayPostComma,
-    // after `{`, expecting a key or `}`
-    ObjectStart,
-    // after a key in an object, before `:`
-    ObjectPreColon,
-    // after `:`, expecting a value
-    ObjectPostColon,
-    // after a value in an object, before `,` or `}`
-    ObjectPostValue,
-    // after `,` in an object, expecting a key
-    ObjectPostComma,
-    // finishing parsing - state_heap is empty and we've parsed something
-    Finished,
-}
-
 #[derive(Debug, Clone)]
 pub struct Parser<'a> {
     data: &'a [u8],
     length: usize,
-    state_heap: Vec<State>,
-    state: State,
     index: usize,
     line: usize,
     col_offset: usize,
@@ -43,8 +17,6 @@ impl<'a> Parser<'a> {
         Self {
             data,
             length: data.len(),
-            state_heap: Vec::with_capacity(16),
-            state: State::Start,
             index: 0,
             line: 1,
             col_offset: 0,
@@ -56,141 +28,12 @@ impl<'a> Iterator for Parser<'a> {
     type Item = JsonResult<ElementInfo>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // annoyingly, doing it this way instead of calling a method which returns `JsonResult<Option<ElementInfo>>`
-        // is significantly quicker so we keep it like this although it's uglier
-        while let Some(next) = self.data.get(self.index) {
-            match next {
-                // this method is called from whitespace, more whitespace is always fine
-                b' ' | b'\r' | b'\t' => (),
-                b'\n' => {
-                    self.line += 1;
-                    self.col_offset = self.index + 1;
-                }
-                b'[' => {
-                    let loc = self.loc();
-
-                    // `next_state` here refers to the state we'll be in after leaving this array
-                    let next_state = match self.state {
-                        State::Start => State::Finished,
-                        State::ArrayStart | State::ArrayPostComma => State::ArrayPostValue,
-                        State::ObjectPostColon => State::ObjectPostValue,
-                        _ => return ErrorInfo::next_op(JsonError::UnexpectedCharacter, loc),
-                    };
-                    self.state_heap.push(next_state);
-                    self.state = State::ArrayStart;
-                    self.index += 1;
-                    return ElementInfo::next_op(Element::ArrayStart, loc);
-                }
-                b',' => {
-                    self.state = match self.state {
-                        State::ArrayPostValue => State::ArrayPostComma,
-                        State::ObjectPostValue => State::ObjectPostComma,
-                        _ => return ErrorInfo::next_op(JsonError::UnexpectedCharacter, self.loc()),
-                    }
-                }
-                b']' => {
-                    let loc = self.loc();
-                    return match self.state {
-                        State::ArrayStart | State::ArrayPostValue => {
-                            self.state = self.state_heap.pop().unwrap();
-                            self.index += 1;
-                            ElementInfo::next_op(Element::ArrayEnd, loc)
-                        }
-                        _ => ErrorInfo::next_op(JsonError::UnexpectedCharacter, loc),
-                    };
-                }
-                b'{' => {
-                    let loc = self.loc();
-
-                    // `next_state` here refers to the state we'll be in after leaving this array
-                    let next_state = match self.state {
-                        State::Start => State::Finished,
-                        State::ArrayStart | State::ArrayPostComma => State::ArrayPostValue,
-                        State::ObjectPostColon => State::ObjectPostValue,
-                        _ => return ErrorInfo::next_op(JsonError::UnexpectedCharacter, loc),
-                    };
-                    self.state_heap.push(next_state);
-                    self.state = State::ObjectStart;
-                    self.index += 1;
-                    return ElementInfo::next_op(Element::ObjectStart, loc);
-                }
-                b':' => match self.state {
-                    State::ObjectPreColon => {
-                        self.state = State::ObjectPostColon;
-                    }
-                    _ => return ErrorInfo::next_op(JsonError::UnexpectedCharacter, self.loc()),
-                },
-                b'}' => {
-                    let loc = self.loc();
-                    return match self.state {
-                        State::ObjectStart | State::ObjectPostValue => {
-                            self.state = self.state_heap.pop().unwrap();
-                            self.index += 1;
-                            ElementInfo::next_op(Element::ObjectEnd, loc)
-                        }
-                        _ => ErrorInfo::next_op(JsonError::UnexpectedCharacter, loc),
-                    };
-                }
-                b'"' => {
-                    let loc = self.loc();
-                    return match self.state {
-                        State::ObjectStart | State::ObjectPostComma => {
-                            self.state = State::ObjectPreColon;
-                            let loc = self.loc();
-                            match self.next_string(loc) {
-                                Ok(range) => ElementInfo::next_op(Element::Key(range), loc),
-                                Err(e) => Some(Err(e)),
-                            }
-                        }
-                        _ => match self.on_value() {
-                            None => {
-                                let range = match self.next_string(loc) {
-                                    Ok(range) => range,
-                                    Err(e) => return Some(Err(e)),
-                                };
-                                ElementInfo::next_op(Element::String(range), loc)
-                            }
-                            Some(e) => Some(Err(e)),
-                        },
-                    };
-                }
-                b't' => {
-                    return match self.on_value() {
-                        None => Some(self.next_true()),
-                        Some(e) => Some(Err(e)),
-                    }
-                }
-                b'f' => {
-                    return match self.on_value() {
-                        None => Some(self.next_false()),
-                        Some(e) => Some(Err(e)),
-                    };
-                }
-                b'n' => {
-                    return match self.on_value() {
-                        None => Some(self.next_null()),
-                        Some(e) => Some(Err(e)),
-                    };
-                }
-                b'0'..=b'9' => {
-                    return match self.on_value() {
-                        None => Some(self.next_number(true)),
-                        Some(e) => Some(Err(e)),
-                    };
-                }
-                b'-' => {
-                    return match self.on_value() {
-                        None => Some(self.next_number(false)),
-                        Some(e) => Some(Err(e)),
-                    };
-                }
-                _ => return ErrorInfo::next_op(JsonError::UnexpectedCharacter, self.loc()),
+        match self.next_value() {
+            Ok(elin) => Some(Ok(elin)),
+            Err(e) => match e.error_type {
+                JsonError::End => None,
+                _ => Some(Err(e))
             }
-            self.index += 1;
-        }
-        match self.state {
-            State::Finished => None,
-            _ => Some(Err(ErrorInfo::new(JsonError::UnexpectedEnd, self.loc()))),
         }
     }
 }
@@ -238,6 +81,26 @@ impl<'a> Parser<'a> {
         ErrorInfo::next(JsonError::End, self.loc())
     }
 
+    pub fn array_first(&mut self) -> JsonResult<bool> {
+        while let Some(next) = self.data.get(self.index) {
+            match next {
+                // this method is called from whitespace, more whitespace is always fine
+                b' ' | b'\r' | b'\t' => (),
+                b'\n' => {
+                    self.line += 1;
+                    self.col_offset = self.index + 1;
+                }
+                b']' => {
+                    self.index += 1;
+                    return Ok(false)
+                }
+                _ => return Ok(true),
+            }
+            self.index += 1;
+        }
+        ErrorInfo::next(JsonError::UnexpectedEnd, self.loc())
+    }
+
     pub fn array_step(&mut self) -> JsonResult<bool> {
         while let Some(next) = self.data.get(self.index) {
             match next {
@@ -262,6 +125,27 @@ impl<'a> Parser<'a> {
         ErrorInfo::next(JsonError::End, self.loc())
     }
 
+    pub fn object_first(&mut self) -> JsonResult<Option<ElementKey>> {
+        while let Some(next) = self.data.get(self.index) {
+            match next {
+                // this method is called from whitespace, more whitespace is always fine
+                b' ' | b'\r' | b'\t' => (),
+                b'\n' => {
+                    self.line += 1;
+                    self.col_offset = self.index + 1;
+                },
+                b'}' => {
+                    self.index += 1;
+                    return Ok(None);
+                },
+                b'"' => return self.object_key(),
+                _ => return ErrorInfo::next(JsonError::UnexpectedCharacter, self.loc()),
+            }
+            self.index += 1;
+        }
+        ErrorInfo::next(JsonError::UnexpectedEnd, self.loc())
+    }
+
     pub fn object_step(&mut self) -> JsonResult<Option<ElementKey>> {
         loop {
             if let Some(next) = self.data.get(self.index) {
@@ -274,7 +158,20 @@ impl<'a> Parser<'a> {
                     }
                     b',' => {
                         self.index += 1;
-                        return self.object_key();
+                        while let Some(next) = self.data.get(self.index) {
+                            match next {
+                                // this method is called from whitespace, more whitespace is always fine
+                                b' ' | b'\r' | b'\t' => (),
+                                b'\n' => {
+                                    self.line += 1;
+                                    self.col_offset = self.index + 1;
+                                }
+                                b'"' => return self.object_key(),
+                                _ => return ErrorInfo::next(JsonError::UnexpectedCharacter, self.loc()),
+                            }
+                            self.index += 1;
+                        }
+                        return ErrorInfo::next(JsonError::UnexpectedEnd, self.loc())
                     },
                     b'}' => {
                         self.index += 1;
@@ -289,7 +186,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn object_key(&mut self) -> JsonResult<Option<ElementKey>> {
+    pub fn finish(&mut self) -> JsonResult<()> {
         while let Some(next) = self.data.get(self.index) {
             match next {
                 // this method is called from whitespace, more whitespace is always fine
@@ -298,49 +195,40 @@ impl<'a> Parser<'a> {
                     self.line += 1;
                     self.col_offset = self.index + 1;
                 }
-                b'"' => {
-                    let loc = self.loc();
-                    let range = self.next_string(loc)?;
-                    let key = ElementKey { range, loc };
-                    loop {
-                        if let Some(next) = self.data.get(self.index) {
-                            match next {
-                                b' ' | b'\r' | b'\t' => (),
-                                b'\n' => {
-                                    self.line += 1;
-                                    self.col_offset = self.index + 1;
-                                }
-                                b':' => {
-                                    self.index += 1;
-                                    return Ok(Some(key));
-                                },
-                                _ => return ErrorInfo::next(JsonError::UnexpectedCharacter, self.loc()),
-                            }
-                            self.index += 1;
-                        } else {
-                            return ErrorInfo::next(JsonError::UnexpectedEnd, self.loc())
-                        }
-                    }
-                },
                 _ => return ErrorInfo::next(JsonError::UnexpectedCharacter, self.loc()),
             }
             self.index += 1;
         }
-        ErrorInfo::next(JsonError::UnexpectedEnd, self.loc())
+        Ok(())
+    }
+
+    fn object_key(&mut self) -> JsonResult<Option<ElementKey>> {
+        let loc = self.loc();
+        let range = self.next_string(loc)?;
+        let key = ElementKey { range, loc };
+        loop {
+            if let Some(next) = self.data.get(self.index) {
+                match next {
+                    b' ' | b'\r' | b'\t' => (),
+                    b'\n' => {
+                        self.line += 1;
+                        self.col_offset = self.index + 1;
+                    }
+                    b':' => {
+                        self.index += 1;
+                        return Ok(Some(key));
+                    },
+                    _ => return ErrorInfo::next(JsonError::UnexpectedCharacter, self.loc()),
+                }
+                self.index += 1;
+            } else {
+                return ErrorInfo::next(JsonError::UnexpectedEnd, self.loc())
+            }
+        }
     }
 
     fn loc(&self) -> Location {
         (self.line, self.index - self.col_offset + 1)
-    }
-
-    fn on_value(&mut self) -> Option<ErrorInfo> {
-        self.state = match self.state {
-            State::Start => State::Finished,
-            State::ArrayStart | State::ArrayPostComma => State::ArrayPostValue,
-            State::ObjectPostColon => State::ObjectPostValue,
-            _ => return Some(ErrorInfo::new(JsonError::UnexpectedCharacter, self.loc())),
-        };
-        None
     }
 
     fn next_true(&mut self) -> JsonResult<ElementInfo> {

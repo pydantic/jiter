@@ -2,16 +2,57 @@ use indexmap::indexmap;
 use std::fs::File;
 use std::io::Read;
 
-use donervan::{Decoder, Element, ElementInfo, Fleece, FleeceError, JsonError, JsonResult, JsonValue, Parser};
+use donervan::{Decoder, Element, ElementInfo, Fleece, JsonError, JsonResult, JsonValue, Parser};
+
+fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
+    let mut v = Vec::new();
+    let elin = match parser.next_value() {
+        Ok(elin) => elin,
+        Err(e) => return match e.error_type {
+            JsonError::End => Ok(v),
+            _ => Err(e)
+        }
+    };
+    v.push(elin.to_string());
+    match elin.element {
+        Element::ArrayStart => {
+            if parser.array_first()? {
+                loop {
+                    let el_vec = json_vec(parser)?;
+                    v.extend(el_vec);
+                    if !parser.array_step()? {
+                        break
+                    }
+                }
+            }
+            v.push("]".to_string());
+        }
+        Element::ObjectStart => {
+            if let Some(key) = parser.object_first()? {
+                v.push(key.to_string());
+                let value_vec = json_vec(parser)?;
+                v.extend(value_vec);
+                while let Some(key) = parser.object_step()? {
+                    v.push(key.to_string());
+                    let value_vec = json_vec(parser)?;
+                    v.extend(value_vec);
+                }
+            }
+            v.push("}".to_string());
+        }
+        Element::ObjectEnd | Element::ArrayEnd | Element::Key(_) => panic!("{:?}", elin),
+        _ => ()
+    };
+    Ok(v)
+}
 
 macro_rules! single_expect_ok_or_error {
     ($name:ident, ok, $json:literal, $expected:expr) => {
         paste::item! {
             #[test]
             fn [< single_element_ok_ $name >]() {
-                let elements: Vec<ElementInfo> = Parser::new($json.as_bytes()).collect::<JsonResult<_>>().unwrap();
-                let elements_str = elements.iter().map(|c| c.to_string()).collect::<Vec<String>>().join(", ");
-                assert_eq!(elements_str, $expected);
+                let elements = json_vec(&mut Parser::new($json.as_bytes())).unwrap().join(", ");
+                assert_eq!(elements, $expected);
             }
         }
     };
@@ -19,7 +60,7 @@ macro_rules! single_expect_ok_or_error {
         paste::item! {
             #[test]
             fn [< single_element_xerror_ $name _ $error:snake _error >]() {
-                let result: JsonResult<Vec<ElementInfo>> = Parser::new($json.as_bytes()).collect();
+                let result = json_vec(&mut Parser::new($json.as_bytes()));
                 match result {
                     Ok(t) => panic!("unexpectedly valid: {:?} -> {:?}", $json, t),
                     Err(e) => assert_eq!(e.error_type, JsonError::$error),
@@ -59,28 +100,26 @@ single_tests! {
     bad_null: err => "nul", UnexpectedEnd;
     object_trailing_comma: err => r#"{"foo": "bar",}"#, UnexpectedCharacter;
     array_trailing_comma: err => r#"[1, 2,]"#, UnexpectedCharacter;
-    array_bool: ok => "[true, false]", "[ @ 1:1, true @ 1:2, false @ 1:8, ] @ 1:13";
-    object_string: ok => r#"{"foo": "ba"}"#, "{ @ 1:1, Key(2..5) @ 1:2, String(9..11) @ 1:9, } @ 1:13";
-    object_null: ok => r#"{"foo": null}"#, "{ @ 1:1, Key(2..5) @ 1:2, null @ 1:9, } @ 1:13";
-    object_bool_compact: ok => r#"{"foo":true}"#, "{ @ 1:1, Key(2..5) @ 1:2, true @ 1:8, } @ 1:12";
-    deep_array: ok => r#"[["Not too deep"]]"#, "[ @ 1:1, [ @ 1:2, String(3..15) @ 1:3, ] @ 1:17, ] @ 1:18";
+    array_bool: ok => "[true, false]", "[ @ 1:1, true @ 1:2, false @ 1:8, ]";
+    object_string: ok => r#"{"foo": "ba"}"#, "{ @ 1:1, Key(2..5) @ 1:2, String(9..11) @ 1:9, }";
+    object_null: ok => r#"{"foo": null}"#, "{ @ 1:1, Key(2..5) @ 1:2, null @ 1:9, }";
+    object_bool_compact: ok => r#"{"foo":true}"#, "{ @ 1:1, Key(2..5) @ 1:2, true @ 1:8, }";
+    deep_array: ok => r#"[["Not too deep"]]"#, "[ @ 1:1, [ @ 1:2, String(3..15) @ 1:3, ], ]";
     object_key_int: err => r#"{4: 4}"#, UnexpectedCharacter;
     array_no_close: err => r#"["#, UnexpectedEnd;
-    array_double_close: err => r#"[1]]"#, UnexpectedCharacter;
+    // array_double_close: err => r#"[1]]"#, UnexpectedCharacter;
 }
 
 #[test]
 fn invalid_string_controls() {
     let json = "\"123\x08\x0c\n\r\t\"";
     let b = json.as_bytes();
-    let result: Vec<ElementInfo> = Parser::new(b).collect::<JsonResult<_>>().unwrap();
-    assert_eq!(result.len(), 1);
-    let first = &result[0];
-    let string_element = match &first.element {
+    let elin = Parser::new(b).next_value().unwrap();
+    let string_element = match &elin.element {
         Element::String(s) => s.clone(),
-        _ => panic!("unexpected element: {:?}, expected string", first),
+        _ => panic!("unexpected element: {:?}, expected string", elin),
     };
-    let result = Decoder::new(b).decode_string(string_element, first.loc);
+    let result = Decoder::new(b).decode_string(string_element, elin.loc);
     match result {
         Ok(t) => panic!("unexpectedly valid: {:?} -> {:?}", json, t),
         Err(e) => assert_eq!(e.error_type, JsonError::InvalidString(3)),
@@ -212,6 +251,19 @@ fn parse_value() {
             ),
         },)
     );
+}
+
+#[test]
+fn repeat_trailing_array() {
+    let json = "[1]]";
+    let result = JsonValue::parse(json.as_bytes());
+    match result {
+        Ok(t) => panic!("unexpectedly valid: {:?} -> {:?}", json, t),
+        Err(e) => {
+            assert_eq!(e.error_type, JsonError::UnexpectedCharacter);
+            assert_eq!(e.loc, (1, 4));
+        },
+    }
 }
 
 #[test]

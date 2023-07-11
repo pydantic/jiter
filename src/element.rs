@@ -104,10 +104,6 @@ impl ElementInfo {
     pub fn next(element: Element, loc: Location) -> JsonResult<Self> {
         Ok(Self { element, loc })
     }
-
-    pub fn next_op(element: Element, loc: Location) -> Option<JsonResult<Self>> {
-        Some(Ok(Self { element, loc }))
-    }
 }
 
 
@@ -115,6 +111,12 @@ impl ElementInfo {
 pub struct ElementKey {
     pub range: Range<usize>,
     pub loc: Location,
+}
+
+impl fmt::Display for ElementKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Key({:?}) @ {}:{}", self.range, self.loc.0, self.loc.1)
+    }
 }
 
 #[derive(Debug, Display, EnumMessage, PartialEq, Eq, Clone)]
@@ -153,10 +155,6 @@ impl ErrorInfo {
 
     pub(crate) fn next<T>(error_type: JsonError, loc: Location) -> JsonResult<T> {
         Err(Self::new(error_type, loc))
-    }
-
-    pub(crate) fn next_op<T>(error_type: JsonError, loc: Location) -> Option<JsonResult<T>> {
-        Some(Err(Self::new(error_type, loc)))
     }
 }
 
