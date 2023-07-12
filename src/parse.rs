@@ -24,25 +24,12 @@ impl<'a> Parser<'a> {
     }
 }
 
-impl<'a> Iterator for Parser<'a> {
-    type Item = JsonResult<ElementInfo>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.next_value() {
-            Ok(elin) => Some(Ok(elin)),
-            Err(e) => match e.error_type {
-                JsonError::End => None,
-                _ => Some(Err(e))
-            }
-        }
-    }
-}
-
 static TRUE_REST: [u8; 3] = [b'r', b'u', b'e'];
 static FALSE_REST: [u8; 4] = [b'a', b'l', b's', b'e'];
 static NULL_REST: [u8; 3] = [b'u', b'l', b'l'];
 
 impl<'a> Parser<'a> {
+    #[inline(always)]
     pub fn next_value(&mut self) -> JsonResult<ElementInfo> {
         while let Some(next) = self.data.get(self.index) {
             match next {

@@ -137,9 +137,9 @@ fn parse_str() {
 fn json_parse_str() {
     let json = r#" "foobar" "#;
     let data = json.as_bytes();
-    let elements: Vec<ElementInfo> = Parser::new(data).collect::<JsonResult<_>>().unwrap();
-    assert_eq!(elements.len(), 1);
-    let first_element = elements[0].clone();
+    let mut parser = Parser::new(data);
+    let first_element: ElementInfo = parser.next_value().unwrap();
+    parser.finish().unwrap();
     let debug = format!("{}", first_element);
     assert_eq!(debug, "String(2..8) @ 1:2");
 
@@ -158,9 +158,9 @@ macro_rules! string_tests {
                 #[test]
                 fn [< string_parsing_ $name >]() {
                     let data = $json.as_bytes();
-                    let elements: Vec<ElementInfo> = Parser::new(data).collect::<JsonResult<_>>().unwrap();
-                    assert_eq!(elements.len(), 1);
-                    let first_element = elements[0].clone();
+                    let mut parser = Parser::new(data);
+                    let first_element: ElementInfo = parser.next_value().unwrap();
+                    parser.finish().unwrap();
                     let range = match first_element.element {
                         Element::String(range) => range,
                         v => panic!("expected string, not {:?}", v),
@@ -188,9 +188,9 @@ fn parse_int() {
     for input_value in -1000i64..1000 {
         let json = format!(" {} ", input_value);
         let data = json.as_bytes();
-        let elements: Vec<ElementInfo> = Parser::new(data).collect::<JsonResult<_>>().unwrap();
-        assert_eq!(elements.len(), 1);
-        let first_element = elements[0].clone();
+        let mut parser = Parser::new(data);
+        let first_element: ElementInfo = parser.next_value().unwrap();
+        parser.finish().unwrap();
         let (positive, range) = match first_element.element {
             Element::Int {
                 positive,
@@ -213,8 +213,9 @@ fn parse_float() {
         let input_value = i as f64 * 0.1;
         let json = format!("{:.4}", input_value);
         let data = json.as_bytes();
-        let elements: Vec<ElementInfo> = Parser::new(data).collect::<JsonResult<_>>().unwrap();
-        let first_element = elements[0].clone();
+        let mut parser = Parser::new(data);
+        let first_element: ElementInfo = parser.next_value().unwrap();
+        parser.finish().unwrap();
         let (positive, int_range, decimal_range) = match first_element.clone().element {
             Element::Float {
                 positive,
@@ -309,7 +310,7 @@ fn fleece() {
     assert_eq!(fleece.first_key().unwrap(), Some("foo".to_string()));
     assert_eq!(fleece.next_str().unwrap(), "bar");
     assert_eq!(fleece.next_key().unwrap(), Some("spam".to_string()));
-    assert_eq!(fleece.next_array().unwrap(), ());
+    assert_eq!(fleece.next_array().unwrap(), true);
     assert_eq!(fleece.next_int_strict().unwrap(), 1);
     assert_eq!(fleece.array_step().unwrap(), true);
     assert_eq!(fleece.next_int_strict().unwrap(), 2);
@@ -320,11 +321,17 @@ fn fleece() {
     fleece.finish().unwrap();
 }
 
+#[test]
+fn fleece_empty_array() {
+    let mut fleece = Fleece::new(b"[]");
+    assert_eq!(fleece.next_array().unwrap(), false);
+    fleece.finish().unwrap();
+}
 
 #[test]
 fn fleece_trailing_bracket() {
     let mut fleece = Fleece::new(b"[1]]");
-    assert_eq!(fleece.next_array().unwrap(), ());
+    assert_eq!(fleece.next_array().unwrap(), true);
     assert_eq!(fleece.next_int_strict().unwrap(), 1);
     assert_eq!(fleece.array_step().unwrap(), false);
     let result = fleece.finish();

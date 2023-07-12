@@ -152,7 +152,17 @@ impl<'a> Fleece<'a> {
     }
 
     pub fn next_float_lax(&mut self) -> FleeceResult<f64> {
-        todo!("next_float_lax");
+        let chunk = self.parser.next_value()?;
+        match chunk.element {
+            Element::Float {positive, int_range, decimal_range, exponent} => {
+                Ok(self.decoder.decode_float(positive, int_range, decimal_range, exponent, chunk.loc)?)
+            },
+            Element::Int {positive, range, exponent} => {
+                let int = self.decoder.decode_int(positive, range, exponent, chunk.loc)?;
+                Ok(int as f64)
+            },
+            _ => Err(wrong_type(JsonType::Float, chunk))
+        }
     }
 
     pub fn next_str(&mut self) -> FleeceResult<String> {
@@ -191,10 +201,10 @@ impl<'a> Fleece<'a> {
         Ok(take_value(chunk, &mut self.parser, &self.decoder)?)
     }
 
-    pub fn next_array(&mut self) -> FleeceResult<()> {
+    pub fn next_array(&mut self) -> FleeceResult<bool> {
         let chunk = self.parser.next_value()?;
         match chunk.element {
-            Element::ArrayStart => Ok(()),
+            Element::ArrayStart => Ok(self.parser.array_first()?),
             _ => Err(wrong_type(JsonType::Array, chunk))
         }
     }
