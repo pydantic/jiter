@@ -88,37 +88,6 @@ impl fmt::Display for Element {
     }
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
-pub struct ElementInfo {
-    pub element: Element,
-    pub loc: Location,
-}
-
-impl fmt::Display for ElementInfo {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} @ {}:{}", self.element, self.loc.0, self.loc.1)
-    }
-}
-
-impl ElementInfo {
-    pub fn next(element: Element, loc: Location) -> JsonResult<Self> {
-        Ok(Self { element, loc })
-    }
-}
-
-
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
-pub struct ElementKey {
-    pub range: Range<usize>,
-    pub loc: Location,
-}
-
-impl fmt::Display for ElementKey {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Key({:?}) @ {}:{}", self.range, self.loc.0, self.loc.1)
-    }
-}
-
 #[derive(Debug, Display, EnumMessage, PartialEq, Eq, Clone)]
 #[strum(serialize_all = "snake_case")]
 pub enum JsonError {
@@ -140,22 +109,4 @@ pub enum JsonError {
     End,
 }
 
-pub type Location = (usize, usize);
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct ErrorInfo {
-    pub error_type: JsonError,
-    pub loc: Location,
-}
-
-impl ErrorInfo {
-    pub fn new(error_type: JsonError, loc: Location) -> Self {
-        Self { error_type, loc }
-    }
-
-    pub(crate) fn next<T>(error_type: JsonError, loc: Location) -> JsonResult<T> {
-        Err(Self::new(error_type, loc))
-    }
-}
-
-pub type JsonResult<T> = Result<T, ErrorInfo>;
+pub type JsonResult<T> = Result<T, JsonError>;

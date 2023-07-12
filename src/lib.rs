@@ -10,8 +10,8 @@ mod value;
 use std::fmt;
 
 pub use decode::Decoder;
-pub use element::{Element, ElementInfo, JsonError, JsonResult};
-pub use fleece::{Fleece, FleeceResult, FleeceError};
+pub use element::{Element, JsonError, JsonResult};
+pub use fleece::{Fleece, FleeceResult, FleeceError, JsonType};
 pub use parse::Parser;
 pub use value::{JsonArray, JsonObject, JsonValue};
 
@@ -41,15 +41,15 @@ impl FilePosition {
         while let Some(next) = data.get(index) {
             if index == find {
                 break;
-            } else if next == &b'\n' {
+            } else if *next == b'\n' {
                 line += 1;
-                last_line_start = index;
+                last_line_start = index + 1;
             }
             index += 1;
         }
         Self {
             line,
-            column: index - last_line_start,
+            column: index - last_line_start + 1,
         }
     }
 }

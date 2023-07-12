@@ -1,8 +1,9 @@
+use std::ops::Range;
+
 // use num_bigint::BigInt;
 // use speedate::{Date, Time, DateTime, Duration};
 
-use crate::{Decoder, Element, ElementInfo, JsonValue, Parser};
-use crate::element::{ErrorInfo, Location};
+use crate::{Decoder, Element, FilePosition, JsonError, JsonResult, JsonValue, Parser};
 use crate::value::take_value;
 
 #[derive(Debug, Eq, PartialEq)]
@@ -19,14 +20,17 @@ pub enum JsonType {
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum FleeceError {
-    JsonError(ErrorInfo),
+    JsonError {
+        error: JsonError,
+        position: FilePosition,
+    },
     WrongType {
         expected: JsonType,
         actual: Option<JsonType>,
-        loc: Location
+        position: FilePosition,
     },
-    StringFormat(Location),
-    NumericValue(Location),
+    StringFormat(FilePosition),
+    NumericValue(FilePosition),
     // StringFormatSpeedate{
     //     speedate_error: speedate::ParseError,
     //     loc: Location,
@@ -34,13 +38,7 @@ pub enum FleeceError {
     ArrayEnd,
     ObjectEnd,
     EndReached,
-    UnknownError(Location),
-}
-
-impl From<ErrorInfo> for FleeceError {
-    fn from(err: ErrorInfo) -> Self {
-        FleeceError::JsonError(err)
-    }
+    UnknownError(FilePosition),
 }
 
 pub type FleeceResult<T> = Result<T, FleeceError>;
@@ -67,25 +65,25 @@ impl<'a> Fleece<'a> {
     }
 
     pub fn next_null(&mut self) -> FleeceResult<()> {
-        let chunk = self.parser.next_value()?;
-        match chunk.element {
+        let element = self.parser.next_value().map_err(|e| self.map_err(e))?;
+        match element {
             Element::Null => Ok(()),
-            _ => Err(wrong_type(JsonType::Null, chunk))
+            _ => Err(self.wrong_type(JsonType::Null, element))
         }
     }
 
     pub fn next_bool_strict(&mut self) -> FleeceResult<bool> {
-        let chunk = self.parser.next_value()?;
-        match chunk.element {
+        let element = self.parser.next_value().map_err(|e| self.map_err(e))?;
+        match element {
             Element::True => Ok(true),
             Element::False => Ok(false),
-            _ => Err(wrong_type(JsonType::Bool, chunk))
+            _ => Err(self.wrong_type(JsonType::Bool, element))
         }
     }
 
     pub fn next_bool_lax(&mut self) -> FleeceResult<bool> {
-        let chunk = self.parser.next_value()?;
-        match chunk.element {
+        let element = self.parser.next_value().map_err(|e| self.map_err(e))?;
+        match element {
             Element::True => Ok(true),
             Element::False => Ok(false),
             Element::String(range) => {
@@ -109,7 +107,7 @@ impl<'a> Fleece<'a> {
                 {
                     Ok(true)
                 } else {
-                    Err(FleeceError::StringFormat(chunk.loc))
+                    Err(FleeceError::StringFormat(FilePosition::new(0, 0)))
                 }
             },
             Element::Int {positive, range, ..} => {
@@ -119,21 +117,21 @@ impl<'a> Fleece<'a> {
                 } else if positive && bytes == b"1" {
                     Ok(true)
                 } else {
-                    Err(FleeceError::NumericValue(chunk.loc))
+                    Err(FleeceError::NumericValue(FilePosition::new(0, 0)))
                 }
             }
             // TODO float
-            _ => Err(wrong_type(JsonType::Bool, chunk))
+            _ => Err(self.wrong_type(JsonType::Bool, element))
         }
     }
 
     pub fn next_int_strict(&mut self) -> FleeceResult<i64> {
-        let chunk = self.parser.next_value()?;
-        match chunk.element {
+        let element = self.parser.next_value().map_err(|e| self.map_err(e))?;
+        match element {
             Element::Int {positive, range, exponent} => {
-                Ok(self.decoder.decode_int(positive, range, exponent, chunk.loc)?)
+                self.decoder.decode_int(positive, range, exponent).map_err(|e| self.map_err(e))
             },
-            _ => Err(wrong_type(JsonType::Int, chunk))
+            _ => Err(self.wrong_type(JsonType::Int, element))
         }
     }
 
@@ -142,44 +140,44 @@ impl<'a> Fleece<'a> {
     }
 
     pub fn next_float_strict(&mut self) -> FleeceResult<f64> {
-        let chunk = self.parser.next_value()?;
-        match chunk.element {
+        let element = self.parser.next_value().map_err(|e| self.map_err(e))?;
+        match element {
             Element::Float {positive, int_range, decimal_range, exponent} => {
-                Ok(self.decoder.decode_float(positive, int_range, decimal_range, exponent, chunk.loc)?)
+                self.decoder.decode_float(positive, int_range, decimal_range, exponent).map_err(|e| self.map_err(e))
             },
-            _ => Err(wrong_type(JsonType::Float, chunk))
+            _ => Err(self.wrong_type(JsonType::Float, element))
         }
     }
 
     pub fn next_float_lax(&mut self) -> FleeceResult<f64> {
-        let chunk = self.parser.next_value()?;
-        match chunk.element {
+        let element = self.parser.next_value().map_err(|e| self.map_err(e))?;
+        match element {
             Element::Float {positive, int_range, decimal_range, exponent} => {
-                Ok(self.decoder.decode_float(positive, int_range, decimal_range, exponent, chunk.loc)?)
+                self.decoder.decode_float(positive, int_range, decimal_range, exponent).map_err(|e| self.map_err(e))
             },
             Element::Int {positive, range, exponent} => {
-                let int = self.decoder.decode_int(positive, range, exponent, chunk.loc)?;
+                let int = self.decoder.decode_int(positive, range, exponent).map_err(|e| self.map_err(e))?;
                 Ok(int as f64)
             },
-            _ => Err(wrong_type(JsonType::Float, chunk))
+            _ => Err(self.wrong_type(JsonType::Float, element))
         }
     }
 
     pub fn next_str(&mut self) -> FleeceResult<String> {
-        let chunk = self.parser.next_value()?;
-        match chunk.element {
+        let element = self.parser.next_value().map_err(|e| self.map_err(e))?;
+        match element {
             Element::String(range) => {
-                Ok(self.decoder.decode_string(range, chunk.loc)?)
+                self.decoder.decode_string(range).map_err(|e| self.map_err(e))
             },
-            _ => Err(wrong_type(JsonType::String, chunk))
+            _ => Err(self.wrong_type(JsonType::String, element))
         }
     }
 
     pub fn next_bytes(&mut self) -> FleeceResult<&[u8]> {
-        let chunk = self.parser.next_value()?;
-        match chunk.element {
+        let element = self.parser.next_value().map_err(|e| self.map_err(e))?;
+        match element {
             Element::String(range) => Ok(&self.data[range]),
-            _ => Err(wrong_type(JsonType::String, chunk))
+            _ => Err(self.wrong_type(JsonType::String, element))
         }
     }
 
@@ -197,97 +195,111 @@ impl<'a> Fleece<'a> {
     // }
 
     pub fn next_value(&mut self) -> FleeceResult<JsonValue> {
-        let chunk = self.parser.next_value()?;
-        Ok(take_value(chunk, &mut self.parser, &self.decoder)?)
+        let element = self.parser.next_value().map_err(|e| self.map_err(e))?;
+        take_value(element, &mut self.parser, &self.decoder).map_err(|e| self.map_err(e))
     }
 
     pub fn next_array(&mut self) -> FleeceResult<bool> {
-        let chunk = self.parser.next_value()?;
-        match chunk.element {
-            Element::ArrayStart => Ok(self.parser.array_first()?),
-            _ => Err(wrong_type(JsonType::Array, chunk))
+        let element = self.parser.next_value().map_err(|e| self.map_err(e))?;
+        match element {
+            Element::ArrayStart => self.parser.array_first().map_err(|e| self.map_err(e)),
+            _ => Err(self.wrong_type(JsonType::Array, element))
         }
     }
 
     pub fn array_step(&mut self) -> FleeceResult<bool> {
-        Ok(self.parser.array_step()?)
+        self.parser.array_step().map_err(|e| self.map_err(e))
     }
 
     pub fn next_object(&mut self) -> FleeceResult<Option<String>> {
-        let chunk = self.parser.next_value()?;
-        match chunk.element {
+        let element = self.parser.next_value().map_err(|e| self.map_err(e))?;
+        match element {
             Element::ObjectStart => {
-                match self.parser.object_first() {
-                    Ok(Some(key)) => Ok(Some(self.decoder.decode_string(key.range, key.loc)?)),
-                    Ok(None) => Ok(None),
-                    Err(e) => Err(e.into())
-                }
+                let result = self.parser.object_first();
+                self.key_result(result)
             },
-            _ => Err(wrong_type(JsonType::Object, chunk))
+            _ => Err(self.wrong_type(JsonType::Object, element))
         }
     }
 
     pub fn next_key(&mut self) -> FleeceResult<Option<String>> {
-        match self.parser.object_step() {
-            Ok(Some(key)) => Ok(Some(self.decoder.decode_string(key.range, key.loc)?)),
-            Ok(None) => Ok(None),
-            Err(e) => Err(e.into())
-        }
+        let result = self.parser.object_step();
+        self.key_result(result)
     }
 
     pub fn finish(&mut self) -> FleeceResult<()> {
-        Ok(self.parser.finish()?)
+        self.parser.finish().map_err(|e| self.map_err(e))
+    }
+
+    fn key_result(&self, result: JsonResult<Option<Range<usize>>>) -> FleeceResult<Option<String>> {
+        match result {
+            Ok(Some(key)) => {
+                let s = self.decoder.decode_string(key).map_err(|e| self.map_err(e))?;
+                Ok(Some(s))
+            },
+            Ok(None) => Ok(None),
+            Err(e) => Err(self.map_err(e))
+        }
+    }
+
+    fn map_err(&self, error: JsonError) -> FleeceError {
+        FleeceError::JsonError{
+            error,
+            position: self.parser.current_position()
+        }
+    }
+
+    fn wrong_type(&self, expected: JsonType, element: Element) -> FleeceError {
+        let position = self.parser.last_position();
+        match element {
+            Element::ArrayEnd => FleeceError::ArrayEnd,
+            Element::ObjectEnd => FleeceError::ObjectEnd,
+            Element::ArrayStart => FleeceError::WrongType {
+                expected,
+                actual: Some(JsonType::Array),
+                position,
+            },
+            Element::ObjectStart => FleeceError::WrongType {
+                expected,
+                actual: Some(JsonType::Object),
+                position,
+            },
+            Element::True => FleeceError::WrongType {
+                expected,
+                actual: Some(JsonType::Bool),
+                position,
+            },
+            Element::False => FleeceError::WrongType {
+                expected,
+                actual: Some(JsonType::Bool),
+                position,
+            },
+            Element::Null => FleeceError::WrongType {
+                expected,
+                actual: Some(JsonType::Null),
+                position,
+            },
+            Element::Key(_) => FleeceError::WrongType {
+                expected,
+                actual: Some(JsonType::Key),
+                position,
+            },
+            Element::String(_) => FleeceError::WrongType {
+                expected,
+                actual: Some(JsonType::String),
+                position,
+            },
+            Element::Int{..} => FleeceError::WrongType {
+                expected,
+                actual: Some(JsonType::Int),
+                position,
+            },
+            Element::Float{..} => FleeceError::WrongType {
+                expected,
+                actual: Some(JsonType::Float),
+                position,
+            },
+        }
     }
 }
 
-fn wrong_type(expected: JsonType, chunk: ElementInfo) -> FleeceError {
-    match chunk.element {
-        Element::ArrayEnd => FleeceError::ArrayEnd,
-        Element::ObjectEnd => FleeceError::ObjectEnd,
-        Element::ArrayStart => FleeceError::WrongType {
-            expected,
-            actual: Some(JsonType::Array),
-            loc: chunk.loc
-        },
-        Element::ObjectStart => FleeceError::WrongType {
-            expected,
-            actual: Some(JsonType::Object),
-            loc: chunk.loc
-        },
-        Element::True => FleeceError::WrongType {
-            expected,
-            actual: Some(JsonType::Bool),
-            loc: chunk.loc
-        },
-        Element::False => FleeceError::WrongType {
-            expected,
-            actual: Some(JsonType::Bool),
-            loc: chunk.loc
-        },
-        Element::Null => FleeceError::WrongType {
-            expected,
-            actual: Some(JsonType::Null),
-            loc: chunk.loc
-        },
-        Element::Key(_) => FleeceError::WrongType {
-            expected,
-            actual: Some(JsonType::Key),
-            loc: chunk.loc
-        },
-        Element::String(_) => FleeceError::WrongType {
-            expected,
-            actual: Some(JsonType::String),
-            loc: chunk.loc
-        },
-        Element::Int{..} => FleeceError::WrongType {
-            expected,
-            actual: Some(JsonType::Int),
-            loc: chunk.loc
-        },
-        Element::Float{..} => FleeceError::WrongType {
-            expected,
-            actual: Some(JsonType::Float),
-            loc: chunk.loc
-        },
-    }
-}
