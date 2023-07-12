@@ -2,7 +2,7 @@
 #![feature(core_intrinsics)]
 
 mod decode;
-// mod decoder;
+mod decoder;
 mod fleece;
 mod parse;
 mod value;
@@ -10,6 +10,7 @@ mod value;
 use std::fmt;
 
 pub use decode::Decoder;
+pub use decoder::{DecodeStringRange, DecodeStringString};
 pub use fleece::{Fleece, FleeceResult, FleeceError, JsonType};
 pub use parse::{Parser, Peak, Number, JsonError, JsonResult};
 pub use value::{JsonArray, JsonObject, JsonValue};
