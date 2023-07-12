@@ -3,7 +3,8 @@ use std::ops::Range;
 // use num_bigint::BigInt;
 // use speedate::{Date, Time, DateTime, Duration};
 
-use crate::{Decoder, Element, FilePosition, JsonError, JsonResult, JsonValue, Parser};
+use crate::{Decoder, FilePosition, JsonError, JsonResult, JsonValue, Parser};
+use crate::parse::{Number, Peak};
 use crate::value::take_value;
 
 #[derive(Debug, Eq, PartialEq)]
@@ -64,28 +65,38 @@ impl<'a> Fleece<'a> {
     }
 
     pub fn next_null(&mut self) -> FleeceResult<()> {
-        let element = self.parser.next_value().map_err(|e| self.map_err(e))?;
-        match element {
-            Element::Null => Ok(()),
-            _ => Err(self.wrong_type(JsonType::Null, element))
+        let peak = self.parser.peak().map_err(|e| self.map_err(e))?;
+        match peak {
+            Peak::Null => {
+                self.parser.consume_null().map_err(|e| self.map_err(e))?;
+                Ok(())
+            },
+            _ => Err(self.wrong_type(JsonType::Null, peak))
         }
     }
 
     pub fn next_bool_strict(&mut self) -> FleeceResult<bool> {
-        let element = self.parser.next_value().map_err(|e| self.map_err(e))?;
-        match element {
-            Element::True => Ok(true),
-            Element::False => Ok(false),
-            _ => Err(self.wrong_type(JsonType::Bool, element))
+        let peak = self.parser.peak().map_err(|e| self.map_err(e))?;
+        match peak {
+            Peak::True => {
+                self.parser.consume_true().map_err(|e| self.map_err(e))?;
+                Ok(true)
+            },
+            Peak::False => {
+                self.parser.consume_false().map_err(|e| self.map_err(e))?;
+                Ok(false)
+            },
+            _ => Err(self.wrong_type(JsonType::Bool, peak))
         }
     }
 
     pub fn next_bool_lax(&mut self) -> FleeceResult<bool> {
-        let element = self.parser.next_value().map_err(|e| self.map_err(e))?;
-        match element {
-            Element::True => Ok(true),
-            Element::False => Ok(false),
-            Element::String(range) => {
+        let peak = self.parser.peak().map_err(|e| self.map_err(e))?;
+        match peak {
+            Peak::True => Ok(true),
+            Peak::False => Ok(false),
+            Peak::String => {
+                let range = self.parser.consume_string_range().map_err(|e| self.map_err(e))?;
                 let bytes = &self.data[range];
                 // matches pydantic
 
@@ -109,28 +120,35 @@ impl<'a> Fleece<'a> {
                     Err(FleeceError::StringFormat(FilePosition::new(0, 0)))
                 }
             },
-            Element::Int {positive, range, ..} => {
-                let bytes = &self.data[range];
-                if bytes == b"0" {
-                    Ok(false)
-                } else if positive && bytes == b"1" {
-                    Ok(true)
-                } else {
-                    Err(FleeceError::NumericValue(FilePosition::new(0, 0)))
-                }
-            }
+            // Peak::NumPos => {
+            //     let bytes = &self.data[range];
+            //     if bytes == b"0" {
+            //         Ok(false)
+            //     } else if positive && bytes == b"1" {
+            //         Ok(true)
+            //     } else {
+            //         Err(FleeceError::NumericValue(FilePosition::new(0, 0)))
+            //     }
+            // }
             // TODO float
-            _ => Err(self.wrong_type(JsonType::Bool, element))
+            _ => Err(self.wrong_type(JsonType::Bool, peak))
         }
     }
 
     pub fn next_int_strict(&mut self) -> FleeceResult<i64> {
-        let element = self.parser.next_value().map_err(|e| self.map_err(e))?;
-        match element {
-            Element::Int {positive, range, exponent} => {
+        let peak = self.parser.peak().map_err(|e| self.map_err(e))?;
+        let number = match peak {
+            Peak::NumPos => self.parser.next_number(true).map_err(|e| self.map_err(e))?,
+            Peak::NumNeg => self.parser.next_number(false).map_err(|e| self.map_err(e))?,
+            _ => return Err(self.wrong_type(JsonType::Int, peak))
+        };
+        match number {
+            Number::Int {positive, range, exponent} => {
                 self.decoder.decode_int(positive, range, exponent).map_err(|e| self.map_err(e))
-            },
-            _ => Err(self.wrong_type(JsonType::Int, element))
+            }
+            Number::Float {..} => {
+                Err(self.wrong_type(JsonType::Int, peak))
+            }
         }
     }
 
@@ -139,44 +157,58 @@ impl<'a> Fleece<'a> {
     }
 
     pub fn next_float_strict(&mut self) -> FleeceResult<f64> {
-        let element = self.parser.next_value().map_err(|e| self.map_err(e))?;
-        match element {
-            Element::Float {positive, int_range, decimal_range, exponent} => {
+        let peak = self.parser.peak().map_err(|e| self.map_err(e))?;
+
+        let number = match peak {
+            Peak::NumPos => self.parser.next_number(true).map_err(|e| self.map_err(e))?,
+            Peak::NumNeg => self.parser.next_number(false).map_err(|e| self.map_err(e))?,
+            _ => return Err(self.wrong_type(JsonType::Float, peak))
+        };
+        match number {
+            Number::Int {..} => Err(self.wrong_type(JsonType::Float, peak)),
+            Number::Float { positive, int_range, decimal_range, exponent } => {
                 self.decoder.decode_float(positive, int_range, decimal_range, exponent).map_err(|e| self.map_err(e))
-            },
-            _ => Err(self.wrong_type(JsonType::Float, element))
+            }
         }
     }
 
     pub fn next_float_lax(&mut self) -> FleeceResult<f64> {
-        let element = self.parser.next_value().map_err(|e| self.map_err(e))?;
-        match element {
-            Element::Float {positive, int_range, decimal_range, exponent} => {
-                self.decoder.decode_float(positive, int_range, decimal_range, exponent).map_err(|e| self.map_err(e))
-            },
-            Element::Int {positive, range, exponent} => {
+        let peak = self.parser.peak().map_err(|e| self.map_err(e))?;
+        let number = match peak {
+            Peak::NumPos => self.parser.next_number(true).map_err(|e| self.map_err(e))?,
+            Peak::NumNeg => self.parser.next_number(false).map_err(|e| self.map_err(e))?,
+            _ => return Err(self.wrong_type(JsonType::Float, peak))
+        };
+        match number {
+            Number::Int {positive, range, exponent} => {
                 let int = self.decoder.decode_int(positive, range, exponent).map_err(|e| self.map_err(e))?;
                 Ok(int as f64)
-            },
-            _ => Err(self.wrong_type(JsonType::Float, element))
+            }
+            Number::Float { positive, int_range, decimal_range, exponent } => {
+                self.decoder.decode_float(positive, int_range, decimal_range, exponent).map_err(|e| self.map_err(e))
+            }
         }
     }
 
     pub fn next_str(&mut self) -> FleeceResult<String> {
-        let element = self.parser.next_value().map_err(|e| self.map_err(e))?;
-        match element {
-            Element::String(range) => {
+        let peak = self.parser.peak().map_err(|e| self.map_err(e))?;
+        match peak {
+            Peak::String => {
+                let range = self.parser.consume_string_range().map_err(|e| self.map_err(e))?;
                 self.decoder.decode_string(range).map_err(|e| self.map_err(e))
             },
-            _ => Err(self.wrong_type(JsonType::String, element))
+            _ => Err(self.wrong_type(JsonType::String, peak))
         }
     }
 
     pub fn next_bytes(&mut self) -> FleeceResult<&[u8]> {
-        let element = self.parser.next_value().map_err(|e| self.map_err(e))?;
-        match element {
-            Element::String(range) => Ok(&self.data[range]),
-            _ => Err(self.wrong_type(JsonType::String, element))
+        let peak = self.parser.peak().map_err(|e| self.map_err(e))?;
+        match peak {
+            Peak::String => {
+                let range = self.parser.consume_string_range().map_err(|e| self.map_err(e))?;
+                Ok(&self.data[range])
+            },
+            _ => Err(self.wrong_type(JsonType::String, peak))
         }
     }
 
@@ -194,15 +226,15 @@ impl<'a> Fleece<'a> {
     // }
 
     pub fn next_value(&mut self) -> FleeceResult<JsonValue> {
-        let element = self.parser.next_value().map_err(|e| self.map_err(e))?;
-        take_value(element, &mut self.parser, &self.decoder).map_err(|e| self.map_err(e))
+        let peak = self.parser.peak().map_err(|e| self.map_err(e))?;
+        take_value(peak, &mut self.parser, &self.decoder).map_err(|e| self.map_err(e))
     }
 
     pub fn next_array(&mut self) -> FleeceResult<bool> {
-        let element = self.parser.next_value().map_err(|e| self.map_err(e))?;
-        match element {
-            Element::ArrayStart => self.parser.array_first().map_err(|e| self.map_err(e)),
-            _ => Err(self.wrong_type(JsonType::Array, element))
+        let peak = self.parser.peak().map_err(|e| self.map_err(e))?;
+        match peak {
+            Peak::Array => self.parser.array_first().map_err(|e| self.map_err(e)),
+            _ => Err(self.wrong_type(JsonType::Array, peak))
         }
     }
 
@@ -211,13 +243,13 @@ impl<'a> Fleece<'a> {
     }
 
     pub fn next_object(&mut self) -> FleeceResult<Option<String>> {
-        let element = self.parser.next_value().map_err(|e| self.map_err(e))?;
-        match element {
-            Element::ObjectStart => {
+        let peak = self.parser.peak().map_err(|e| self.map_err(e))?;
+        match peak {
+            Peak::Object => {
                 let result = self.parser.object_first();
                 self.key_result(result)
             },
-            _ => Err(self.wrong_type(JsonType::Object, element))
+            _ => Err(self.wrong_type(JsonType::Object, peak))
         }
     }
 
@@ -242,55 +274,61 @@ impl<'a> Fleece<'a> {
     }
 
     fn map_err(&self, error: JsonError) -> FleeceError {
-        FleeceError::JsonError{
+        FleeceError::JsonError {
             error,
             position: self.parser.current_position()
         }
     }
 
-    fn wrong_type(&self, expected: JsonType, element: Element) -> FleeceError {
-        let position = self.parser.last_position();
-        match element {
-            Element::ArrayStart => FleeceError::WrongType {
-                expected,
-                actual: JsonType::Array,
-                position,
-            },
-            Element::ObjectStart => FleeceError::WrongType {
-                expected,
-                actual: JsonType::Object,
-                position,
-            },
-            Element::True => FleeceError::WrongType {
+    fn wrong_type(&self, expected: JsonType, peak: Peak) -> FleeceError {
+        let position = self.parser.current_position();
+        match peak {
+            Peak::True | Peak::False => FleeceError::WrongType {
                 expected,
                 actual: JsonType::Bool,
                 position,
             },
-            Element::False => FleeceError::WrongType {
-                expected,
-                actual: JsonType::Bool,
-                position,
-            },
-            Element::Null => FleeceError::WrongType {
+            Peak::Null => FleeceError::WrongType {
                 expected,
                 actual: JsonType::Null,
                 position,
             },
-            Element::String(_) => FleeceError::WrongType {
+            Peak::String => FleeceError::WrongType {
                 expected,
                 actual: JsonType::String,
                 position,
             },
-            Element::Int{..} => FleeceError::WrongType {
+            Peak::NumPos => self.wrong_num(true, expected),
+            Peak::NumNeg => self.wrong_num(false, expected),
+            Peak::Array => FleeceError::WrongType {
                 expected,
-                actual: JsonType::Int,
+                actual: JsonType::Array,
                 position,
             },
-            Element::Float{..} => FleeceError::WrongType {
+            Peak::Object => FleeceError::WrongType {
                 expected,
-                actual: JsonType::Float,
+                actual: JsonType::Object,
                 position,
             },
+        }
+    }
+
+    fn wrong_num(&self, positive: bool, expected: JsonType) -> FleeceError {
+        let mut parser2 = self.parser.clone();
+        let actual = match parser2.next_number(positive) {
+            Ok(Number::Int {..}) => JsonType::Int,
+            Ok(Number::Float {..}) => JsonType::Float,
+            Err(e) => return {
+                FleeceError::JsonError {
+                    error: e,
+                    position: parser2.current_position()
+                }
+            }
+        };
+        FleeceError::WrongType {
+            expected,
+            actual,
+            position: self.parser.current_position(),
         }
     }
 }

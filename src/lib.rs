@@ -12,7 +12,7 @@ use std::fmt;
 pub use decode::Decoder;
 pub use element::{Element, JsonError, JsonResult};
 pub use fleece::{Fleece, FleeceResult, FleeceError, JsonType};
-pub use parse::Parser;
+pub use parse::{Parser, Peak, Number};
 pub use value::{JsonArray, JsonObject, JsonValue};
 
 
