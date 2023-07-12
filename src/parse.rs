@@ -68,7 +68,7 @@ impl<'a> Parser<'a> {
                 _ => return Err(JsonError::UnexpectedCharacter),
             }
         }
-        Err(JsonError::End)
+        Err(JsonError::UnexpectedEnd)
     }
 
     pub fn array_first(&mut self) -> JsonResult<bool> {
@@ -104,7 +104,7 @@ impl<'a> Parser<'a> {
                 _ => return Err(JsonError::UnexpectedCharacter),
             }
         }
-        Err(JsonError::End)
+        Err(JsonError::UnexpectedEnd)
     }
 
     pub fn object_first(&mut self) -> JsonResult<Option<Range<usize>>> {

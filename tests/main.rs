@@ -6,11 +6,7 @@ use donervan::{Decoder, Element, Fleece, FleeceError, JsonError, JsonType, JsonR
 
 fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
     let mut v = Vec::new();
-    let element = match parser.next_value() {
-        Ok(elin) => elin,
-        Err(JsonError::End) => return Ok(v),
-        Err(e) => return Err(e)
-    };
+    let element = parser.next_value()?;
     v.push(format!("{element} @ {}", parser.last_position()));
     match element {
         Element::ArrayStart => {
@@ -38,7 +34,6 @@ fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
             }
             v.push("}".to_string());
         }
-        Element::ObjectEnd | Element::ArrayEnd | Element::Key(_) => panic!("{element:?} @ {}", parser.last_position()),
         _ => ()
     };
     Ok(v)

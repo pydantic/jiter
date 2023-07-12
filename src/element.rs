@@ -22,13 +22,10 @@ impl fmt::Display for Exponent {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Element {
     ObjectStart,
-    ObjectEnd,
     ArrayStart,
-    ArrayEnd,
     True,
     False,
     Null,
-    Key(Range<usize>),
     String(Range<usize>),
     Int {
         positive: bool,
@@ -43,23 +40,14 @@ pub enum Element {
     },
 }
 
-impl Default for Element {
-    fn default() -> Self {
-        Element::Null
-    }
-}
-
 impl fmt::Display for Element {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::ObjectStart => write!(f, "{{"),
-            Self::ObjectEnd => write!(f, "}}"),
             Self::ArrayStart => write!(f, "["),
-            Self::ArrayEnd => write!(f, "]"),
             Self::True => write!(f, "true"),
             Self::False => write!(f, "false"),
             Self::Null => write!(f, "null"),
-            Self::Key(range) => write!(f, "Key({:?})", range),
             Self::String(range) => write!(f, "String({:?})", range),
             Self::Int {
                 positive,
@@ -93,11 +81,6 @@ impl fmt::Display for Element {
 pub enum JsonError {
     UnexpectedCharacter,
     UnexpectedEnd,
-    ExpectingColon,
-    ExpectingArrayNext,
-    ExpectingObjectNext,
-    ExpectingKey,
-    ExpectingValue,
     InvalidTrue,
     InvalidFalse,
     InvalidNull,
@@ -106,7 +89,6 @@ pub enum JsonError {
     InvalidNumber,
     IntTooLarge,
     InternalError,
-    End,
 }
 
 pub type JsonResult<T> = Result<T, JsonError>;

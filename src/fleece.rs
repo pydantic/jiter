@@ -252,8 +252,6 @@ impl<'a> Fleece<'a> {
     fn wrong_type(&self, expected: JsonType, element: Element) -> FleeceError {
         let position = self.parser.last_position();
         match element {
-            Element::ArrayEnd => FleeceError::ArrayEnd,
-            Element::ObjectEnd => FleeceError::ObjectEnd,
             Element::ArrayStart => FleeceError::WrongType {
                 expected,
                 actual: Some(JsonType::Array),
@@ -277,11 +275,6 @@ impl<'a> Fleece<'a> {
             Element::Null => FleeceError::WrongType {
                 expected,
                 actual: Some(JsonType::Null),
-                position,
-            },
-            Element::Key(_) => FleeceError::WrongType {
-                expected,
-                actual: Some(JsonType::Key),
                 position,
             },
             Element::String(_) => FleeceError::WrongType {

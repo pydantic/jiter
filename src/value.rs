@@ -107,6 +107,5 @@ pub(crate) fn take_value(
 
             Ok(JsonValue::Object(object))
         }
-        Element::ObjectEnd | Element::ArrayEnd | Element::Key(_) => unreachable!("{:?}", element),
     }
 }
