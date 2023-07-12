@@ -2,7 +2,7 @@ use indexmap::indexmap;
 use std::fs::File;
 use std::io::Read;
 
-use donervan::{Decoder, Peak, Fleece, FleeceError, JsonError, JsonType, JsonResult, JsonValue, Parser, FilePosition, Number};
+use donervan::{Decoder, Peak, Fleece, FleeceError, JsonError, JsonType, JsonResult, JsonValue, Parser, FilePosition, Number, DecodeStringRange, DecodeStringString};
 
 fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
     let mut v = Vec::new();
@@ -23,7 +23,7 @@ fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
             v.push(format!("null @ {position}"));
         },
         Peak::String => {
-            let range = parser.consume_string_range()?;
+            let range = parser.consume_string::<DecodeStringRange>()?;
             v.push(format!("String({range:?}) @ {position}"));
         }
         Peak::NumPos => v.push(display_number(true, parser)?),
@@ -43,11 +43,11 @@ fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
         }
         Peak::Object => {
             v.push(format!("{{ @ {position}"));
-            if let Some(key) = parser.object_first()? {
+            if let Some(key) = parser.object_first::<DecodeStringRange>()? {
                 v.push(format!("Key({key:?})"));
                 let value_vec = json_vec(parser)?;
                 v.extend(value_vec);
-                while let Some(key) = parser.object_step()? {
+                while let Some(key) = parser.object_step::<DecodeStringRange>()? {
                     v.push(format!("Key({key:?}"));
                     let value_vec = json_vec(parser)?;
                     v.extend(value_vec);
@@ -153,7 +153,7 @@ fn invalid_string_controls() {
     let mut parser = Parser::new(b);
     let peak = parser.peak().unwrap();
     assert!(matches!(peak, Peak::String));
-    let range = parser.consume_string_range().unwrap();
+    let range = parser.consume_string::<DecodeStringRange>().unwrap();
     let result = Decoder::new(b).decode_string(range);
     match result {
         Ok(t) => panic!("unexpectedly valid: {:?} -> {:?}", json, t),
@@ -177,8 +177,7 @@ fn json_parse_str() {
     assert!(matches!(peak, Peak::String));
     assert_eq!(parser.current_position(), FilePosition::new(1, 2));
 
-    let range = parser.consume_string_range().unwrap();
-    let result_string = Decoder::new(data).decode_string(range).unwrap();
+    let result_string = parser.consume_string::<DecodeStringString>().unwrap();
     assert_eq!(result_string, "foobar");
     parser.finish().unwrap();
 }
@@ -193,8 +192,7 @@ macro_rules! string_tests {
                     let mut parser = Parser::new(data);
                     let peak = parser.peak().unwrap();
                     assert!(matches!(peak, Peak::String));
-                    let range = parser.consume_string_range().unwrap();
-                    let result_string = Decoder::new(data).decode_string(range).unwrap();
+                    let result_string = parser.consume_string::<DecodeStringString>().unwrap();
                     assert_eq!(result_string, $expected);
                     parser.finish().unwrap();
                 }
@@ -204,14 +202,49 @@ macro_rules! string_tests {
 }
 
 string_tests! {
-    simple: r#""foobar""# => "foobar";
-    newline: "\"foo\\nbar\"" => "foo\nbar";
-    pound_sign: "\"\\u00a3\"" => "£";
-    double_quote: r#""\"""# => r#"""#;
+    simple: r#"  "foobar"  "# => "foobar";
+    newline: r#"  "foo\nbar"  "# => "foo\nbar";
+    pound_sign: r#"  "\u00a3"  "# => "£";
+    double_quote: r#"  "\""  "# => r#"""#;
     backslash: r#""\\""# => r#"\"#;
     controls: "\"\\b\\f\\n\\r\\t\"" => "\u{8}\u{c}\n\r\t";
     controls_python: "\"\\b\\f\\n\\r\\t\"" => "\x08\x0c\n\r\t";  // python notation for the same thing
 }
+
+#[test]
+fn test_key_str() {
+    let json = r#"{"foo": "bar"}"#;
+    let mut parser = Parser::new(json.as_bytes());
+    let p = parser.peak().unwrap();
+    assert!(matches!(p, Peak::Object));
+    let k = parser.object_first::<DecodeStringString>().unwrap();
+    assert_eq!(k, Some("foo".to_string()));
+    let p = parser.peak().unwrap();
+    assert!(matches!(p, Peak::String));
+    let v = parser.consume_string::<DecodeStringString>().unwrap();
+    assert_eq!(v, "bar");
+    let next_key = parser.object_step::<DecodeStringString>().unwrap();
+    assert!(next_key.is_none());
+    parser.finish().unwrap();
+}
+
+#[test]
+fn test_key_bytes() {
+    let json = r#"{"foo": "bar"}"#.as_bytes();
+    let mut parser = Parser::new(json);
+    let p = parser.peak().unwrap();
+    assert!(matches!(p, Peak::Object));
+    let k = parser.object_first::<DecodeStringRange>().unwrap().unwrap();
+    assert_eq!(json[k], *b"foo");
+    let p = parser.peak().unwrap();
+    assert!(matches!(p, Peak::String));
+    let v = parser.consume_string::<DecodeStringRange>().unwrap();
+    assert_eq!(json[v], *b"bar");
+    let next_key = parser.object_step::<DecodeStringString>().unwrap();
+    assert!(next_key.is_none());
+    parser.finish().unwrap();
+}
+
 
 macro_rules! test_position {
     ($($name:ident: $data:literal, $find:literal, $expected:expr;)*) => {
@@ -289,7 +322,7 @@ test_position! {
 // }
 
 #[test]
-fn parse_value() {
+fn parse_object() {
     let json = r#"{"foo": "bar", "spam": [1, null, true]}"#;
     let v = JsonValue::parse(json.as_bytes()).unwrap();
     assert_eq!(

@@ -2,6 +2,7 @@ use indexmap::IndexMap;
 
 use crate::decode::Decoder;
 use crate::{FilePosition, JsonError};
+use crate::decoder::DecodeStringString;
 use crate::parse::{Number, Parser, Peak, JsonResult};
 
 /// similar to serde `Value` but with int and float split
@@ -62,8 +63,7 @@ pub(crate) fn take_value(
             Ok(JsonValue::Null)
         },
         Peak::String => {
-            let range = parser.consume_string_range()?;
-            let s = decoder.decode_string(range)?;
+            let s = parser.consume_string::<DecodeStringString>()?;
             Ok(JsonValue::String(s))
         }
         Peak::NumPos => parse_number(true, parser, decoder),
@@ -86,13 +86,11 @@ pub(crate) fn take_value(
         Peak::Object => {
             // same for objects
             let mut object = IndexMap::new();
-            if let Some(key) = parser.object_first()? {
-                let key = decoder.decode_string(key)?;
+            if let Some(key) = parser.object_first::<DecodeStringString>()? {
                 let peak = parser.peak()?;
                 let value = take_value(peak, parser, decoder)?;
                 object.insert(key, value);
-                while let Some(key) = parser.object_step()? {
-                    let key = decoder.decode_string(key)?;
+                while let Some(key) = parser.object_step::<DecodeStringString>()? {
                     let peak = parser.peak()?;
                     let value = take_value(peak, parser, decoder)?;
                     object.insert(key, value);

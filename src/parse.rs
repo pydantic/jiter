@@ -5,6 +5,7 @@ use std::ops::Range;
 use strum::{Display, EnumMessage};
 
 use crate::FilePosition;
+use crate::decoder::DecodeString;
 
 #[derive(Debug, Clone)]
 pub struct Parser<'a> {
@@ -154,7 +155,7 @@ impl<'a> Parser<'a> {
         Err(JsonError::UnexpectedEnd)
     }
 
-    pub fn object_first(&mut self) -> JsonResult<Option<Range<usize>>> {
+    pub fn object_first<D: DecodeString>(&mut self) -> JsonResult<Option<D::Output>> {
         self.index += 1;
         while let Some(next) = self.data.get(self.index) {
             match next {
@@ -165,14 +166,14 @@ impl<'a> Parser<'a> {
                     self.index += 1;
                     return Ok(None);
                 },
-                b'"' => return self.object_key(),
+                b'"' => return self.object_key::<D>(),
                 _ => return Err(JsonError::UnexpectedCharacter),
             }
         }
         Err(JsonError::UnexpectedEnd)
     }
 
-    pub fn object_step(&mut self) -> JsonResult<Option<Range<usize>>> {
+    pub fn object_step<D: DecodeString>(&mut self) -> JsonResult<Option<D::Output>> {
         loop {
             if let Some(next) = self.data.get(self.index) {
                 match next {
@@ -184,7 +185,7 @@ impl<'a> Parser<'a> {
                         while let Some(next) = self.data.get(self.index) {
                             match next {
                                 b' ' | b'\r' | b'\t'| b'\n' => (),
-                                b'"' => return self.object_key(),
+                                b'"' => return self.object_key::<D>(),
                                 _ => return Err(JsonError::UnexpectedCharacter),
                             }
                             self.index += 1;
@@ -194,6 +195,26 @@ impl<'a> Parser<'a> {
                     b'}' => {
                         self.index += 1;
                         return Ok(None);
+                    },
+                    _ => return Err(JsonError::UnexpectedCharacter),
+                }
+            } else {
+                return Err(JsonError::UnexpectedEnd)
+            }
+        }
+    }
+
+    fn object_key<D: DecodeString>(&mut self) -> JsonResult<Option<D::Output>> {
+        let output = self.consume_string::<D>()?;
+        loop {
+            if let Some(next) = self.data.get(self.index) {
+                match next {
+                    b' ' | b'\r' | b'\t' | b'\n' => {
+                        self.index += 1
+                    }
+                    b':' => {
+                        self.index += 1;
+                        return Ok(Some(output));
                     },
                     _ => return Err(JsonError::UnexpectedCharacter),
                 }
@@ -213,26 +234,6 @@ impl<'a> Parser<'a> {
             }
         }
         Ok(())
-    }
-
-    fn object_key(&mut self) -> JsonResult<Option<Range<usize>>> {
-        let range = self.consume_string_range()?;
-        loop {
-            if let Some(next) = self.data.get(self.index) {
-                match next {
-                    b' ' | b'\r' | b'\t' | b'\n' => {
-                        self.index += 1
-                    }
-                    b':' => {
-                        self.index += 1;
-                        return Ok(Some(range));
-                    },
-                    _ => return Err(JsonError::UnexpectedCharacter),
-                }
-            } else {
-                return Err(JsonError::UnexpectedEnd)
-            }
-        }
     }
 
     pub fn consume_true(&mut self) -> JsonResult<()> {
@@ -293,28 +294,10 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn consume_string_range(&mut self) -> JsonResult<Range<usize>> {
-        self.index += 1;
-        let start = self.index;
-        while let Some(next) = self.data.get(self.index) {
-            match next {
-                b'"' => {
-                    let r = start..self.index;
-                    self.index += 1;
-                    return Ok(r);
-                }
-                b'\\' => {
-                    self.index += 2;
-                    // we don't do any further checks on the next character here,
-                    // instead we leave checks to string decoding
-                }
-                // similarly, we don't check for control characters here and just leave it to decoding
-                _ => {
-                    self.index += 1;
-                }
-            }
-        }
-        Err(JsonError::UnexpectedEnd)
+    pub fn consume_string<D: DecodeString>(&mut self) -> JsonResult<D::Output> {
+        let (output, index) = D::decode(self.data, self.index)?;
+        self.index = index;
+        Ok(output)
     }
 
     pub fn next_number(&mut self, positive: bool) -> JsonResult<Number> {

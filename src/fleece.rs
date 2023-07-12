@@ -1,9 +1,8 @@
-use std::ops::Range;
-
 // use num_bigint::BigInt;
 // use speedate::{Date, Time, DateTime, Duration};
 
-use crate::{Decoder, FilePosition, JsonError, JsonResult, JsonValue, Parser};
+use crate::{Decoder, FilePosition, JsonError, JsonValue, Parser};
+use crate::decoder::{DecodeStringRange, DecodeStringString};
 use crate::parse::{Number, Peak};
 use crate::value::take_value;
 
@@ -100,7 +99,7 @@ impl<'a> Fleece<'a> {
             Peak::True => Ok(true),
             Peak::False => Ok(false),
             Peak::String => {
-                let range = self.parser.consume_string_range().map_err(|e| self.map_err(e))?;
+                let range = self.parser.consume_string::<DecodeStringRange>().map_err(|e| self.map_err(e))?;
                 let bytes = &self.data[range];
                 // matches pydantic
 
@@ -203,15 +202,14 @@ impl<'a> Fleece<'a> {
     }
 
     pub fn known_string(&mut self) -> FleeceResult<String> {
-        let range = self.parser.consume_string_range().map_err(|e| self.map_err(e))?;
-        self.decoder.decode_string(range).map_err(|e| self.map_err(e))
+        self.parser.consume_string::<DecodeStringString>().map_err(|e| self.map_err(e))
     }
 
     pub fn next_bytes(&mut self) -> FleeceResult<&[u8]> {
         let peak = self.parser.peak().map_err(|e| self.map_err(e))?;
         match peak {
             Peak::String => {
-                let range = self.parser.consume_string_range().map_err(|e| self.map_err(e))?;
+                let range = self.parser.consume_string::<DecodeStringRange>().map_err(|e| self.map_err(e))?;
                 Ok(&self.data[range])
             },
             _ => Err(self.wrong_type(JsonType::String, peak))
@@ -256,31 +254,18 @@ impl<'a> Fleece<'a> {
         let peak = self.parser.peak().map_err(|e| self.map_err(e))?;
         match peak {
             Peak::Object => {
-                let result = self.parser.object_first();
-                self.key_result(result)
+                self.parser.object_first::<DecodeStringString>().map_err(|e| self.map_err(e))
             },
             _ => Err(self.wrong_type(JsonType::Object, peak))
         }
     }
 
     pub fn next_key(&mut self) -> FleeceResult<Option<String>> {
-        let result = self.parser.object_step();
-        self.key_result(result)
+        self.parser.object_step::<DecodeStringString>().map_err(|e| self.map_err(e))
     }
 
     pub fn finish(&mut self) -> FleeceResult<()> {
         self.parser.finish().map_err(|e| self.map_err(e))
-    }
-
-    fn key_result(&self, result: JsonResult<Option<Range<usize>>>) -> FleeceResult<Option<String>> {
-        match result {
-            Ok(Some(key)) => {
-                let s = self.decoder.decode_string(key).map_err(|e| self.map_err(e))?;
-                Ok(Some(s))
-            },
-            Ok(None) => Ok(None),
-            Err(e) => Err(self.map_err(e))
-        }
     }
 
     fn map_err(&self, error: JsonError) -> FleeceError {
@@ -342,4 +327,3 @@ impl<'a> Fleece<'a> {
         }
     }
 }
-
