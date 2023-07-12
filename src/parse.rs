@@ -203,18 +203,6 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn finish(&mut self) -> JsonResult<()> {
-        while let Some(next) = self.data.get(self.index) {
-            match next {
-                b' ' | b'\r' | b'\t' | b'\n' => {
-                    self.index += 1
-                }
-                _ => return Err(JsonError::UnexpectedCharacter),
-            }
-        }
-        Ok(())
-    }
-
     fn object_key(&mut self) -> JsonResult<Option<Range<usize>>> {
         let range = self.consume_string_range()?;
         loop {
@@ -233,6 +221,18 @@ impl<'a> Parser<'a> {
                 return Err(JsonError::UnexpectedEnd)
             }
         }
+    }
+
+    pub fn finish(&mut self) -> JsonResult<()> {
+        while let Some(next) = self.data.get(self.index) {
+            match next {
+                b' ' | b'\r' | b'\t' | b'\n' => {
+                    self.index += 1
+                }
+                _ => return Err(JsonError::UnexpectedCharacter),
+            }
+        }
+        Ok(())
     }
 
     pub fn consume_true(&mut self) -> JsonResult<()> {
@@ -315,6 +315,67 @@ impl<'a> Parser<'a> {
             }
         }
         Err(JsonError::UnexpectedEnd)
+    }
+
+    pub fn consume_string(&mut self) -> JsonResult<String> {
+        self.index += 1;
+        let mut chars = Vec::new();
+        while let Some(next) = self.data.get(self.index) {
+            match next {
+                b'"' => {
+                    self.index += 1;
+                    // return String::from_utf8(chars).map_err(|_| JsonError::InternalError)
+                    return Ok(unsafe { String::from_utf8_unchecked(chars) });
+                }
+                b'\\' => {
+                    self.index += 1;
+                    match self.data.get(self.index) {
+                        Some(b'"') | Some(b'\\') | Some(b'/') => chars.push(*next),
+                        Some(b'b') => chars.push(b'\x08'),
+                        Some(b'f') => chars.push(b'\x0C'),
+                        Some(b'n') => chars.push(b'\n'),
+                        Some(b'r') => chars.push(b'\r'),
+                        Some(b't') => chars.push(b'\t'),
+                        Some(b'u') => self.decode_hex_escape(&mut chars)?,
+                        Some(_) => return Err(JsonError::InvalidString(self.index)),
+                        None => return Err(JsonError::UnexpectedEnd),
+                    }
+                }
+                // 8 = backspace, 9 = tab, 10 = newline, 12 = formfeed, 13 = carriage return
+                8 | 9 | 10 | 12 | 13 => return Err(JsonError::InvalidString(self.index)),
+                _ => chars.push(*next),
+            }
+            self.index += 1;
+        }
+        Err(JsonError::UnexpectedEnd)
+    }
+
+    /// borrowed from serde-json unless we can do something faster?
+    fn decode_hex_escape(&mut self, chars: &mut Vec<u8>) -> JsonResult<()> {
+        let mut n = 0;
+        for _ in 0..4 {
+            self.index += 1;
+            let c = match self.data.get(self.index) {
+                Some(c) => *c,
+                None => return Err(JsonError::InvalidString(self.index)),
+            };
+            let hex = match c {
+                b'0'..=b'9' => (c & 0x0f) as u16,
+                b'a'..=b'f' => (c - b'a' + 10) as u16,
+                b'A'..=b'F' => (c - b'A' + 10) as u16,
+                _ => return Err(JsonError::InvalidStringEscapeSequence(self.index)),
+            };
+            n = (n << 4) + hex;
+        }
+        match char::from_u32(n as u32) {
+            Some(c) => {
+                for b in c.to_string().bytes() {
+                    chars.push(b);
+                }
+                Ok(())
+            }
+            None => Err(JsonError::InvalidString(self.index)),
+        }
     }
 
     pub fn next_number(&mut self, positive: bool) -> JsonResult<Number> {

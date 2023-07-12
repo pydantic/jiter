@@ -84,7 +84,8 @@ fn parse_string(data: &[u8], range: Range<usize>) -> JsonResult<String> {
         }
         index += 1;
     }
-    String::from_utf8(chars).map_err(|_| JsonError::InternalError)
+    Ok(unsafe { String::from_utf8_unchecked(chars) })
+    // String::from_utf8(chars).map_err(|_| JsonError::InternalError)
 }
 
 /// borrowed from serde-json unless we can do something faster?

@@ -2,6 +2,7 @@
 #![feature(core_intrinsics)]
 
 mod decode;
+// mod decoder;
 mod fleece;
 mod parse;
 mod value;

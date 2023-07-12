@@ -289,7 +289,7 @@ test_position! {
 // }
 
 #[test]
-fn parse_value() {
+fn parse_object() {
     let json = r#"{"foo": "bar", "spam": [1, null, true]}"#;
     let v = JsonValue::parse(json.as_bytes()).unwrap();
     assert_eq!(

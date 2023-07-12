@@ -62,8 +62,7 @@ pub(crate) fn take_value(
             Ok(JsonValue::Null)
         },
         Peak::String => {
-            let range = parser.consume_string_range()?;
-            let s = decoder.decode_string(range)?;
+            let s = parser.consume_string()?;
             Ok(JsonValue::String(s))
         }
         Peak::NumPos => parse_number(true, parser, decoder),

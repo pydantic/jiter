@@ -203,8 +203,7 @@ impl<'a> Fleece<'a> {
     }
 
     pub fn known_string(&mut self) -> FleeceResult<String> {
-        let range = self.parser.consume_string_range().map_err(|e| self.map_err(e))?;
-        self.decoder.decode_string(range).map_err(|e| self.map_err(e))
+        self.parser.consume_string().map_err(|e| self.map_err(e))
     }
 
     pub fn next_bytes(&mut self) -> FleeceResult<&[u8]> {
@@ -342,4 +341,3 @@ impl<'a> Fleece<'a> {
         }
     }
 }
-
