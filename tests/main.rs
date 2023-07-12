@@ -369,7 +369,7 @@ fn fleece_wrong_type() {
         Ok(t) => panic!("unexpectedly valid: {:?}", t),
         Err(FleeceError::WrongType { expected, actual, position }) => {
             assert_eq!(expected, JsonType::String);
-            assert_eq!(actual, Some(JsonType::Int));
+            assert_eq!(actual, JsonType::Int);
             assert_eq!(position, FilePosition::new(1, 2));
         },
         Err(other_err) => panic!("unexpected error: {:?}", other_err)

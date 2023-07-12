@@ -15,7 +15,6 @@ pub enum JsonType {
     String,
     Array,
     Object,
-    Key,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -26,7 +25,7 @@ pub enum FleeceError {
     },
     WrongType {
         expected: JsonType,
-        actual: Option<JsonType>,
+        actual: JsonType,
         position: FilePosition,
     },
     StringFormat(FilePosition),
@@ -254,42 +253,42 @@ impl<'a> Fleece<'a> {
         match element {
             Element::ArrayStart => FleeceError::WrongType {
                 expected,
-                actual: Some(JsonType::Array),
+                actual: JsonType::Array,
                 position,
             },
             Element::ObjectStart => FleeceError::WrongType {
                 expected,
-                actual: Some(JsonType::Object),
+                actual: JsonType::Object,
                 position,
             },
             Element::True => FleeceError::WrongType {
                 expected,
-                actual: Some(JsonType::Bool),
+                actual: JsonType::Bool,
                 position,
             },
             Element::False => FleeceError::WrongType {
                 expected,
-                actual: Some(JsonType::Bool),
+                actual: JsonType::Bool,
                 position,
             },
             Element::Null => FleeceError::WrongType {
                 expected,
-                actual: Some(JsonType::Null),
+                actual: JsonType::Null,
                 position,
             },
             Element::String(_) => FleeceError::WrongType {
                 expected,
-                actual: Some(JsonType::String),
+                actual: JsonType::String,
                 position,
             },
             Element::Int{..} => FleeceError::WrongType {
                 expected,
-                actual: Some(JsonType::Int),
+                actual: JsonType::Int,
                 position,
             },
             Element::Float{..} => FleeceError::WrongType {
                 expected,
-                actual: Some(JsonType::Float),
+                actual: JsonType::Float,
                 position,
             },
         }
