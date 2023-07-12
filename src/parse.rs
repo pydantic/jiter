@@ -1,7 +1,9 @@
+use std::fmt;
 use std::intrinsics::{likely, unlikely};
 use std::ops::Range;
 
-use crate::element::{Exponent, JsonError, JsonResult};
+use strum::{Display, EnumMessage};
+
 use crate::FilePosition;
 
 #[derive(Debug, Clone)]
@@ -21,6 +23,23 @@ impl<'a> Parser<'a> {
     }
 }
 
+#[derive(Debug, Display, EnumMessage, PartialEq, Eq, Clone)]
+#[strum(serialize_all = "snake_case")]
+pub enum JsonError {
+    UnexpectedCharacter,
+    UnexpectedEnd,
+    InvalidTrue,
+    InvalidFalse,
+    InvalidNull,
+    InvalidString(usize),
+    InvalidStringEscapeSequence(usize),
+    InvalidNumber,
+    IntTooLarge,
+    InternalError,
+}
+
+pub type JsonResult<T> = Result<T, JsonError>;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Peak {
     Null,
@@ -31,6 +50,23 @@ pub enum Peak {
     String,
     Array,
     Object,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Exponent {
+    pub positive: bool,
+    pub range: Range<usize>,
+}
+
+impl fmt::Display for Exponent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.positive {
+            write!(f, "e+")?;
+        } else {
+            write!(f, "e-")?;
+        }
+        write!(f, "{:?}", self.range)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

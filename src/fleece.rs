@@ -105,19 +105,19 @@ impl<'a> Fleece<'a> {
                 // matches pydantic
 
                 return if bytes == b"0"
+                    || bytes.eq_ignore_ascii_case(b"false")
                     || bytes.eq_ignore_ascii_case(b"f")
                     || bytes.eq_ignore_ascii_case(b"n")
                     || bytes.eq_ignore_ascii_case(b"no")
                     || bytes.eq_ignore_ascii_case(b"off")
-                    || bytes.eq_ignore_ascii_case(b"false")
                 {
                     Ok(false)
                 } else if bytes == b"1"
+                    || bytes.eq_ignore_ascii_case(b"true")
                     || bytes.eq_ignore_ascii_case(b"t")
                     || bytes.eq_ignore_ascii_case(b"y")
                     || bytes.eq_ignore_ascii_case(b"on")
                     || bytes.eq_ignore_ascii_case(b"yes")
-                    || bytes.eq_ignore_ascii_case(b"true")
                 {
                     Ok(true)
                 } else {
