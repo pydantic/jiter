@@ -94,8 +94,7 @@ fn donervan_fleece_true_object(path: &str, bench: &mut Bencher) {
     bench.iter(|| {
         let mut fleece = Fleece::new(json_data);
         let mut v = Vec::new();
-        fleece.next_object().unwrap();
-        if let Some(first_key) = fleece.first_key().unwrap() {
+        if let Some(first_key) = fleece.next_object().unwrap() {
             let first_value = fleece.next_bool_strict().unwrap();
             v.push((first_key, first_value));
             while let Some(key) = fleece.next_key().unwrap() {

@@ -2,7 +2,7 @@ use indexmap::indexmap;
 use std::fs::File;
 use std::io::Read;
 
-use donervan::{Decoder, Element, ElementInfo, Fleece, FleeceError, JsonError, JsonResult, JsonValue, Parser};
+use donervan::{Decoder, Element, ElementInfo, Fleece, FleeceError, JsonError, JsonResult, JsonValue, Parser, FilePosition};
 
 fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
     let mut v = Vec::new();
@@ -183,6 +183,30 @@ string_tests! {
     controls_python: "\"\\b\\f\\n\\r\\t\"" => "\x08\x0c\n\r\t";  // python notation for the same thing
 }
 
+macro_rules! test_position {
+    ($($name:ident: $data:literal, $find:literal, $expected:expr;)*) => {
+        $(
+            paste::item! {
+                #[test]
+                fn [< test_position_ $name >]() {
+                    assert_eq!(FilePosition::find($data, $find), $expected);
+                }
+            }
+        )*
+    }
+}
+
+test_position! {
+    first_line: b"123456", 3, FilePosition::new(1, 3);
+    first_line_zeroth: b"123456", 0, FilePosition::new(1, 0);
+    first_line_first: b"123456", 1, FilePosition::new(1, 1);
+    first_line_last: b"123456", 6, FilePosition::new(1, 6);
+    first_line_after: b"123456", 7, FilePosition::new(1, 6);
+    second_line: b"123456\n789", 7, FilePosition::new(2, 1);
+    first_line_last2: b"123456\n789", 6, FilePosition::new(1, 6);
+}
+
+
 #[test]
 fn parse_int() {
     for input_value in -1000i64..1000 {
@@ -306,8 +330,7 @@ fn pass1_to_value() {
 #[test]
 fn fleece() {
     let mut fleece = Fleece::new(br#"{"foo": "bar", "spam": [   1, 2, "x"]}"#);
-    assert_eq!(fleece.next_object().unwrap(), ());
-    assert_eq!(fleece.first_key().unwrap(), Some("foo".to_string()));
+    assert_eq!(fleece.next_object().unwrap(), Some("foo".to_string()));
     assert_eq!(fleece.next_str().unwrap(), "bar");
     assert_eq!(fleece.next_key().unwrap(), Some("spam".to_string()));
     assert_eq!(fleece.next_array().unwrap(), true);

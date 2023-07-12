@@ -29,7 +29,8 @@ static FALSE_REST: [u8; 4] = [b'a', b'l', b's', b'e'];
 static NULL_REST: [u8; 3] = [b'u', b'l', b'l'];
 
 impl<'a> Parser<'a> {
-    #[inline(always)]
+    /// we should enable PGO, then add `#[inline(always)]` so this method can be optimised
+    /// for each call from Fleece.
     pub fn next_value(&mut self) -> JsonResult<ElementInfo> {
         while let Some(next) = self.data.get(self.index) {
             match next {

@@ -213,19 +213,17 @@ impl<'a> Fleece<'a> {
         Ok(self.parser.array_step()?)
     }
 
-    pub fn next_object(&mut self) -> FleeceResult<()> {
+    pub fn next_object(&mut self) -> FleeceResult<Option<String>> {
         let chunk = self.parser.next_value()?;
         match chunk.element {
-            Element::ObjectStart => Ok(()),
+            Element::ObjectStart => {
+                match self.parser.object_first() {
+                    Ok(Some(key)) => Ok(Some(self.decoder.decode_string(key.range, key.loc)?)),
+                    Ok(None) => Ok(None),
+                    Err(e) => Err(e.into())
+                }
+            },
             _ => Err(wrong_type(JsonType::Object, chunk))
-        }
-    }
-
-    pub fn first_key(&mut self) -> FleeceResult<Option<String>> {
-        match self.parser.object_first() {
-            Ok(Some(key)) => Ok(Some(self.decoder.decode_string(key.range, key.loc)?)),
-            Ok(None) => Ok(None),
-            Err(e) => Err(e.into())
         }
     }
 
