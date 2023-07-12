@@ -1,9 +1,8 @@
 use indexmap::IndexMap;
 
 use crate::decode::Decoder;
-use crate::element::{Element, JsonResult};
 use crate::{FilePosition, JsonError};
-use crate::parse::Parser;
+use crate::parse::{Number, Parser, Peak, JsonResult};
 
 /// similar to serde `Value` but with int and float split
 #[derive(Clone, Debug, PartialEq)]
@@ -38,49 +37,44 @@ impl JsonValue {
 
 fn _parse(parser: &mut Parser, data: &[u8]) -> Result<JsonValue, JsonError> {
     let decoder = Decoder::new(data);
-    let element = parser.next_value()?;
-    let v = take_value(element, parser, &decoder)?;
+    let peak = parser.peak()?;
+    let v = take_value(peak, parser, &decoder)?;
     parser.finish()?;
     Ok(v)
 }
 
 pub(crate) fn take_value(
-    element: Element,
+    peak: Peak,
     parser: &mut Parser,
     decoder: &Decoder,
 ) -> JsonResult<JsonValue> {
-    match element {
-        Element::True => Ok(JsonValue::Bool(true)),
-        Element::False => Ok(JsonValue::Bool(false)),
-        Element::Null => Ok(JsonValue::Null),
-        Element::String(range) => {
+    match peak {
+        Peak::True => {
+            parser.consume_true()?;
+            Ok(JsonValue::Bool(true))
+        },
+        Peak::False => {
+            parser.consume_false()?;
+            Ok(JsonValue::Bool(false))
+        },
+        Peak::Null => {
+            parser.consume_null()?;
+            Ok(JsonValue::Null)
+        },
+        Peak::String => {
+            let range = parser.consume_string_range()?;
             let s = decoder.decode_string(range)?;
             Ok(JsonValue::String(s))
         }
-        Element::Int {
-            positive,
-            range,
-            exponent,
-        } => {
-            let i = decoder.decode_int(positive, range, exponent)?;
-            Ok(JsonValue::Int(i))
-        }
-        Element::Float {
-            positive,
-            int_range,
-            decimal_range,
-            exponent,
-        } => {
-            let f = decoder.decode_float(positive, int_range, decimal_range, exponent)?;
-            Ok(JsonValue::Float(f))
-        }
-        Element::ArrayStart => {
+        Peak::NumPos => parse_number(true, parser, decoder),
+        Peak::NumNeg => parse_number(false, parser, decoder),
+        Peak::Array => {
             // we could do something clever about guessing the size of the array
             let mut array: Vec<JsonValue> = Vec::new();
             if parser.array_first()? {
                 loop {
-                    let chunk = parser.next_value()?;
-                    let v = take_value(chunk, parser, decoder)?;
+                    let peak = parser.peak()?;
+                    let v = take_value(peak, parser, decoder)?;
                     array.push(v);
                     if !parser.array_step()? {
                         break
@@ -89,23 +83,41 @@ pub(crate) fn take_value(
             }
             Ok(JsonValue::Array(array))
         }
-        Element::ObjectStart => {
+        Peak::Object => {
             // same for objects
             let mut object = IndexMap::new();
             if let Some(key) = parser.object_first()? {
                 let key = decoder.decode_string(key)?;
-                let value_chunk = parser.next_value()?;
-                let value = take_value(value_chunk, parser, decoder)?;
+                let peak = parser.peak()?;
+                let value = take_value(peak, parser, decoder)?;
                 object.insert(key, value);
                 while let Some(key) = parser.object_step()? {
                     let key = decoder.decode_string(key)?;
-                    let value_chunk = parser.next_value()?;
-                    let value = take_value(value_chunk, parser, decoder)?;
+                    let peak = parser.peak()?;
+                    let value = take_value(peak, parser, decoder)?;
                     object.insert(key, value);
                 }
             }
 
             Ok(JsonValue::Object(object))
+        }
+    }
+}
+
+fn parse_number(
+    positive: bool,
+    parser: &mut Parser,
+    decoder: &Decoder,
+) -> JsonResult<JsonValue> {
+    let number = parser.next_number(positive)?;
+    match number {
+        Number::Int {positive, range, exponent} => {
+            let i = decoder.decode_int(positive, range, exponent)?;
+            Ok(JsonValue::Int(i))
+        }
+        Number::Float {positive, int_range, decimal_range, exponent} => {
+            let f = decoder.decode_float(positive, int_range, decimal_range, exponent)?;
+            Ok(JsonValue::Float(f))
         }
     }
 }
