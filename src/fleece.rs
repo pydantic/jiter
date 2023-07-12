@@ -64,6 +64,10 @@ impl<'a> Fleece<'a> {
         }
     }
 
+    pub fn peak(&mut self) -> FleeceResult<Peak> {
+        self.parser.peak().map_err(|e| self.map_err(e))
+    }
+
     pub fn next_null(&mut self) -> FleeceResult<()> {
         let peak = self.parser.peak().map_err(|e| self.map_err(e))?;
         match peak {
@@ -193,12 +197,14 @@ impl<'a> Fleece<'a> {
     pub fn next_str(&mut self) -> FleeceResult<String> {
         let peak = self.parser.peak().map_err(|e| self.map_err(e))?;
         match peak {
-            Peak::String => {
-                let range = self.parser.consume_string_range().map_err(|e| self.map_err(e))?;
-                self.decoder.decode_string(range).map_err(|e| self.map_err(e))
-            },
+            Peak::String => self.known_string(),
             _ => Err(self.wrong_type(JsonType::String, peak))
         }
+    }
+
+    pub fn known_string(&mut self) -> FleeceResult<String> {
+        let range = self.parser.consume_string_range().map_err(|e| self.map_err(e))?;
+        self.decoder.decode_string(range).map_err(|e| self.map_err(e))
     }
 
     pub fn next_bytes(&mut self) -> FleeceResult<&[u8]> {
@@ -233,9 +239,13 @@ impl<'a> Fleece<'a> {
     pub fn next_array(&mut self) -> FleeceResult<bool> {
         let peak = self.parser.peak().map_err(|e| self.map_err(e))?;
         match peak {
-            Peak::Array => self.parser.array_first().map_err(|e| self.map_err(e)),
+            Peak::Array => self.array_first(),
             _ => Err(self.wrong_type(JsonType::Array, peak))
         }
+    }
+
+    pub fn array_first(&mut self) -> FleeceResult<bool> {
+        self.parser.array_first().map_err(|e| self.map_err(e))
     }
 
     pub fn array_step(&mut self) -> FleeceResult<bool> {

@@ -61,7 +61,6 @@ impl<'a> Parser<'a> {
     /// for each call from Fleece.
     pub fn peak(&mut self) -> JsonResult<Peak> {
         while let Some(next) = self.data.get(self.index) {
-
             match next {
                 b' ' | b'\r' | b'\t' | b'\n' => {
                     self.index += 1;

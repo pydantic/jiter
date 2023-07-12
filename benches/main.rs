@@ -4,7 +4,7 @@ use std::io::Read;
 
 extern crate test;
 
-use donervan::{JsonValue, Fleece};
+use donervan::{JsonValue, Fleece, Peak};
 use serde_json::Value;
 use test::{black_box, Bencher};
 
@@ -51,6 +51,31 @@ fn donervan_fleece_big(path: &str, bench: &mut Bencher) {
     })
 }
 
+fn find_string(fleece: &mut Fleece) -> String {
+    let peak = fleece.peak().unwrap();
+    match peak {
+        Peak::String => fleece.known_string().unwrap(),
+        Peak::Array => {
+            assert!(fleece.array_first().unwrap());
+            let s = find_string(fleece);
+            assert!(!fleece.array_step().unwrap());
+            s
+        }
+        _ => panic!("Expected string or array"),
+    }
+}
+
+fn donervan_fleece_pass2(path: &str, bench: &mut Bencher) {
+    let json = read_file(path);
+    let json_data = black_box(json.as_bytes());
+    bench.iter(|| {
+        let mut fleece = Fleece::new(json_data);
+        let string = find_string(&mut fleece);
+        fleece.finish().unwrap();
+        black_box(string)
+    })
+}
+
 fn donervan_fleece_string_array(path: &str, bench: &mut Bencher) {
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
@@ -65,6 +90,7 @@ fn donervan_fleece_string_array(path: &str, bench: &mut Bencher) {
                 break;
             }
         }
+        fleece.finish().unwrap();
         black_box(v)
     })
 }
@@ -130,6 +156,8 @@ macro_rules! test_cases {
                 let file_path = format!("./benches/{}.json", file_name);
                 if file_name == "big" {
                     donervan_fleece_big(&file_path, bench);
+                } else if file_name == "pass2" {
+                    donervan_fleece_pass2(&file_path, bench);
                 } else if file_name == "string_array" {
                     donervan_fleece_string_array(&file_path, bench);
                 } else if file_name == "true_array" {
