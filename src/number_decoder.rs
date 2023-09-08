@@ -50,7 +50,7 @@ impl AbstractNumber for NumberInt {
 
     fn take_one(data: &[u8], index: usize) -> JsonResult<Self> {
         match data.get(index) {
-            Some(digit) if (b'0'..=b'9').contains(digit) => Ok(Self::new(digit)),
+            Some(digit) if digit.is_ascii_digit() => Ok(Self::new(digit)),
             Some(_) => Err(JsonError::InvalidNumber),
             None => Err(JsonError::UnexpectedEnd),
         }
@@ -139,7 +139,7 @@ impl AbstractNumber for NumberAny {
 
         index += 1;
         let first = match data.get(index) {
-            Some(v) if (b'0'..=b'9').contains(v) => v,
+            Some(v) if v.is_ascii_digit() => v,
             Some(_) => return Err(JsonError::InvalidNumber),
             None => return Err(JsonError::UnexpectedEnd),
         };
@@ -181,7 +181,7 @@ impl AbstractNumber for NumberAny {
                 Self::Int(int) => int.into(),
                 Self::Float(float) => float,
             };
-            f = f * 10_f64.powi(exponent);
+            f *= 10_f64.powi(exponent);
             if !positive {
                 f = -f;
             }
@@ -254,7 +254,7 @@ impl Exponent {
 
     fn take_one(data: &[u8], index: usize) -> JsonResult<Self> {
         match data.get(index) {
-            Some(digit) if (b'0'..=b'9').contains(digit) => Ok(Self::new(digit)),
+            Some(digit) if digit.is_ascii_digit() => Ok(Self::new(digit)),
             Some(_) => Err(JsonError::InvalidNumber),
             None => Err(JsonError::UnexpectedEnd),
         }
@@ -274,7 +274,7 @@ impl Exponent {
                 index += 1;
                 Self::take_one(data, index)?
             }
-            Some(digit) if (b'0'..=b'9').contains(digit) => Self::new(digit),
+            Some(digit) if digit.is_ascii_digit() => Self::new(digit),
             Some(_) => return Err(JsonError::InvalidNumber),
             None => return Err(JsonError::UnexpectedEnd),
         };
@@ -319,7 +319,7 @@ impl AbstractNumberDecoder for NumberDecoderRange {
             index += 1;
         };
         match data.get(index) {
-            Some(digit) if (b'0'..=b'9').contains(digit) => (),
+            Some(digit) if digit.is_ascii_digit() => (),
             Some(_) => return Err(JsonError::InvalidNumber),
             None => return Err(JsonError::UnexpectedEnd),
         };
@@ -340,7 +340,7 @@ impl AbstractNumberDecoder for NumberDecoderRange {
             index += 1;
         }
 
-        return Ok((start..index, index));
+        Ok((start..index, index))
     }
 }
 
@@ -351,7 +351,7 @@ fn exponent_range(data: &[u8], mut index: usize) -> JsonResult<usize> {
         Some(b'-') | Some(b'+') => {
             index += 1;
         }
-        Some(v) if (b'0'..=b'9').contains(v) => (),
+        Some(v) if v.is_ascii_digit() => (),
         Some(_) => return Err(JsonError::InvalidNumber),
         None => return Err(JsonError::UnexpectedEnd),
     };
@@ -362,7 +362,7 @@ fn numeric_range(data: &[u8], mut index: usize) -> JsonResult<usize> {
     index += 1;
 
     match data.get(index) {
-        Some(v) if (b'0'..=b'9').contains(v) => (),
+        Some(v) if v.is_ascii_digit() => (),
         Some(_) => return Err(JsonError::InvalidNumber),
         None => return Err(JsonError::UnexpectedEnd),
     };
