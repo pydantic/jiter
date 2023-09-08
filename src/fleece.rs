@@ -2,7 +2,7 @@
 // use speedate::{Date, Time, DateTime, Duration};
 
 use crate::parse::Peak;
-use crate::string_decoder::{StringDecoderRaw, StringDecoder};
+use crate::string_decoder::{StringDecoderRange, StringDecoder};
 use crate::value::take_value;
 use crate::{FilePosition, JsonError, JsonValue, Parser};
 use crate::number_decoder::{NumberDecoder, NumberInt};
@@ -118,7 +118,7 @@ impl<'a> Fleece<'a> {
             Peak::String => {
                 let range = self
                     .parser
-                    .consume_string::<StringDecoderRaw>()
+                    .consume_string::<StringDecoderRange>()
                     .map_err(|e| self.map_err(e))?;
                 Ok(&self.data[range])
             }

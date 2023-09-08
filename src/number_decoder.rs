@@ -21,7 +21,7 @@ pub trait AbstractNumber: fmt::Debug + Default {
     fn negate(&mut self);
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NumberInt {
     Int(i64),
     BigInt(BigInt),
@@ -98,7 +98,7 @@ impl<Num: AbstractNumber> AbstractNumberDecoder for NumberDecoder<Num> {
             Some(_) => return Err(JsonError::UnexpectedCharacter),
             None => return Err(JsonError::UnexpectedEnd),
         };
-
+        index += 1;
         while let Some(next) = data.get(index) {
             match next {
                 b'0'..=b'9' => num.add_digit(next),
