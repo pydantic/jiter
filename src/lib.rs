@@ -1,20 +1,19 @@
 #![doc = include_str!("../README.md")]
 #![feature(core_intrinsics)]
 
-mod decode;
-mod decoder;
 mod fleece;
+mod number_decoder;
 mod parse;
+mod string_decoder;
 mod value;
 
 use std::fmt;
 
-pub use decode::Decoder;
-pub use decoder::{DecodeStringRange, DecodeStringString};
-pub use fleece::{Fleece, FleeceResult, FleeceError, JsonType};
-pub use parse::{Parser, Peak, Number, JsonError, JsonResult};
+pub use fleece::{Fleece, FleeceError, FleeceResult, JsonType};
+pub use parse::{JsonError, JsonResult, Parser, Peak};
+pub use string_decoder::{StringDecoderRaw, StringDecoder};
+pub use number_decoder::{NumberDecoder, NumberInt};
 pub use value::{JsonArray, JsonObject, JsonValue};
-
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FilePosition {

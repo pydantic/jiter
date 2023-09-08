@@ -4,7 +4,7 @@ use std::io::Read;
 
 extern crate test;
 
-use donervan::{JsonValue, Fleece, Peak};
+use donervan::{Fleece, JsonValue, Peak};
 use serde_json::Value;
 use test::{black_box, Bencher};
 
@@ -35,7 +35,7 @@ fn donervan_fleece_big(path: &str, bench: &mut Bencher) {
             let mut v_inner = Vec::new();
             if fleece.next_array().unwrap() {
                 loop {
-                    let i = fleece.next_float_lax().unwrap();
+                    let i = fleece.next_float().unwrap();
                     v_inner.push(i);
                     if !fleece.array_step().unwrap() {
                         break;
@@ -103,7 +103,7 @@ fn donervan_fleece_true_array(path: &str, bench: &mut Bencher) {
         let mut v = Vec::new();
         if fleece.next_array().unwrap() {
             loop {
-                let i = fleece.next_bool_strict().unwrap();
+                let i = fleece.next_bool().unwrap();
                 v.push(i);
                 if !fleece.array_step().unwrap() {
                     break;
@@ -121,10 +121,10 @@ fn donervan_fleece_true_object(path: &str, bench: &mut Bencher) {
         let mut fleece = Fleece::new(json_data);
         let mut v = Vec::new();
         if let Some(first_key) = fleece.next_object().unwrap() {
-            let first_value = fleece.next_bool_strict().unwrap();
+            let first_value = fleece.next_bool().unwrap();
             v.push((first_key, first_value));
             while let Some(key) = fleece.next_key().unwrap() {
-                let value = fleece.next_bool_strict().unwrap();
+                let value = fleece.next_bool().unwrap();
                 v.push((key, value));
             }
         }

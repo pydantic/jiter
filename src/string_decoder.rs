@@ -1,15 +1,15 @@
-use std::ops::Range;
 use crate::{JsonError, JsonResult};
+use std::ops::Range;
 
-pub trait DecodeString {
+pub trait AbstractStringDecoder {
     type Output;
 
     fn decode(data: &[u8], index: usize) -> JsonResult<(Self::Output, usize)>;
 }
 
-pub struct DecodeStringString;
+pub struct StringDecoder;
 
-impl DecodeString for DecodeStringString {
+impl AbstractStringDecoder for StringDecoder {
     type Output = String;
 
     fn decode(data: &[u8], mut index: usize) -> JsonResult<(Self::Output, usize)> {
@@ -56,7 +56,7 @@ impl DecodeString for DecodeStringString {
                                     }
                                     None => return Err(JsonError::InvalidString(index)),
                                 }
-                            },
+                            }
                             _ => return Err(JsonError::InvalidString(index)),
                         }
                     } else {
@@ -73,10 +73,11 @@ impl DecodeString for DecodeStringString {
     }
 }
 
-// should be changed to bytes
-pub struct DecodeStringRange;
+// TODO rename to StringDecoderRaw
+// TODO should be changed to bytes/slice
+pub struct StringDecoderRaw;
 
-impl DecodeString for DecodeStringRange {
+impl AbstractStringDecoder for StringDecoderRaw {
     type Output = Range<usize>;
 
     fn decode(data: &[u8], mut index: usize) -> JsonResult<(Self::Output, usize)> {
@@ -101,4 +102,3 @@ impl DecodeString for DecodeStringRange {
         Err(JsonError::UnexpectedEnd)
     }
 }
-

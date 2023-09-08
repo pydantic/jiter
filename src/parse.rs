@@ -4,8 +4,9 @@ use std::ops::Range;
 
 use strum::{Display, EnumMessage};
 
+use crate::string_decoder::AbstractStringDecoder;
 use crate::FilePosition;
-use crate::decoder::DecodeString;
+use crate::number_decoder::AbstractNumberDecoder;
 
 #[derive(Debug, Clone)]
 pub struct Parser<'a> {
@@ -36,6 +37,7 @@ pub enum JsonError {
     InvalidStringEscapeSequence(usize),
     InvalidNumber,
     IntTooLarge,
+    FloatExpectingInt,
     InternalError,
 }
 
@@ -46,8 +48,8 @@ pub enum Peak {
     Null,
     True,
     False,
-    NumPos,
-    NumNeg,
+    // bool - True is positive, False is negative
+    Num(bool),
     String,
     Array,
     Object,
@@ -70,21 +72,6 @@ impl fmt::Display for Exponent {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Number {
-    Int {
-        positive: bool,
-        range: Range<usize>,
-        exponent: Option<Exponent>,
-    },
-    Float {
-        positive: bool,
-        int_range: Range<usize>,
-        decimal_range: Range<usize>,
-        exponent: Option<Exponent>,
-    },
-}
-
 static TRUE_REST: [u8; 3] = [b'r', b'u', b'e'];
 static FALSE_REST: [u8; 4] = [b'a', b'l', b's', b'e'];
 static NULL_REST: [u8; 3] = [b'u', b'l', b'l'];
@@ -101,18 +88,16 @@ impl<'a> Parser<'a> {
             match next {
                 b' ' | b'\r' | b'\t' | b'\n' => {
                     self.index += 1;
-                },
+                }
                 b'[' => return Ok(Peak::Array),
                 b'{' => return Ok(Peak::Object),
                 b'"' => return Ok(Peak::String),
                 b't' => return Ok(Peak::True),
                 b'f' => return Ok(Peak::False),
                 b'n' => return Ok(Peak::Null),
-                b'0'..=b'9' => return Ok(Peak::NumPos),
-                b'-' => return Ok(Peak::NumNeg),
-                _ => {
-                    return Err(JsonError::UnexpectedCharacter)
-                },
+                b'0'..=b'9' => return Ok(Peak::Num(true)),
+                b'-' => return Ok(Peak::Num(false)),
+                _ => return Err(JsonError::UnexpectedCharacter),
             }
         }
         Err(JsonError::UnexpectedEnd)
@@ -122,12 +107,10 @@ impl<'a> Parser<'a> {
         self.index += 1;
         while let Some(next) = self.data.get(self.index) {
             match next {
-                b' ' | b'\r' | b'\t' | b'\n' => {
-                    self.index += 1
-                }
+                b' ' | b'\r' | b'\t' | b'\n' => self.index += 1,
                 b']' => {
                     self.index += 1;
-                    return Ok(false)
+                    return Ok(false);
                 }
                 _ => return Ok(true),
             }
@@ -138,16 +121,14 @@ impl<'a> Parser<'a> {
     pub fn array_step(&mut self) -> JsonResult<bool> {
         while let Some(next) = self.data.get(self.index) {
             match next {
-                b' ' | b'\r' | b'\t' | b'\n' => {
-                    self.index += 1
-                }
+                b' ' | b'\r' | b'\t' | b'\n' => self.index += 1,
                 b',' => {
                     self.index += 1;
-                    return Ok(true)
-                },
+                    return Ok(true);
+                }
                 b']' => {
                     self.index += 1;
-                    return Ok(false)
+                    return Ok(false);
                 }
                 _ => return Err(JsonError::UnexpectedCharacter),
             }
@@ -155,17 +136,15 @@ impl<'a> Parser<'a> {
         Err(JsonError::UnexpectedEnd)
     }
 
-    pub fn object_first<D: DecodeString>(&mut self) -> JsonResult<Option<D::Output>> {
+    pub fn object_first<D: AbstractStringDecoder>(&mut self) -> JsonResult<Option<D::Output>> {
         self.index += 1;
         while let Some(next) = self.data.get(self.index) {
             match next {
-                b' ' | b'\r' | b'\t' | b'\n' => {
-                    self.index += 1
-                }
+                b' ' | b'\r' | b'\t' | b'\n' => self.index += 1,
                 b'}' => {
                     self.index += 1;
                     return Ok(None);
-                },
+                }
                 b'"' => return self.object_key::<D>(),
                 _ => return Err(JsonError::UnexpectedCharacter),
             }
@@ -173,53 +152,49 @@ impl<'a> Parser<'a> {
         Err(JsonError::UnexpectedEnd)
     }
 
-    pub fn object_step<D: DecodeString>(&mut self) -> JsonResult<Option<D::Output>> {
+    pub fn object_step<D: AbstractStringDecoder>(&mut self) -> JsonResult<Option<D::Output>> {
         loop {
             if let Some(next) = self.data.get(self.index) {
                 match next {
-                    b' ' | b'\r' | b'\t' | b'\n' => {
-                        self.index += 1
-                    }
+                    b' ' | b'\r' | b'\t' | b'\n' => self.index += 1,
                     b',' => {
                         self.index += 1;
                         while let Some(next) = self.data.get(self.index) {
                             match next {
-                                b' ' | b'\r' | b'\t'| b'\n' => (),
+                                b' ' | b'\r' | b'\t' | b'\n' => (),
                                 b'"' => return self.object_key::<D>(),
                                 _ => return Err(JsonError::UnexpectedCharacter),
                             }
                             self.index += 1;
                         }
-                        return Err(JsonError::UnexpectedEnd)
-                    },
+                        return Err(JsonError::UnexpectedEnd);
+                    }
                     b'}' => {
                         self.index += 1;
                         return Ok(None);
-                    },
+                    }
                     _ => return Err(JsonError::UnexpectedCharacter),
                 }
             } else {
-                return Err(JsonError::UnexpectedEnd)
+                return Err(JsonError::UnexpectedEnd);
             }
         }
     }
 
-    fn object_key<D: DecodeString>(&mut self) -> JsonResult<Option<D::Output>> {
+    fn object_key<D: AbstractStringDecoder>(&mut self) -> JsonResult<Option<D::Output>> {
         let output = self.consume_string::<D>()?;
         loop {
             if let Some(next) = self.data.get(self.index) {
                 match next {
-                    b' ' | b'\r' | b'\t' | b'\n' => {
-                        self.index += 1
-                    }
+                    b' ' | b'\r' | b'\t' | b'\n' => self.index += 1,
                     b':' => {
                         self.index += 1;
                         return Ok(Some(output));
-                    },
+                    }
                     _ => return Err(JsonError::UnexpectedCharacter),
                 }
             } else {
-                return Err(JsonError::UnexpectedEnd)
+                return Err(JsonError::UnexpectedEnd);
             }
         }
     }
@@ -227,9 +202,7 @@ impl<'a> Parser<'a> {
     pub fn finish(&mut self) -> JsonResult<()> {
         while let Some(next) = self.data.get(self.index) {
             match next {
-                b' ' | b'\r' | b'\t' | b'\n' => {
-                    self.index += 1
-                }
+                b' ' | b'\r' | b'\t' | b'\n' => self.index += 1,
                 _ => return Err(JsonError::UnexpectedCharacter),
             }
         }
@@ -294,128 +267,15 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn consume_string<D: DecodeString>(&mut self) -> JsonResult<D::Output> {
+    pub fn consume_string<D: AbstractStringDecoder>(&mut self) -> JsonResult<D::Output> {
         let (output, index) = D::decode(self.data, self.index)?;
         self.index = index;
         Ok(output)
     }
 
-    pub fn next_number(&mut self, positive: bool) -> JsonResult<Number> {
-        let start: usize = if positive {
-            self.index
-        } else {
-            // we started with a minus sign, so the first digit is at index + 1
-            self.index + 1
-        };
-        self.index += 1;
-        while let Some(next) = self.data.get(self.index) {
-            match next {
-                b'0'..=b'9' => (),
-                b'.' => return self.float_decimal(start, positive),
-                b'e' | b'E' => {
-                    // TODO cope with case where this is the first character
-                    let end = self.index;
-                    let exponent = match self.exponent() {
-                        Ok(exponent) => Some(exponent),
-                        Err(e) => return Err(e),
-                    };
-                    return Ok(Number::Int {
-                        positive,
-                        range: start..end,
-                        exponent,
-                    });
-                }
-                _ => break,
-            }
-            self.index += 1;
-        }
-        if start == self.index {
-            Err(JsonError::InvalidNumber)
-        } else {
-            Ok(Number::Int {
-                positive,
-                range: start..self.index,
-                exponent: None,
-            })
-        }
-    }
-
-    fn float_decimal(&mut self, start: usize, positive: bool) -> JsonResult<Number> {
-        let mut first = true;
-        self.index += 1;
-        let int_range = start..self.index - 1;
-        let decimal_start = self.index;
-        while let Some(next) = self.data.get(self.index) {
-            match next {
-                b'0'..=b'9' => (),
-                b'e' | b'E' => {
-                    return if first {
-                        Err(JsonError::InvalidNumber)
-                    } else {
-                        let decimal_end = self.index;
-                        let exponent = match self.exponent() {
-                            Ok(exponent) => Some(exponent),
-                            Err(e) => return Err(e),
-                        };
-                        Ok(Number::Float {
-                            positive,
-                            int_range,
-                            decimal_range: decimal_start..decimal_end,
-                            exponent,
-                        })
-                    }
-                }
-                _ => break,
-            }
-            first = false;
-            self.index += 1;
-        }
-        if decimal_start == self.index {
-            Err(JsonError::InvalidNumber)
-        } else {
-            Ok(Number::Float {
-                positive,
-                int_range,
-                decimal_range: decimal_start..self.index,
-                exponent: None,
-            })
-        }
-    }
-
-    fn exponent(&mut self) -> JsonResult<Exponent> {
-        let mut first = true;
-        let mut positive = true;
-        self.index += 1;
-        let mut start = self.index;
-        while let Some(next) = self.data.get(self.index) {
-            match next {
-                b'-' => {
-                    if !first {
-                        return Err(JsonError::InvalidNumber);
-                    }
-                    positive = false;
-                    start += 1;
-                }
-                b'+' => {
-                    if !first {
-                        return Err(JsonError::InvalidNumber);
-                    }
-                    start += 1;
-                }
-                b'0'..=b'9' => (),
-                _ => break,
-            }
-            first = false;
-            self.index += 1;
-        }
-
-        if start == self.index {
-            Err(JsonError::InvalidNumber)
-        } else {
-            Ok(Exponent {
-                positive,
-                range: start..self.index,
-            })
-        }
+    pub fn consume_number<D: AbstractNumberDecoder>(&mut self, positive: bool) -> JsonResult<D::Output> {
+        let (output, index) = D::decode(self.data, self.index, positive)?;
+        self.index = index;
+        Ok(output)
     }
 }

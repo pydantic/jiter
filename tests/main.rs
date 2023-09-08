@@ -2,7 +2,7 @@ use indexmap::indexmap;
 use std::fs::File;
 use std::io::Read;
 
-use donervan::{Decoder, Peak, Fleece, FleeceError, JsonError, JsonType, JsonResult, JsonValue, Parser, FilePosition, Number, DecodeStringRange, DecodeStringString};
+use donervan::{FilePosition, Fleece, FleeceError, JsonError, JsonResult, JsonType, JsonValue, Parser, Peak, StringDecoder};
 
 fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
     let mut v = Vec::new();
@@ -13,15 +13,15 @@ fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
             parser.consume_true()?;
             dbg!("true");
             v.push(format!("true @ {position}"));
-        },
+        }
         Peak::False => {
             parser.consume_false()?;
             v.push(format!("false @ {position}"));
-        },
+        }
         Peak::Null => {
             parser.consume_null()?;
             v.push(format!("null @ {position}"));
-        },
+        }
         Peak::String => {
             let range = parser.consume_string::<DecodeStringRange>()?;
             v.push(format!("String({range:?}) @ {position}"));
@@ -35,7 +35,7 @@ fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
                     let el_vec = json_vec(parser)?;
                     v.extend(el_vec);
                     if !parser.array_step()? {
-                        break
+                        break;
                     }
                 }
             }
@@ -59,19 +59,27 @@ fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
     Ok(v)
 }
 
-
 fn display_number(positive: bool, parser: &mut Parser) -> JsonResult<String> {
     let position = parser.current_position();
-    let number = parser.next_number(positive)?;
+    let number = parser.consume_number(positive)?;
     let s = match number {
-        Number::Int {positive, range, exponent} => {
+        Number::Int {
+            positive,
+            range,
+            exponent,
+        } => {
             let prefix = if positive { "+" } else { "-" };
             match exponent {
                 Some(exp) => format!("{prefix}Int({range:?}{exp}) @ {position}"),
                 None => format!("{prefix}Int({range:?}) @ {position}"),
             }
         }
-        Number::Float {positive, int_range, decimal_range, exponent} => {
+        Number::Float {
+            positive,
+            int_range,
+            decimal_range,
+            exponent,
+        } => {
             let prefix = if positive { "+" } else { "-" };
             match exponent {
                 Some(exp) => format!("{prefix}Float({int_range:?}.{decimal_range:?}{exp}) @ {position}"),
@@ -177,7 +185,7 @@ fn json_parse_str() {
     assert!(matches!(peak, Peak::String));
     assert_eq!(parser.current_position(), FilePosition::new(1, 2));
 
-    let result_string = parser.consume_string::<DecodeStringString>().unwrap();
+    let result_string = parser.consume_string::<StringDecoder>().unwrap();
     assert_eq!(result_string, "foobar");
     parser.finish().unwrap();
 }
@@ -192,7 +200,7 @@ macro_rules! string_tests {
                     let mut parser = Parser::new(data);
                     let peak = parser.peak().unwrap();
                     assert!(matches!(peak, Peak::String));
-                    let result_string = parser.consume_string::<DecodeStringString>().unwrap();
+                    let result_string = parser.consume_string::<StringDecoder>().unwrap();
                     assert_eq!(result_string, $expected);
                     parser.finish().unwrap();
                 }
@@ -217,13 +225,13 @@ fn test_key_str() {
     let mut parser = Parser::new(json.as_bytes());
     let p = parser.peak().unwrap();
     assert!(matches!(p, Peak::Object));
-    let k = parser.object_first::<DecodeStringString>().unwrap();
+    let k = parser.object_first::<StringDecoder>().unwrap();
     assert_eq!(k, Some("foo".to_string()));
     let p = parser.peak().unwrap();
     assert!(matches!(p, Peak::String));
-    let v = parser.consume_string::<DecodeStringString>().unwrap();
+    let v = parser.consume_string::<StringDecoder>().unwrap();
     assert_eq!(v, "bar");
-    let next_key = parser.object_step::<DecodeStringString>().unwrap();
+    let next_key = parser.object_step::<StringDecoder>().unwrap();
     assert!(next_key.is_none());
     parser.finish().unwrap();
 }
@@ -240,11 +248,10 @@ fn test_key_bytes() {
     assert!(matches!(p, Peak::String));
     let v = parser.consume_string::<DecodeStringRange>().unwrap();
     assert_eq!(json[v], *b"bar");
-    let next_key = parser.object_step::<DecodeStringString>().unwrap();
+    let next_key = parser.object_step::<StringDecoder>().unwrap();
     assert!(next_key.is_none());
     parser.finish().unwrap();
 }
-
 
 macro_rules! test_position {
     ($($name:ident: $data:literal, $find:literal, $expected:expr;)*) => {
@@ -349,7 +356,7 @@ fn repeat_trailing_array() {
         Err(e) => {
             assert_eq!(e.error, JsonError::UnexpectedCharacter);
             assert_eq!(e.position, FilePosition::new(1, 4));
-        },
+        }
     }
 }
 
@@ -425,11 +432,10 @@ fn fleece_trailing_bracket() {
         Err(FleeceError::JsonError { error, position }) => {
             assert_eq!(error, JsonError::UnexpectedCharacter);
             assert_eq!(position, FilePosition::new(1, 4));
-        },
-        Err(other_err) => panic!("unexpected error: {:?}", other_err)
+        }
+        Err(other_err) => panic!("unexpected error: {:?}", other_err),
     }
 }
-
 
 #[test]
 fn fleece_wrong_type() {
@@ -437,11 +443,15 @@ fn fleece_wrong_type() {
     let result = fleece.next_str();
     match result {
         Ok(t) => panic!("unexpectedly valid: {:?}", t),
-        Err(FleeceError::WrongType { expected, actual, position }) => {
+        Err(FleeceError::WrongType {
+            expected,
+            actual,
+            position,
+        }) => {
             assert_eq!(expected, JsonType::String);
             assert_eq!(actual, JsonType::Int);
             assert_eq!(position, FilePosition::new(1, 2));
-        },
-        Err(other_err) => panic!("unexpected error: {:?}", other_err)
+        }
+        Err(other_err) => panic!("unexpected error: {:?}", other_err),
     }
 }
