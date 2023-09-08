@@ -81,7 +81,7 @@ impl<'a> Parser<'a> {
     }
 
     /// we should enable PGO, then add `#[inline(always)]` so this method can be optimised
-    /// for each call from Fleece.
+    /// for each call from Jiter.
     pub fn peak(&mut self) -> JsonResult<Peak> {
         while let Some(next) = self.data.get(self.index) {
             match next {

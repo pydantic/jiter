@@ -2,8 +2,8 @@ use indexmap::indexmap;
 use std::fs::File;
 use std::io::Read;
 
-use donervan::{
-    FilePosition, Fleece, FleeceError, JsonError, JsonResult, JsonType, JsonValue, NumberAny, NumberDecoder, NumberInt,
+use jiter::{
+    FilePosition, Jiter, JiterError, JsonError, JsonResult, JsonType, JsonValue, NumberAny, NumberDecoder, NumberInt,
     Parser, Peak, StringDecoder, StringDecoderRange,
 };
 
@@ -390,7 +390,7 @@ fn pass1_to_value() {
 
 #[test]
 fn fleece_object() {
-    let mut fleece = Fleece::new(br#"{"foo": "bar", "spam": [   1, 2, "x"]}"#);
+    let mut fleece = Jiter::new(br#"{"foo": "bar", "spam": [   1, 2, "x"]}"#);
     assert_eq!(fleece.next_object().unwrap(), Some("foo".to_string()));
     assert_eq!(fleece.next_str().unwrap(), "bar");
     assert_eq!(fleece.next_key().unwrap(), Some("spam".to_string()));
@@ -407,21 +407,21 @@ fn fleece_object() {
 
 #[test]
 fn fleece_empty_array() {
-    let mut fleece = Fleece::new(b"[]");
+    let mut fleece = Jiter::new(b"[]");
     assert_eq!(fleece.next_array().unwrap(), false);
     fleece.finish().unwrap();
 }
 
 #[test]
 fn fleece_trailing_bracket() {
-    let mut fleece = Fleece::new(b"[1]]");
+    let mut fleece = Jiter::new(b"[1]]");
     assert_eq!(fleece.next_array().unwrap(), true);
     assert_eq!(fleece.next_int().unwrap(), NumberInt::Int(1));
     assert_eq!(fleece.array_step().unwrap(), false);
     let result = fleece.finish();
     match result {
         Ok(t) => panic!("unexpectedly valid: {:?}", t),
-        Err(FleeceError::JsonError { error, position }) => {
+        Err(JiterError::JsonError { error, position }) => {
             assert_eq!(error, JsonError::UnexpectedCharacter);
             assert_eq!(position, FilePosition::new(1, 4));
         }
@@ -431,11 +431,11 @@ fn fleece_trailing_bracket() {
 
 #[test]
 fn fleece_wrong_type() {
-    let mut fleece = Fleece::new(b" 123");
+    let mut fleece = Jiter::new(b" 123");
     let result = fleece.next_str();
     match result {
         Ok(t) => panic!("unexpectedly valid: {:?}", t),
-        Err(FleeceError::WrongType {
+        Err(JiterError::WrongType {
             expected,
             actual,
             position,
