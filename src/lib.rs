@@ -1,6 +1,6 @@
 #![doc = include_str!("../README.md")]
 
-mod fleece;
+mod jiter;
 mod number_decoder;
 mod parse;
 mod string_decoder;
@@ -8,7 +8,7 @@ mod value;
 
 use std::fmt;
 
-pub use fleece::{Fleece, FleeceError, FleeceResult, JsonType};
+pub use jiter::{Jiter, JiterError, JiterResult, JsonType};
 pub use number_decoder::{NumberAny, NumberDecoder, NumberDecoderRange, NumberInt};
 pub use parse::{JsonError, JsonResult, Parser, Peak};
 pub use string_decoder::{StringDecoder, StringDecoderRange};

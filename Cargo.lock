@@ -9,20 +9,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 
 [[package]]
-name = "donervan"
-version = "0.1.0"
-dependencies = [
- "indexmap",
- "num-bigint",
- "num-traits",
- "paste",
- "serde",
- "serde_json",
- "strum",
- "strum_macros",
-]
-
-[[package]]
 name = "equivalent"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -55,6 +41,20 @@ name = "itoa"
 version = "1.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af150ab688ff2122fcef229be89cb50dd66af9e01a4ff320cc137eecc9bacc38"
+
+[[package]]
+name = "jiter"
+version = "0.0.1"
+dependencies = [
+ "indexmap",
+ "num-bigint",
+ "num-traits",
+ "paste",
+ "serde",
+ "serde_json",
+ "strum",
+ "strum_macros",
+]
 
 [[package]]
 name = "num-bigint"
