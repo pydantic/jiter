@@ -42,16 +42,17 @@ jobs:
 
     - run: cargo test --doc
 
-    - uses: codecov/codecov-action@v2
+    - uses: codecov/codecov-action@v3
 
   bench:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
 
-    - uses: dtolnay/rust-toolchain@nightly
+    - uses: dtolnay/rust-toolchain@master
     - uses: Swatinem/rust-cache@v2
 
+    - run: python benches/generate_big.py
     - run: cargo bench
 
   lint:
