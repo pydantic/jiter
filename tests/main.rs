@@ -389,36 +389,36 @@ fn pass1_to_value() {
 }
 
 #[test]
-fn fleece_object() {
-    let mut fleece = Jiter::new(br#"{"foo": "bar", "spam": [   1, 2, "x"]}"#);
-    assert_eq!(fleece.next_object().unwrap(), Some("foo".to_string()));
-    assert_eq!(fleece.next_str().unwrap(), "bar");
-    assert_eq!(fleece.next_key().unwrap(), Some("spam".to_string()));
-    assert_eq!(fleece.next_array().unwrap(), true);
-    assert_eq!(fleece.next_int().unwrap(), NumberInt::Int(1));
-    assert_eq!(fleece.array_step().unwrap(), true);
-    assert_eq!(fleece.next_int().unwrap(), NumberInt::Int(2));
-    assert_eq!(fleece.array_step().unwrap(), true);
-    assert_eq!(fleece.next_bytes().unwrap(), b"x");
-    assert_eq!(fleece.array_step().unwrap(), false);
-    assert_eq!(fleece.next_key().unwrap(), None);
-    fleece.finish().unwrap();
+fn jiter_object() {
+    let mut jiter = Jiter::new(br#"{"foo": "bar", "spam": [   1, 2, "x"]}"#);
+    assert_eq!(jiter.next_object().unwrap(), Some("foo".to_string()));
+    assert_eq!(jiter.next_str().unwrap(), "bar");
+    assert_eq!(jiter.next_key().unwrap(), Some("spam".to_string()));
+    assert_eq!(jiter.next_array().unwrap(), true);
+    assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(1));
+    assert_eq!(jiter.array_step().unwrap(), true);
+    assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(2));
+    assert_eq!(jiter.array_step().unwrap(), true);
+    assert_eq!(jiter.next_bytes().unwrap(), b"x");
+    assert_eq!(jiter.array_step().unwrap(), false);
+    assert_eq!(jiter.next_key().unwrap(), None);
+    jiter.finish().unwrap();
 }
 
 #[test]
-fn fleece_empty_array() {
-    let mut fleece = Jiter::new(b"[]");
-    assert_eq!(fleece.next_array().unwrap(), false);
-    fleece.finish().unwrap();
+fn jiter_empty_array() {
+    let mut jiter = Jiter::new(b"[]");
+    assert_eq!(jiter.next_array().unwrap(), false);
+    jiter.finish().unwrap();
 }
 
 #[test]
-fn fleece_trailing_bracket() {
-    let mut fleece = Jiter::new(b"[1]]");
-    assert_eq!(fleece.next_array().unwrap(), true);
-    assert_eq!(fleece.next_int().unwrap(), NumberInt::Int(1));
-    assert_eq!(fleece.array_step().unwrap(), false);
-    let result = fleece.finish();
+fn jiter_trailing_bracket() {
+    let mut jiter = Jiter::new(b"[1]]");
+    assert_eq!(jiter.next_array().unwrap(), true);
+    assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(1));
+    assert_eq!(jiter.array_step().unwrap(), false);
+    let result = jiter.finish();
     match result {
         Ok(t) => panic!("unexpectedly valid: {:?}", t),
         Err(JiterError::JsonError { error, position }) => {
@@ -430,9 +430,9 @@ fn fleece_trailing_bracket() {
 }
 
 #[test]
-fn fleece_wrong_type() {
-    let mut fleece = Jiter::new(b" 123");
-    let result = fleece.next_str();
+fn jiter_wrong_type() {
+    let mut jiter = Jiter::new(b" 123");
+    let result = jiter.next_str();
     match result {
         Ok(t) => panic!("unexpectedly valid: {:?}", t),
         Err(JiterError::WrongType {
