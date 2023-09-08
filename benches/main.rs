@@ -132,7 +132,6 @@ fn donervan_fleece_true_object(path: &str, bench: &mut Bencher) {
     })
 }
 
-
 fn donervan_fleece_bigints_array(path: &str, bench: &mut Bencher) {
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());

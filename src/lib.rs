@@ -10,9 +10,9 @@ mod value;
 use std::fmt;
 
 pub use fleece::{Fleece, FleeceError, FleeceResult, JsonType};
+pub use number_decoder::{NumberAny, NumberDecoder, NumberDecoderRange, NumberInt};
 pub use parse::{JsonError, JsonResult, Parser, Peak};
-pub use string_decoder::{StringDecoderRange, StringDecoder};
-pub use number_decoder::{NumberDecoder, NumberInt, NumberAny, NumberDecoderRange};
+pub use string_decoder::{StringDecoder, StringDecoderRange};
 pub use value::{JsonArray, JsonObject, JsonValue};
 
 #[derive(Debug, Clone, PartialEq, Eq)]

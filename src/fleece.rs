@@ -1,11 +1,11 @@
 // use num_bigint::BigInt;
 // use speedate::{Date, Time, DateTime, Duration};
 
+use crate::number_decoder::{NumberDecoder, NumberInt};
 use crate::parse::Peak;
-use crate::string_decoder::{StringDecoderRange, StringDecoder};
+use crate::string_decoder::{StringDecoder, StringDecoderRange};
 use crate::value::take_value;
 use crate::{FilePosition, JsonError, JsonValue, NumberAny, Parser};
-use crate::number_decoder::{NumberDecoder, NumberInt};
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum JsonType {
@@ -154,18 +154,13 @@ impl<'a> Fleece<'a> {
     pub fn next_object(&mut self) -> FleeceResult<Option<String>> {
         let peak = self.peak()?;
         match peak {
-            Peak::Object => self
-                .parser
-                .object_first::<StringDecoder>()
-                .map_err(|e| self.map_err(e)),
+            Peak::Object => self.parser.object_first::<StringDecoder>().map_err(|e| self.map_err(e)),
             _ => Err(self.wrong_type(JsonType::Object, peak)),
         }
     }
 
     pub fn next_key(&mut self) -> FleeceResult<Option<String>> {
-        self.parser
-            .object_step::<StringDecoder>()
-            .map_err(|e| self.map_err(e))
+        self.parser.object_step::<StringDecoder>().map_err(|e| self.map_err(e))
     }
 
     pub fn finish(&mut self) -> FleeceResult<()> {
@@ -179,11 +174,15 @@ impl<'a> Fleece<'a> {
     }
 
     pub fn known_int(&mut self, positive: bool) -> FleeceResult<NumberInt> {
-        self.parser.consume_number::<NumberDecoder<NumberInt>>(positive).map_err(|e| self.map_err(e))
+        self.parser
+            .consume_number::<NumberDecoder<NumberInt>>(positive)
+            .map_err(|e| self.map_err(e))
     }
 
     pub fn known_float(&mut self, positive: bool) -> FleeceResult<NumberAny> {
-        self.parser.consume_number::<NumberDecoder<NumberAny>>(positive).map_err(|e| self.map_err(e))
+        self.parser
+            .consume_number::<NumberDecoder<NumberAny>>(positive)
+            .map_err(|e| self.map_err(e))
     }
 
     fn map_err(&self, error: JsonError) -> FleeceError {

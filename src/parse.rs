@@ -4,9 +4,9 @@ use std::ops::Range;
 
 use strum::{Display, EnumMessage};
 
+use crate::number_decoder::AbstractNumberDecoder;
 use crate::string_decoder::AbstractStringDecoder;
 use crate::FilePosition;
-use crate::number_decoder::AbstractNumberDecoder;
 
 #[derive(Debug, Clone)]
 pub struct Parser<'a> {

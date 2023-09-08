@@ -1,10 +1,10 @@
 use indexmap::IndexMap;
 use num_bigint::BigInt;
 
+use crate::number_decoder::{NumberAny, NumberDecoder, NumberInt};
 use crate::parse::{JsonResult, Parser, Peak};
-use crate::{FilePosition, JsonError};
-use crate::number_decoder::{NumberInt, NumberDecoder, NumberAny};
 use crate::string_decoder::StringDecoder;
+use crate::{FilePosition, JsonError};
 
 /// similar to serde `Value` but with int and float split
 #[derive(Clone, Debug, PartialEq)]
@@ -70,7 +70,7 @@ pub(crate) fn take_value(peak: Peak, parser: &mut Parser) -> JsonResult<JsonValu
                 NumberAny::Int(NumberInt::BigInt(big_int)) => Ok(JsonValue::BigInt(big_int)),
                 NumberAny::Float(float) => Ok(JsonValue::Float(float)),
             }
-        },
+        }
         Peak::Array => {
             // we could do something clever about guessing the size of the array
             let mut array: Vec<JsonValue> = Vec::new();

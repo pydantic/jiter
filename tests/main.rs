@@ -2,7 +2,10 @@ use indexmap::indexmap;
 use std::fs::File;
 use std::io::Read;
 
-use donervan::{FilePosition, Fleece, FleeceError, JsonError, JsonResult, JsonType, JsonValue, NumberAny, NumberDecoder, NumberInt, Parser, Peak, StringDecoder, StringDecoderRange};
+use donervan::{
+    FilePosition, Fleece, FleeceError, JsonError, JsonResult, JsonType, JsonValue, NumberAny, NumberDecoder, NumberInt,
+    Parser, Peak, StringDecoder, StringDecoderRange,
+};
 
 fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
     let mut v = Vec::new();
@@ -77,7 +80,6 @@ fn display_number(positive: bool, parser: &mut Parser) -> JsonResult<String> {
     };
     Ok(s)
 }
-
 
 macro_rules! single_expect_ok_or_error {
     ($name:ident, ok, $json:literal, $expected:expr) => {

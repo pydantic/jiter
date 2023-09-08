@@ -1,8 +1,8 @@
+use num_bigint::BigInt;
+use num_traits::cast::ToPrimitive;
 use std::fmt;
 use std::marker::PhantomData;
 use std::ops::Range;
-use num_bigint::BigInt;
-use num_traits::cast::ToPrimitive;
 
 use crate::{JsonError, JsonResult};
 
@@ -18,9 +18,9 @@ pub trait AbstractNumber: fmt::Debug + PartialEq + Sized {
 
     fn add_digit(&mut self, digit: &u8);
 
-    fn apply_exponential(self, exponent: i32, positive: bool) -> JsonResult<Self>;
+    fn apply_decimal(self, data: &[u8], index: usize, positive: bool) -> JsonResult<(Self, usize)>;
 
-    fn add_decimal(self, data: &[u8], index: usize, positive: bool) -> JsonResult<(Self, usize)>;
+    fn apply_exponential(self, exponent: i32, positive: bool) -> JsonResult<Self>;
 
     fn negate(&mut self);
 }
@@ -82,11 +82,11 @@ impl AbstractNumber for NumberInt {
         }
     }
 
-    fn apply_exponential(self, _exponent: i32, _positive: bool) -> JsonResult<Self> {
+    fn apply_decimal(self, _data: &[u8], _index: usize, _positive: bool) -> JsonResult<(Self, usize)> {
         Err(JsonError::FloatExpectingInt)
     }
 
-    fn add_decimal(self, _data: &[u8], _index: usize, _positive: bool) -> JsonResult<(Self, usize)> {
+    fn apply_exponential(self, _exponent: i32, _positive: bool) -> JsonResult<Self> {
         Err(JsonError::FloatExpectingInt)
     }
 
@@ -95,7 +95,7 @@ impl AbstractNumber for NumberInt {
             Self::Int(int) => *int = -*int,
             Self::BigInt(big_int) => {
                 *big_int *= -1;
-            },
+            }
         }
     }
 }
@@ -103,7 +103,7 @@ impl AbstractNumber for NumberInt {
 #[derive(Debug, Clone, PartialEq)]
 pub enum NumberAny {
     Int(NumberInt),
-    Float(f64)
+    Float(f64),
 }
 
 impl From<NumberAny> for f64 {
@@ -131,29 +131,7 @@ impl AbstractNumber for NumberAny {
         }
     }
 
-    fn apply_exponential(self, exponent: i32, positive: bool) -> JsonResult<Self> {
-        if exponent == i32::MAX {
-            if positive {
-                Ok(Self::Float(f64::INFINITY))
-            } else {
-                Ok(Self::Float(f64::NEG_INFINITY))
-            }
-        } else if exponent == i32::MIN {
-            Ok(Self::Float(0.0))
-        } else {
-            let mut f: f64 = match self {
-                Self::Int(int) => int.into(),
-                Self::Float(float) => float,
-            };
-            f = f * 10_f64.powi(exponent);
-            if !positive {
-                f = -f;
-            }
-            Ok(Self::Float(f))
-        }
-    }
-
-    fn add_decimal(self, data: &[u8], mut index: usize, positive: bool) -> JsonResult<(Self, usize)> {
+    fn apply_decimal(self, data: &[u8], mut index: usize, positive: bool) -> JsonResult<(Self, usize)> {
         let mut result: f64 = match self {
             Self::Int(int) => int.into(),
             Self::Float(_) => return Err(JsonError::InvalidNumber),
@@ -189,18 +167,40 @@ impl AbstractNumber for NumberAny {
         Ok((Self::Float(v), index))
     }
 
+    fn apply_exponential(self, exponent: i32, positive: bool) -> JsonResult<Self> {
+        if exponent == i32::MAX {
+            if positive {
+                Ok(Self::Float(f64::INFINITY))
+            } else {
+                Ok(Self::Float(f64::NEG_INFINITY))
+            }
+        } else if exponent == i32::MIN {
+            Ok(Self::Float(0.0))
+        } else {
+            let mut f: f64 = match self {
+                Self::Int(int) => int.into(),
+                Self::Float(float) => float,
+            };
+            f = f * 10_f64.powi(exponent);
+            if !positive {
+                f = -f;
+            }
+            Ok(Self::Float(f))
+        }
+    }
+
     fn negate(&mut self) {
         match self {
             Self::Int(int) => int.negate(),
             Self::Float(f) => {
                 *f = -*f;
-            },
+            }
         }
     }
 }
 
 pub struct NumberDecoder<Num: AbstractNumber> {
-    phantom: PhantomData<Num>
+    phantom: PhantomData<Num>,
 }
 
 impl<Num: AbstractNumber> AbstractNumberDecoder for NumberDecoder<Num> {
@@ -216,11 +216,11 @@ impl<Num: AbstractNumber> AbstractNumberDecoder for NumberDecoder<Num> {
         while let Some(next) = data.get(index) {
             match next {
                 b'0'..=b'9' => num.add_digit(next),
-                b'.' => return num.add_decimal(data, index, positive),
+                b'.' => return num.apply_decimal(data, index, positive),
                 b'e' | b'E' => {
                     let e = Exponent::decode(data, index)?;
                     num = num.apply_exponential(e.0.value, positive)?;
-                    return Ok((num, e.1))
+                    return Ok((num, e.1));
                 }
                 _ => break,
             }
@@ -259,6 +259,7 @@ impl Exponent {
             None => Err(JsonError::UnexpectedEnd),
         }
     }
+
     fn decode(data: &[u8], mut index: usize) -> JsonResult<(Self, usize)> {
         index += 1;
         let mut positive = true;
@@ -290,7 +291,7 @@ impl Exponent {
                         Some(i) => i,
                         None => return Ok((Self::infinite(positive), index)),
                     };
-                },
+                }
                 _ => break,
             }
             index += 1;
@@ -329,7 +330,7 @@ impl AbstractNumberDecoder for NumberDecoderRange {
                 b'.' => {
                     let end = numeric_range(data, index)?;
                     return Ok((start..end, end));
-                },
+                }
                 b'e' | b'E' => {
                     let end = exponent_range(data, index)?;
                     return Ok((start..end, end));
@@ -347,10 +348,7 @@ fn exponent_range(data: &[u8], mut index: usize) -> JsonResult<usize> {
     index += 1;
 
     match data.get(index) {
-        Some(b'-') => {
-            index += 1;
-        }
-        Some(b'+') => {
+        Some(b'-') | Some(b'+') => {
             index += 1;
         }
         Some(v) if (b'0'..=b'9').contains(v) => (),
@@ -359,7 +357,6 @@ fn exponent_range(data: &[u8], mut index: usize) -> JsonResult<usize> {
     };
     numeric_range(data, index)
 }
-
 
 fn numeric_range(data: &[u8], mut index: usize) -> JsonResult<usize> {
     index += 1;
