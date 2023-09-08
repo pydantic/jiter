@@ -1,5 +1,4 @@
 use std::fmt;
-use std::intrinsics::{likely, unlikely};
 use std::ops::Range;
 
 use strum::{Display, EnumMessage};
@@ -210,7 +209,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn consume_true(&mut self) -> JsonResult<()> {
-        if unlikely(self.index + 3 >= self.length) {
+        if self.index + 3 >= self.length {
             return Err(JsonError::UnexpectedEnd);
         }
         let v = unsafe {
@@ -220,7 +219,7 @@ impl<'a> Parser<'a> {
                 *self.data.get_unchecked(self.index + 3),
             ]
         };
-        if likely(v == TRUE_REST) {
+        if v == TRUE_REST {
             self.index += 4;
             Ok(())
         } else {
@@ -229,7 +228,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn consume_false(&mut self) -> JsonResult<()> {
-        if unlikely(self.index + 4 >= self.length) {
+        if self.index + 4 >= self.length {
             return Err(JsonError::UnexpectedEnd);
         }
         let v = unsafe {
@@ -240,7 +239,7 @@ impl<'a> Parser<'a> {
                 *self.data.get_unchecked(self.index + 4),
             ]
         };
-        if likely(v == FALSE_REST) {
+        if v == FALSE_REST {
             self.index += 5;
             Ok(())
         } else {
@@ -249,7 +248,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn consume_null(&mut self) -> JsonResult<()> {
-        if unlikely(self.index + 3 >= self.length) {
+        if self.index + 3 >= self.length {
             return Err(JsonError::UnexpectedEnd);
         }
         let v = unsafe {
@@ -259,7 +258,7 @@ impl<'a> Parser<'a> {
                 *self.data.get_unchecked(self.index + 3),
             ]
         };
-        if likely(v == NULL_REST) {
+        if v == NULL_REST {
             self.index += 4;
             Ok(())
         } else {
