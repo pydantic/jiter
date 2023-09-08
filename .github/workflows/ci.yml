@@ -49,7 +49,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
-    - uses: dtolnay/rust-toolchain@master
+    - uses: dtolnay/rust-toolchain@stable
     - uses: Swatinem/rust-cache@v2
 
     - run: python benches/generate_big.py
