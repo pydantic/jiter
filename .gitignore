@@ -1,3 +1,5 @@
 /target
 /.idea
 /benches/big.json
+/profiling/
+/scratch/

@@ -2,7 +2,10 @@ use indexmap::indexmap;
 use std::fs::File;
 use std::io::Read;
 
-use donervan::{Decoder, Peak, Fleece, FleeceError, JsonError, JsonType, JsonResult, JsonValue, Parser, FilePosition, Number, DecodeStringRange, DecodeStringString};
+use donervan::{
+    FilePosition, Fleece, FleeceError, JsonError, JsonResult, JsonType, JsonValue, NumberAny, NumberDecoder, NumberInt,
+    Parser, Peak, StringDecoder, StringDecoderRange,
+};
 
 fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
     let mut v = Vec::new();
@@ -13,21 +16,23 @@ fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
             parser.consume_true()?;
             dbg!("true");
             v.push(format!("true @ {position}"));
-        },
+        }
         Peak::False => {
             parser.consume_false()?;
             v.push(format!("false @ {position}"));
-        },
+        }
         Peak::Null => {
             parser.consume_null()?;
             v.push(format!("null @ {position}"));
-        },
+        }
         Peak::String => {
-            let range = parser.consume_string::<DecodeStringRange>()?;
+            let range = parser.consume_string::<StringDecoderRange>()?;
             v.push(format!("String({range:?}) @ {position}"));
         }
-        Peak::NumPos => v.push(display_number(true, parser)?),
-        Peak::NumNeg => v.push(display_number(false, parser)?),
+        Peak::Num(positive) => {
+            let s = display_number(positive, parser)?;
+            v.push(s);
+        }
         Peak::Array => {
             v.push(format!("[ @ {position}"));
             if parser.array_first()? {
@@ -35,7 +40,7 @@ fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
                     let el_vec = json_vec(parser)?;
                     v.extend(el_vec);
                     if !parser.array_step()? {
-                        break
+                        break;
                     }
                 }
             }
@@ -43,11 +48,11 @@ fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
         }
         Peak::Object => {
             v.push(format!("{{ @ {position}"));
-            if let Some(key) = parser.object_first::<DecodeStringRange>()? {
+            if let Some(key) = parser.object_first::<StringDecoderRange>()? {
                 v.push(format!("Key({key:?})"));
                 let value_vec = json_vec(parser)?;
                 v.extend(value_vec);
-                while let Some(key) = parser.object_step::<DecodeStringRange>()? {
+                while let Some(key) = parser.object_step::<StringDecoderRange>()? {
                     v.push(format!("Key({key:?}"));
                     let value_vec = json_vec(parser)?;
                     v.extend(value_vec);
@@ -59,24 +64,18 @@ fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
     Ok(v)
 }
 
-
 fn display_number(positive: bool, parser: &mut Parser) -> JsonResult<String> {
     let position = parser.current_position();
-    let number = parser.next_number(positive)?;
+    let number = parser.consume_number::<NumberDecoder<NumberAny>>(positive)?;
     let s = match number {
-        Number::Int {positive, range, exponent} => {
-            let prefix = if positive { "+" } else { "-" };
-            match exponent {
-                Some(exp) => format!("{prefix}Int({range:?}{exp}) @ {position}"),
-                None => format!("{prefix}Int({range:?}) @ {position}"),
-            }
+        NumberAny::Int(NumberInt::Int(int)) => {
+            format!("Int({int}) @ {position}")
         }
-        Number::Float {positive, int_range, decimal_range, exponent} => {
-            let prefix = if positive { "+" } else { "-" };
-            match exponent {
-                Some(exp) => format!("{prefix}Float({int_range:?}.{decimal_range:?}{exp}) @ {position}"),
-                None => format!("{prefix}Float({int_range:?}.{decimal_range:?}) @ {position}"),
-            }
+        NumberAny::Int(NumberInt::BigInt(big_int)) => {
+            format!("BigInt({big_int}) @ {position}")
+        }
+        NumberAny::Float(float) => {
+            format!("Float({float}) @ {position}")
         }
     };
     Ok(s)
@@ -116,18 +115,27 @@ macro_rules! single_tests {
 
 single_tests! {
     string: ok => r#""foobar""#, "String(1..7) @ 1:1";
-    int_pos: ok => "1234", "+Int(0..4) @ 1:1";
-    int_neg: ok => "-1234", "-Int(1..5) @ 1:1";
-    int_exp: ok => "20e10", "+Int(0..2e+3..5) @ 1:1";
-    float_pos: ok => "12.34", "+Float(0..2.3..5) @ 1:1";
-    float_neg: ok => "-12.34", "-Float(1..3.4..6) @ 1:1";
-    float_exp: ok => "2.2e10", "+Float(0..1.2..3e+4..6) @ 1:1";
+    int_pos: ok => "1234", "Int(1234) @ 1:1";
+    int_neg: ok => "-1234", "Int(-1234) @ 1:1";
+    int_exp: ok => "20e10", "Float(200000000000) @ 1:1";
+    float_pos: ok => "12.34", "Float(12.34) @ 1:1";
+    float_neg: ok => "-12.34", "Float(-12.34) @ 1:1";
+    float_exp: ok => "2.2e10", "Float(22000000000) @ 1:1";
+    float_exp_pos: ok => "2.2e+10", "Float(22000000000) @ 1:1";
+    // NOTICE - this might be brittle, if so move to to a separate test
+    float_exp_neg: ok => "2.2e-2", "Float(0.022000000000000002) @ 1:1";
+    float_exp_massive1: ok => "2e2147483647", "Float(inf) @ 1:1";
+    float_exp_massive2: ok => "2e2147483648", "Float(inf) @ 1:1";
+    float_exp_massive3: ok => "2e2147483646", "Float(inf) @ 1:1";
+    float_exp_tiny0: ok => "2e-2147483647", "Float(0) @ 1:1";
+    float_exp_tiny1: ok => "2e-2147483648", "Float(0) @ 1:1";
+    float_exp_tiny2: ok => "2e-2147483646", "Float(0) @ 1:1";
     null: ok => "null", "null @ 1:1";
     v_true: ok => "true", "true @ 1:1";
     v_false: ok => "false", "false @ 1:1";
     offset_true: ok => "  true", "true @ 1:3";
     string_unclosed: err => r#""foobar"#, UnexpectedEnd;
-    bad_int: err => "-", InvalidNumber;
+    bad_int: err => "-", UnexpectedEnd;
     bad_true: err => "truX", InvalidTrue;
     bad_true: err => "tru", UnexpectedEnd;
     bad_false: err => "falsX", InvalidFalse;
@@ -153,19 +161,11 @@ fn invalid_string_controls() {
     let mut parser = Parser::new(b);
     let peak = parser.peak().unwrap();
     assert!(matches!(peak, Peak::String));
-    let range = parser.consume_string::<DecodeStringRange>().unwrap();
-    let result = Decoder::new(b).decode_string(range);
+    let result = parser.consume_string::<StringDecoder>();
     match result {
         Ok(t) => panic!("unexpectedly valid: {:?} -> {:?}", json, t),
         Err(e) => assert_eq!(e, JsonError::InvalidString(3)),
     }
-}
-
-#[test]
-fn parse_str() {
-    let json = "foobar";
-    let result_string = Decoder::new(json.as_bytes()).decode_string(0..3).unwrap();
-    assert_eq!(result_string, "foo".to_string());
 }
 
 #[test]
@@ -177,7 +177,7 @@ fn json_parse_str() {
     assert!(matches!(peak, Peak::String));
     assert_eq!(parser.current_position(), FilePosition::new(1, 2));
 
-    let result_string = parser.consume_string::<DecodeStringString>().unwrap();
+    let result_string = parser.consume_string::<StringDecoder>().unwrap();
     assert_eq!(result_string, "foobar");
     parser.finish().unwrap();
 }
@@ -192,7 +192,7 @@ macro_rules! string_tests {
                     let mut parser = Parser::new(data);
                     let peak = parser.peak().unwrap();
                     assert!(matches!(peak, Peak::String));
-                    let result_string = parser.consume_string::<DecodeStringString>().unwrap();
+                    let result_string = parser.consume_string::<StringDecoder>().unwrap();
                     assert_eq!(result_string, $expected);
                     parser.finish().unwrap();
                 }
@@ -217,13 +217,13 @@ fn test_key_str() {
     let mut parser = Parser::new(json.as_bytes());
     let p = parser.peak().unwrap();
     assert!(matches!(p, Peak::Object));
-    let k = parser.object_first::<DecodeStringString>().unwrap();
+    let k = parser.object_first::<StringDecoder>().unwrap();
     assert_eq!(k, Some("foo".to_string()));
     let p = parser.peak().unwrap();
     assert!(matches!(p, Peak::String));
-    let v = parser.consume_string::<DecodeStringString>().unwrap();
+    let v = parser.consume_string::<StringDecoder>().unwrap();
     assert_eq!(v, "bar");
-    let next_key = parser.object_step::<DecodeStringString>().unwrap();
+    let next_key = parser.object_step::<StringDecoder>().unwrap();
     assert!(next_key.is_none());
     parser.finish().unwrap();
 }
@@ -234,17 +234,16 @@ fn test_key_bytes() {
     let mut parser = Parser::new(json);
     let p = parser.peak().unwrap();
     assert!(matches!(p, Peak::Object));
-    let k = parser.object_first::<DecodeStringRange>().unwrap().unwrap();
+    let k = parser.object_first::<StringDecoderRange>().unwrap().unwrap();
     assert_eq!(json[k], *b"foo");
     let p = parser.peak().unwrap();
     assert!(matches!(p, Peak::String));
-    let v = parser.consume_string::<DecodeStringRange>().unwrap();
+    let v = parser.consume_string::<StringDecoderRange>().unwrap();
     assert_eq!(json[v], *b"bar");
-    let next_key = parser.object_step::<DecodeStringString>().unwrap();
+    let next_key = parser.object_step::<StringDecoder>().unwrap();
     assert!(next_key.is_none());
     parser.finish().unwrap();
 }
-
 
 macro_rules! test_position {
     ($($name:ident: $data:literal, $find:literal, $expected:expr;)*) => {
@@ -349,7 +348,7 @@ fn repeat_trailing_array() {
         Err(e) => {
             assert_eq!(e.error, JsonError::UnexpectedCharacter);
             assert_eq!(e.position, FilePosition::new(1, 4));
-        },
+        }
     }
 }
 
@@ -390,15 +389,15 @@ fn pass1_to_value() {
 }
 
 #[test]
-fn fleece() {
+fn fleece_object() {
     let mut fleece = Fleece::new(br#"{"foo": "bar", "spam": [   1, 2, "x"]}"#);
     assert_eq!(fleece.next_object().unwrap(), Some("foo".to_string()));
     assert_eq!(fleece.next_str().unwrap(), "bar");
     assert_eq!(fleece.next_key().unwrap(), Some("spam".to_string()));
     assert_eq!(fleece.next_array().unwrap(), true);
-    assert_eq!(fleece.next_int_strict().unwrap(), 1);
+    assert_eq!(fleece.next_int().unwrap(), NumberInt::Int(1));
     assert_eq!(fleece.array_step().unwrap(), true);
-    assert_eq!(fleece.next_int_strict().unwrap(), 2);
+    assert_eq!(fleece.next_int().unwrap(), NumberInt::Int(2));
     assert_eq!(fleece.array_step().unwrap(), true);
     assert_eq!(fleece.next_bytes().unwrap(), b"x");
     assert_eq!(fleece.array_step().unwrap(), false);
@@ -417,7 +416,7 @@ fn fleece_empty_array() {
 fn fleece_trailing_bracket() {
     let mut fleece = Fleece::new(b"[1]]");
     assert_eq!(fleece.next_array().unwrap(), true);
-    assert_eq!(fleece.next_int_strict().unwrap(), 1);
+    assert_eq!(fleece.next_int().unwrap(), NumberInt::Int(1));
     assert_eq!(fleece.array_step().unwrap(), false);
     let result = fleece.finish();
     match result {
@@ -425,11 +424,10 @@ fn fleece_trailing_bracket() {
         Err(FleeceError::JsonError { error, position }) => {
             assert_eq!(error, JsonError::UnexpectedCharacter);
             assert_eq!(position, FilePosition::new(1, 4));
-        },
-        Err(other_err) => panic!("unexpected error: {:?}", other_err)
+        }
+        Err(other_err) => panic!("unexpected error: {:?}", other_err),
     }
 }
-
 
 #[test]
 fn fleece_wrong_type() {
@@ -437,11 +435,15 @@ fn fleece_wrong_type() {
     let result = fleece.next_str();
     match result {
         Ok(t) => panic!("unexpectedly valid: {:?}", t),
-        Err(FleeceError::WrongType { expected, actual, position }) => {
+        Err(FleeceError::WrongType {
+            expected,
+            actual,
+            position,
+        }) => {
             assert_eq!(expected, JsonType::String);
             assert_eq!(actual, JsonType::Int);
             assert_eq!(position, FilePosition::new(1, 2));
-        },
-        Err(other_err) => panic!("unexpected error: {:?}", other_err)
+        }
+        Err(other_err) => panic!("unexpected error: {:?}", other_err),
     }
 }

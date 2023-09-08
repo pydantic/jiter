@@ -1,20 +1,21 @@
-use std::ops::Range;
 use crate::{JsonError, JsonResult};
+use std::ops::Range;
 
-pub trait DecodeString {
+pub trait AbstractStringDecoder {
     type Output;
 
     fn decode(data: &[u8], index: usize) -> JsonResult<(Self::Output, usize)>;
 }
 
-pub struct DecodeStringString;
+pub struct StringDecoder;
 
-impl DecodeString for DecodeStringString {
+impl AbstractStringDecoder for StringDecoder {
     type Output = String;
 
     fn decode(data: &[u8], mut index: usize) -> JsonResult<(Self::Output, usize)> {
         index += 1;
         let mut chars = Vec::new();
+        let start = index;
         while let Some(next) = data.get(index) {
             match next {
                 b'"' => {
@@ -38,7 +39,7 @@ impl DecodeString for DecodeStringString {
                                     index += 1;
                                     let c = match data.get(index) {
                                         Some(c) => *c,
-                                        None => return Err(JsonError::InvalidString(index)),
+                                        None => return Err(JsonError::InvalidString(index - start)),
                                     };
                                     let hex = match c {
                                         b'0'..=b'9' => (c & 0x0f) as u16,
@@ -54,17 +55,17 @@ impl DecodeString for DecodeStringString {
                                             chars.push(b);
                                         }
                                     }
-                                    None => return Err(JsonError::InvalidString(index)),
+                                    None => return Err(JsonError::InvalidString(index - start)),
                                 }
-                            },
-                            _ => return Err(JsonError::InvalidString(index)),
+                            }
+                            _ => return Err(JsonError::InvalidString(index - start)),
                         }
                     } else {
                         return Err(JsonError::UnexpectedEnd);
                     }
                 }
                 // 8 = backspace, 9 = tab, 10 = newline, 12 = formfeed, 13 = carriage return
-                8 | 9 | 10 | 12 | 13 => return Err(JsonError::InvalidString(index)),
+                8 | 9 | 10 | 12 | 13 => return Err(JsonError::InvalidString(index - start)),
                 _ => chars.push(*next),
             }
             index += 1;
@@ -73,10 +74,9 @@ impl DecodeString for DecodeStringString {
     }
 }
 
-// should be changed to bytes
-pub struct DecodeStringRange;
+pub struct StringDecoderRange;
 
-impl DecodeString for DecodeStringRange {
+impl AbstractStringDecoder for StringDecoderRange {
     type Output = Range<usize>;
 
     fn decode(data: &[u8], mut index: usize) -> JsonResult<(Self::Output, usize)> {
@@ -101,4 +101,3 @@ impl DecodeString for DecodeStringRange {
         Err(JsonError::UnexpectedEnd)
     }
 }
-
