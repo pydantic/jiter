@@ -3,7 +3,7 @@ use num_bigint::BigInt;
 
 use crate::parse::{JsonResult, Parser, Peak};
 use crate::{FilePosition, JsonError};
-use crate::number_decoder::{NumberInt, NumberDecoder};
+use crate::number_decoder::{NumberInt, NumberDecoder, NumberAny};
 use crate::string_decoder::StringDecoder;
 
 /// similar to serde `Value` but with int and float split
@@ -64,11 +64,11 @@ pub(crate) fn take_value(peak: Peak, parser: &mut Parser) -> JsonResult<JsonValu
             Ok(JsonValue::String(s))
         }
         Peak::Num(positive) => {
-            let n = parser.consume_number::<NumberDecoder<NumberInt>>(positive)?;
+            let n = parser.consume_number::<NumberDecoder<NumberAny>>(positive)?;
             match n {
-                NumberInt::Int(int) => Ok(JsonValue::Int(int)),
-                NumberInt::BigInt(big_int) => Ok(JsonValue::BigInt(big_int)),
-                // Number::Float(float) => Ok(JsonValue::Float(float)),
+                NumberAny::Int(NumberInt::Int(int)) => Ok(JsonValue::Int(int)),
+                NumberAny::Int(NumberInt::BigInt(big_int)) => Ok(JsonValue::BigInt(big_int)),
+                NumberAny::Float(float) => Ok(JsonValue::Float(float)),
             }
         },
         Peak::Array => {

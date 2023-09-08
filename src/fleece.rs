@@ -4,7 +4,7 @@
 use crate::parse::Peak;
 use crate::string_decoder::{StringDecoderRange, StringDecoder};
 use crate::value::take_value;
-use crate::{FilePosition, JsonError, JsonValue, Parser};
+use crate::{FilePosition, JsonError, JsonValue, NumberAny, Parser};
 use crate::number_decoder::{NumberDecoder, NumberInt};
 
 #[derive(Debug, Eq, PartialEq)]
@@ -101,7 +101,11 @@ impl<'a> Fleece<'a> {
     }
 
     pub fn next_float(&mut self) -> FleeceResult<f64> {
-        todo!("next_float")
+        let peak = self.peak()?;
+        match peak {
+            Peak::Num(positive) => self.known_float(positive).map(|n| n.into()),
+            _ => Err(self.wrong_type(JsonType::Int, peak)),
+        }
     }
 
     pub fn next_str(&mut self) -> FleeceResult<String> {
@@ -178,6 +182,10 @@ impl<'a> Fleece<'a> {
         self.parser.consume_number::<NumberDecoder<NumberInt>>(positive).map_err(|e| self.map_err(e))
     }
 
+    pub fn known_float(&mut self, positive: bool) -> FleeceResult<NumberAny> {
+        self.parser.consume_number::<NumberDecoder<NumberAny>>(positive).map_err(|e| self.map_err(e))
+    }
+
     fn map_err(&self, error: JsonError) -> FleeceError {
         FleeceError::JsonError {
             error,
@@ -219,11 +227,9 @@ impl<'a> Fleece<'a> {
 
     fn wrong_num(&self, positive: bool, expected: JsonType) -> FleeceError {
         let mut parser2 = self.parser.clone();
-        // TODO use NumberAny
-        let actual = match parser2.consume_number::<NumberDecoder<NumberInt>>(positive) {
-            Ok(NumberInt::Int { .. }) => JsonType::Int,
-            Ok(NumberInt::BigInt { .. }) => JsonType::Int,
-            // Ok(NumberInt::Float { .. }) => JsonType::Float,
+        let actual = match parser2.consume_number::<NumberDecoder<NumberAny>>(positive) {
+            Ok(NumberAny::Int { .. }) => JsonType::Int,
+            Ok(NumberAny::Float { .. }) => JsonType::Float,
             Err(e) => {
                 return {
                     FleeceError::JsonError {

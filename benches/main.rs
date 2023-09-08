@@ -132,6 +132,26 @@ fn donervan_fleece_true_object(path: &str, bench: &mut Bencher) {
     })
 }
 
+
+fn donervan_fleece_bigints_array(path: &str, bench: &mut Bencher) {
+    let json = read_file(path);
+    let json_data = black_box(json.as_bytes());
+    bench.iter(|| {
+        let mut fleece = Fleece::new(json_data);
+        let mut v = Vec::new();
+        if fleece.next_array().unwrap() {
+            loop {
+                let i = fleece.next_int().unwrap();
+                v.push(i);
+                if !fleece.array_step().unwrap() {
+                    break;
+                }
+            }
+        }
+        black_box(v)
+    })
+}
+
 fn serde_value(path: &str, bench: &mut Bencher) {
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
@@ -164,6 +184,8 @@ macro_rules! test_cases {
                     donervan_fleece_true_array(&file_path, bench);
                 } else if file_name == "true_object" {
                     donervan_fleece_true_object(&file_path, bench);
+                } else if file_name == "bigints_array" {
+                    donervan_fleece_bigints_array(&file_path, bench);
                 }
             }
 
@@ -186,3 +208,4 @@ test_cases!(pass2);
 test_cases!(string_array);
 test_cases!(true_array);
 test_cases!(true_object);
+test_cases!(bigints_array);

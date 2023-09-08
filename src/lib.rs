@@ -12,7 +12,7 @@ use std::fmt;
 pub use fleece::{Fleece, FleeceError, FleeceResult, JsonType};
 pub use parse::{JsonError, JsonResult, Parser, Peak};
 pub use string_decoder::{StringDecoderRange, StringDecoder};
-pub use number_decoder::{NumberDecoder, NumberInt};
+pub use number_decoder::{NumberDecoder, NumberInt, NumberAny, NumberDecoderRange};
 pub use value::{JsonArray, JsonObject, JsonValue};
 
 #[derive(Debug, Clone, PartialEq, Eq)]

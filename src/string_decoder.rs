@@ -74,8 +74,6 @@ impl AbstractStringDecoder for StringDecoder {
     }
 }
 
-// TODO rename to StringDecoderRaw
-// TODO should be changed to bytes/slice
 pub struct StringDecoderRange;
 
 impl AbstractStringDecoder for StringDecoderRange {
