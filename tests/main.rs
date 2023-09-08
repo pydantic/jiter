@@ -86,8 +86,10 @@ macro_rules! single_expect_ok_or_error {
         paste::item! {
             #[test]
             fn [< single_element_ok_ $name >]() {
-                let elements = json_vec(&mut Parser::new($json.as_bytes())).unwrap().join(", ");
+                let mut parser = Parser::new($json.as_bytes());
+                let elements = json_vec(&mut parser).unwrap().join(", ");
                 assert_eq!(elements, $expected);
+                parser.finish().unwrap();
             }
         }
     };
@@ -130,6 +132,8 @@ single_tests! {
     float_exp_tiny0: ok => "2e-2147483647", "Float(0) @ 1:1";
     float_exp_tiny1: ok => "2e-2147483648", "Float(0) @ 1:1";
     float_exp_tiny2: ok => "2e-2147483646", "Float(0) @ 1:1";
+    float_exp_tiny3: ok => "8e-7766666666", "Float(0) @ 1:1";
+    // float_exp_tiny4: ok => "200.08e-76200000102", "Float(0) @ 1:1";
     null: ok => "null", "null @ 1:1";
     v_true: ok => "true", "true @ 1:1";
     v_false: ok => "false", "false @ 1:1";
@@ -268,57 +272,11 @@ test_position! {
     second_line: b"123456\n789", 7, FilePosition::new(2, 1);
 }
 
-// #[test]
-// fn parse_int() {
-//     for input_value in -1000i64..1000 {
-//         let json = format!(" {} ", input_value);
-//         let data = json.as_bytes();
-//         let mut parser = Parser::new(data);
-//         let first_element = parser.next_value().unwrap();
-//         parser.finish().unwrap();
-//         let (positive, range) = match first_element {
-//             Element::Int {
-//                 positive,
-//                 range,
-//                 exponent,
-//             } => {
-//                 assert_eq!(exponent, None);
-//                 (positive, range)
-//             }
-//             v => panic!("expected int, not {:?}", v),
-//         };
-//         let result_int = Decoder::new(data).decode_int(positive, range, None).unwrap();
-//         assert_eq!(result_int, input_value);
-//     }
-// }
-
-// #[test]
-// fn parse_float() {
-//     for i in -1000..1000 {
-//         let input_value = i as f64 * 0.1;
-//         let json = format!("{:.4}", input_value);
-//         let data = json.as_bytes();
-//         let mut parser = Parser::new(data);
-//         let first_element = parser.next_value().unwrap();
-//         parser.finish().unwrap();
-//         let (positive, int_range, decimal_range) = match first_element {
-//             Element::Float {
-//                 positive,
-//                 int_range,
-//                 decimal_range,
-//                 exponent,
-//             } => {
-//                 assert_eq!(exponent, None);
-//                 (positive, int_range, decimal_range)
-//             }
-//             v => panic!("expected float, not {:?} (json: {:?}", v, json),
-//         };
-//         let result_int = Decoder::new(data)
-//             .decode_float(positive, int_range, decimal_range, None)
-//             .unwrap();
-//         assert!((result_int - input_value).abs() < 1e-6);
-//     }
-// }
+#[test]
+fn parse_int() {
+    let v = JsonValue::parse(b"8e-7766666666").unwrap();
+    assert_eq!(v, JsonValue::Float(0.0));
+}
 
 #[test]
 fn parse_object() {

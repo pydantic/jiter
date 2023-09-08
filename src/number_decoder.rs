@@ -285,11 +285,17 @@ impl Exponent {
                 b'0'..=b'9' => {
                     exp.value = match exp.value.checked_mul(10) {
                         Some(i) => i,
-                        None => return Ok((Self::infinite(positive), index)),
+                        None => {
+                            index += 1;
+                            return Ok((Self::infinite(positive), index));
+                        }
                     };
                     exp.value = match exp.value.checked_add((next & 0x0f) as i32) {
                         Some(i) => i,
-                        None => return Ok((Self::infinite(positive), index)),
+                        None => {
+                            index += 1;
+                            return Ok((Self::infinite(positive), index));
+                        }
                     };
                 }
                 _ => break,
