@@ -1,5 +1,4 @@
 #![doc = include_str!("../README.md")]
-#![feature(core_intrinsics)]
 
 mod fleece;
 mod number_decoder;
