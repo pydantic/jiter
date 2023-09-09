@@ -133,7 +133,7 @@ single_tests! {
     float_exp_tiny1: ok => "2e-2147483648", "Float(0) @ 1:1";
     float_exp_tiny2: ok => "2e-2147483646", "Float(0) @ 1:1";
     float_exp_tiny3: ok => "8e-7766666666", "Float(0) @ 1:1";
-    // float_exp_tiny4: ok => "200.08e-76200000102", "Float(0) @ 1:1";
+    float_exp_tiny4: ok => "200.08e-76200000102", "Float(0) @ 1:1";
     null: ok => "null", "null @ 1:1";
     v_true: ok => "true", "true @ 1:1";
     v_false: ok => "false", "false @ 1:1";

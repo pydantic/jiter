@@ -235,6 +235,7 @@ impl<Num: AbstractNumber> AbstractNumberDecoder for NumberDecoder<Num> {
     }
 }
 
+#[derive(Debug)]
 pub struct Exponent {
     value: i32,
 }
@@ -243,12 +244,6 @@ impl Exponent {
     fn new(digit: &u8) -> Self {
         Self {
             value: (digit & 0x0f) as i32,
-        }
-    }
-
-    fn infinite(positive: bool) -> Self {
-        Self {
-            value: if positive { i32::MAX } else { i32::MIN },
         }
     }
 
@@ -285,17 +280,11 @@ impl Exponent {
                 b'0'..=b'9' => {
                     exp.value = match exp.value.checked_mul(10) {
                         Some(i) => i,
-                        None => {
-                            index += 1;
-                            return Ok((Self::infinite(positive), index));
-                        }
+                        None => return Self::consume_rest(data, index, positive),
                     };
                     exp.value = match exp.value.checked_add((next & 0x0f) as i32) {
                         Some(i) => i,
-                        None => {
-                            index += 1;
-                            return Ok((Self::infinite(positive), index));
-                        }
+                        None => return Self::consume_rest(data, index, positive),
                     };
                 }
                 _ => break,
@@ -309,6 +298,21 @@ impl Exponent {
             exp.value = -exp.value;
             Ok((exp, index))
         }
+    }
+
+    fn consume_rest(data: &[u8], mut index: usize, positive: bool) -> JsonResult<(Self, usize)> {
+        index += 1;
+        while let Some(next) = data.get(index) {
+            match next {
+                b'0'..=b'9' => {
+                    index += 1;
+                }
+                _ => break,
+            }
+        }
+
+        let value = if positive { i32::MAX } else { i32::MIN };
+        Ok((Self { value }, index))
     }
 }
 
