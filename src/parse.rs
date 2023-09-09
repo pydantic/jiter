@@ -1,6 +1,3 @@
-use std::fmt;
-use std::ops::Range;
-
 use strum::{Display, EnumMessage};
 
 use crate::number_decoder::AbstractNumberDecoder;
@@ -47,28 +44,10 @@ pub enum Peak {
     Null,
     True,
     False,
-    // bool - True is positive, False is negative
-    Num(bool),
+    Num(u8),
     String,
     Array,
     Object,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Exponent {
-    pub positive: bool,
-    pub range: Range<usize>,
-}
-
-impl fmt::Display for Exponent {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.positive {
-            write!(f, "e+")?;
-        } else {
-            write!(f, "e-")?;
-        }
-        write!(f, "{:?}", self.range)
-    }
 }
 
 static TRUE_REST: [u8; 3] = [b'r', b'u', b'e'];
@@ -94,8 +73,8 @@ impl<'a> Parser<'a> {
                 b't' => return Ok(Peak::True),
                 b'f' => return Ok(Peak::False),
                 b'n' => return Ok(Peak::Null),
-                b'0'..=b'9' => return Ok(Peak::Num(true)),
-                b'-' => return Ok(Peak::Num(false)),
+                b'0'..=b'9' => return Ok(Peak::Num(*next)),
+                b'-' => return Ok(Peak::Num(*next)),
                 _ => return Err(JsonError::UnexpectedCharacter),
             }
         }
@@ -272,8 +251,8 @@ impl<'a> Parser<'a> {
         Ok(output)
     }
 
-    pub fn consume_number<D: AbstractNumberDecoder>(&mut self, positive: bool) -> JsonResult<D::Output> {
-        let (output, index) = D::decode(self.data, self.index, positive)?;
+    pub fn consume_number<D: AbstractNumberDecoder>(&mut self, first: u8) -> JsonResult<D::Output> {
+        let (output, index) = D::decode(self.data, self.index, first)?;
         self.index = index;
         Ok(output)
     }

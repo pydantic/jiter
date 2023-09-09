@@ -29,8 +29,8 @@ fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
             let range = parser.consume_string::<StringDecoderRange>()?;
             v.push(format!("String({range:?}) @ {position}"));
         }
-        Peak::Num(positive) => {
-            let s = display_number(positive, parser)?;
+        Peak::Num(first) => {
+            let s = display_number(first, parser)?;
             v.push(s);
         }
         Peak::Array => {
@@ -64,9 +64,9 @@ fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
     Ok(v)
 }
 
-fn display_number(positive: bool, parser: &mut Parser) -> JsonResult<String> {
+fn display_number(first: u8, parser: &mut Parser) -> JsonResult<String> {
     let position = parser.current_position();
-    let number = parser.consume_number::<NumberDecoder<NumberAny>>(positive)?;
+    let number = parser.consume_number::<NumberDecoder<NumberAny>>(first)?;
     let s = match number {
         NumberAny::Int(NumberInt::Int(int)) => {
             format!("Int({int}) @ {position}")
@@ -134,6 +134,7 @@ single_tests! {
     float_exp_tiny2: ok => "2e-2147483646", "Float(0) @ 1:1";
     float_exp_tiny3: ok => "8e-7766666666", "Float(0) @ 1:1";
     float_exp_tiny4: ok => "200.08e-76200000102", "Float(0) @ 1:1";
+    float_exp_tiny5: ok => "0e459", "Float(0) @ 1:1";
     null: ok => "null", "null @ 1:1";
     v_true: ok => "true", "true @ 1:1";
     v_false: ok => "false", "false @ 1:1";
