@@ -22,7 +22,7 @@ jiter = {path = ".."}
 members = ["."]
 
 [[bin]]
-name = "to_value"
-path = "fuzz_targets/to_value.rs"
+name = "compare_to_serde"
+path = "fuzz_targets/compare_to_serde.rs"
 test = false
 doc = false

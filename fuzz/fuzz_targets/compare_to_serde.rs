@@ -77,9 +77,9 @@ fn ints_equal(i1: &i64, n2: &SerdeNumber) -> bool {
 }
 
 
-// fuzz_target!(|json_data: &[u8]| {
-fuzz_target!(|json: String| {
-    let json_data = json.as_bytes();
+// fuzz_target!(|json: String| {
+//     let json_data = json.as_bytes();
+fuzz_target!(|json_data: &[u8]| {
     let jiter_value = match JiterValue::parse(json_data) {
         Ok(v) => v,
         Err(error) => {
@@ -99,15 +99,18 @@ fuzz_target!(|json: String| {
             if error_string.starts_with("number out of range") {
                 // this happens because of stricter behaviour on exponentials
                 return
+            } else if error_string.starts_with("invalid unicode code point") {
+                // I think this is okay, bytes like `[34, 210, 34]` are valid in python
+                return
             } else {
-                dbg!(json, jiter_value, error);
+                dbg!(error, error_string, jiter_value);
                 panic!("serde_json failed to parse json that Jiter did");
             }
         },
     };
 
     if !values_equal(&jiter_value, &serde_value) {
-        dbg!(json_data, jiter_value, serde_value);
+        dbg!(jiter_value, serde_value);
         panic!("values not equal");
     }
 });

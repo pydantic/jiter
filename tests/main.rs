@@ -326,6 +326,16 @@ fn bad_string() {
 }
 
 #[test]
+fn good_high_order_string() {
+    let bytes: Vec<u8> = vec![34, 210, 34];
+    let v = JsonValue::parse(&bytes).unwrap();
+    match v {
+        JsonValue::String(s) => assert_eq!(s.as_bytes(), [210]),
+        _ => panic!("unexpected valid {v:?}"),
+    }
+}
+
+#[test]
 fn parse_object() {
     let json = r#"{"foo": "bar", "spam": [1, null, true]}"#;
     let v = JsonValue::parse(json.as_bytes()).unwrap();
