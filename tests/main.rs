@@ -294,6 +294,7 @@ fn parse_tiny_float() {
     let v = JsonValue::parse(b"8e-7766666666").unwrap();
     assert_eq!(v, JsonValue::Float(0.0));
 }
+
 #[test]
 fn parse_zero_float() {
     let v = JsonValue::parse(b"0.1234").unwrap();
@@ -309,6 +310,18 @@ fn parse_zero_exp_float() {
     match v {
         JsonValue::Float(v) => assert!((120.0 - v).abs() < 1e-3),
         other => panic!("unexpected value: {other:?}"),
+    };
+}
+
+#[test]
+fn bad_string() {
+    let bytes: Vec<u8> = vec![34, 27, 32, 34];
+    let r = JsonValue::parse(&bytes);
+    match r {
+        Ok(v) => panic!("unexpected valid {v:?}"),
+        Err(e) => {
+            assert_eq!(e.error, JsonError::InvalidString(0))
+        }
     };
 }
 
