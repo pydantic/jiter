@@ -1,6 +1,3 @@
-// use num_bigint::BigInt;
-// use speedate::{Date, Time, DateTime, Duration};
-
 use crate::number_decoder::{NumberDecoder, NumberInt};
 use crate::parse::Peak;
 use crate::string_decoder::{StringDecoder, StringDecoderRange};
@@ -89,7 +86,7 @@ impl<'a> Jiter<'a> {
     pub fn next_int(&mut self) -> JiterResult<NumberInt> {
         let peak = self.peak()?;
         match peak {
-            Peak::Num(positive) => self.known_int(positive),
+            Peak::Num(first) => self.known_int(first),
             _ => Err(self.wrong_type(JsonType::Int, peak)),
         }
     }
@@ -167,15 +164,15 @@ impl<'a> Jiter<'a> {
             .map_err(|e| self.map_err(e))
     }
 
-    pub fn known_int(&mut self, positive: bool) -> JiterResult<NumberInt> {
+    pub fn known_int(&mut self, first: u8) -> JiterResult<NumberInt> {
         self.parser
-            .consume_number::<NumberDecoder<NumberInt>>(positive)
+            .consume_number::<NumberDecoder<NumberInt>>(first)
             .map_err(|e| self.map_err(e))
     }
 
-    pub fn known_float(&mut self, positive: bool) -> JiterResult<NumberAny> {
+    pub fn known_float(&mut self, first: u8) -> JiterResult<NumberAny> {
         self.parser
-            .consume_number::<NumberDecoder<NumberAny>>(positive)
+            .consume_number::<NumberDecoder<NumberAny>>(first)
             .map_err(|e| self.map_err(e))
     }
 
@@ -204,7 +201,7 @@ impl<'a> Jiter<'a> {
                 actual: JsonType::String,
                 position,
             },
-            Peak::Num(positive) => self.wrong_num(positive, expected),
+            Peak::Num(first) => self.wrong_num(first, expected),
             Peak::Array => JiterError::WrongType {
                 expected,
                 actual: JsonType::Array,
@@ -218,9 +215,9 @@ impl<'a> Jiter<'a> {
         }
     }
 
-    fn wrong_num(&self, positive: bool, expected: JsonType) -> JiterError {
+    fn wrong_num(&self, first: u8, expected: JsonType) -> JiterError {
         let mut parser2 = self.parser.clone();
-        let actual = match parser2.consume_number::<NumberDecoder<NumberAny>>(positive) {
+        let actual = match parser2.consume_number::<NumberDecoder<NumberAny>>(first) {
             Ok(NumberAny::Int { .. }) => JsonType::Int,
             Ok(NumberAny::Float { .. }) => JsonType::Float,
             Err(e) => {

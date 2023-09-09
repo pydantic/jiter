@@ -29,8 +29,8 @@ fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
             let range = parser.consume_string::<StringDecoderRange>()?;
             v.push(format!("String({range:?}) @ {position}"));
         }
-        Peak::Num(positive) => {
-            let s = display_number(positive, parser)?;
+        Peak::Num(first) => {
+            let s = display_number(first, parser)?;
             v.push(s);
         }
         Peak::Array => {
@@ -64,15 +64,18 @@ fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
     Ok(v)
 }
 
-fn display_number(positive: bool, parser: &mut Parser) -> JsonResult<String> {
+fn display_number(first: u8, parser: &mut Parser) -> JsonResult<String> {
     let position = parser.current_position();
-    let number = parser.consume_number::<NumberDecoder<NumberAny>>(positive)?;
+    let number = parser.consume_number::<NumberDecoder<NumberAny>>(first)?;
     let s = match number {
         NumberAny::Int(NumberInt::Int(int)) => {
             format!("Int({int}) @ {position}")
         }
         NumberAny::Int(NumberInt::BigInt(big_int)) => {
             format!("BigInt({big_int}) @ {position}")
+        }
+        NumberAny::Int(NumberInt::Zero) => {
+            format!("BigInt(0) @ {position}")
         }
         NumberAny::Float(float) => {
             format!("Float({float}) @ {position}")
@@ -86,8 +89,10 @@ macro_rules! single_expect_ok_or_error {
         paste::item! {
             #[test]
             fn [< single_element_ok_ $name >]() {
-                let elements = json_vec(&mut Parser::new($json.as_bytes())).unwrap().join(", ");
+                let mut parser = Parser::new($json.as_bytes());
+                let elements = json_vec(&mut parser).unwrap().join(", ");
                 assert_eq!(elements, $expected);
+                parser.finish().unwrap();
             }
         }
     };
@@ -95,10 +100,22 @@ macro_rules! single_expect_ok_or_error {
         paste::item! {
             #[test]
             fn [< single_element_xerror_ $name _ $error:snake _error >]() {
-                let result = json_vec(&mut Parser::new($json.as_bytes()));
+                let mut parser = Parser::new($json.as_bytes());
+                let result = json_vec(&mut parser);
+                let first_value = match result {
+                    Ok(v) => v,
+                    Err(e) => {
+                        assert_eq!(e, JsonError::$error);
+                        return
+                    },
+                };
+                let result = parser.finish();
                 match result {
-                    Ok(t) => panic!("unexpectedly valid: {:?} -> {:?}", $json, t),
-                    Err(e) => assert_eq!(e, JsonError::$error),
+                    Ok(_) => panic!("unexpectedly valid at finish: {:?} -> {:?}", $json, first_value),
+                    Err(e) => {
+                        assert_eq!(e, JsonError::$error);
+                        return
+                    },
                 }
             }
         }
@@ -117,10 +134,10 @@ single_tests! {
     string: ok => r#""foobar""#, "String(1..7) @ 1:1";
     int_pos: ok => "1234", "Int(1234) @ 1:1";
     int_neg: ok => "-1234", "Int(-1234) @ 1:1";
-    int_exp: ok => "20e10", "Float(200000000000) @ 1:1";
     float_pos: ok => "12.34", "Float(12.34) @ 1:1";
     float_neg: ok => "-12.34", "Float(-12.34) @ 1:1";
     float_exp: ok => "2.2e10", "Float(22000000000) @ 1:1";
+    float_simple_exp: ok => "20e10", "Float(200000000000) @ 1:1";
     float_exp_pos: ok => "2.2e+10", "Float(22000000000) @ 1:1";
     // NOTICE - this might be brittle, if so move to to a separate test
     float_exp_neg: ok => "2.2e-2", "Float(0.022000000000000002) @ 1:1";
@@ -130,6 +147,9 @@ single_tests! {
     float_exp_tiny0: ok => "2e-2147483647", "Float(0) @ 1:1";
     float_exp_tiny1: ok => "2e-2147483648", "Float(0) @ 1:1";
     float_exp_tiny2: ok => "2e-2147483646", "Float(0) @ 1:1";
+    float_exp_tiny3: ok => "8e-7766666666", "Float(0) @ 1:1";
+    float_exp_tiny4: ok => "200.08e-76200000102", "Float(0) @ 1:1";
+    float_exp_tiny5: ok => "0e459", "Float(0) @ 1:1";
     null: ok => "null", "null @ 1:1";
     v_true: ok => "true", "true @ 1:1";
     v_false: ok => "false", "false @ 1:1";
@@ -151,7 +171,8 @@ single_tests! {
     deep_array: ok => r#"[["Not too deep"]]"#, "[ @ 1:1, [ @ 1:2, String(3..15) @ 1:3, ], ]";
     object_key_int: err => r#"{4: 4}"#, UnexpectedCharacter;
     array_no_close: err => r#"["#, UnexpectedEnd;
-    // array_double_close: err => r#"[1]]"#, UnexpectedCharacter;
+    array_double_close: err => "[1]]", UnexpectedCharacter;
+    double_zero: err => "001", InvalidNumber;
 }
 
 #[test]
@@ -268,57 +289,51 @@ test_position! {
     second_line: b"123456\n789", 7, FilePosition::new(2, 1);
 }
 
-// #[test]
-// fn parse_int() {
-//     for input_value in -1000i64..1000 {
-//         let json = format!(" {} ", input_value);
-//         let data = json.as_bytes();
-//         let mut parser = Parser::new(data);
-//         let first_element = parser.next_value().unwrap();
-//         parser.finish().unwrap();
-//         let (positive, range) = match first_element {
-//             Element::Int {
-//                 positive,
-//                 range,
-//                 exponent,
-//             } => {
-//                 assert_eq!(exponent, None);
-//                 (positive, range)
-//             }
-//             v => panic!("expected int, not {:?}", v),
-//         };
-//         let result_int = Decoder::new(data).decode_int(positive, range, None).unwrap();
-//         assert_eq!(result_int, input_value);
-//     }
-// }
+#[test]
+fn parse_tiny_float() {
+    let v = JsonValue::parse(b"8e-7766666666").unwrap();
+    assert_eq!(v, JsonValue::Float(0.0));
+}
 
-// #[test]
-// fn parse_float() {
-//     for i in -1000..1000 {
-//         let input_value = i as f64 * 0.1;
-//         let json = format!("{:.4}", input_value);
-//         let data = json.as_bytes();
-//         let mut parser = Parser::new(data);
-//         let first_element = parser.next_value().unwrap();
-//         parser.finish().unwrap();
-//         let (positive, int_range, decimal_range) = match first_element {
-//             Element::Float {
-//                 positive,
-//                 int_range,
-//                 decimal_range,
-//                 exponent,
-//             } => {
-//                 assert_eq!(exponent, None);
-//                 (positive, int_range, decimal_range)
-//             }
-//             v => panic!("expected float, not {:?} (json: {:?}", v, json),
-//         };
-//         let result_int = Decoder::new(data)
-//             .decode_float(positive, int_range, decimal_range, None)
-//             .unwrap();
-//         assert!((result_int - input_value).abs() < 1e-6);
-//     }
-// }
+#[test]
+fn parse_zero_float() {
+    let v = JsonValue::parse(b"0.1234").unwrap();
+    match v {
+        JsonValue::Float(v) => assert!((0.1234 - v).abs() < 1e-6),
+        other => panic!("unexpected value: {other:?}"),
+    };
+}
+
+#[test]
+fn parse_zero_exp_float() {
+    let v = JsonValue::parse(b"0.12e3").unwrap();
+    match v {
+        JsonValue::Float(v) => assert!((120.0 - v).abs() < 1e-3),
+        other => panic!("unexpected value: {other:?}"),
+    };
+}
+
+#[test]
+fn bad_string() {
+    let bytes: Vec<u8> = vec![34, 27, 32, 34];
+    let r = JsonValue::parse(&bytes);
+    match r {
+        Ok(v) => panic!("unexpected valid {v:?}"),
+        Err(e) => {
+            assert_eq!(e.error, JsonError::InvalidString(0))
+        }
+    };
+}
+
+#[test]
+fn good_high_order_string() {
+    let bytes: Vec<u8> = vec![34, 210, 34];
+    let v = JsonValue::parse(&bytes).unwrap();
+    match v {
+        JsonValue::String(s) => assert_eq!(s.as_bytes(), [210]),
+        _ => panic!("unexpected valid {v:?}"),
+    }
+}
 
 #[test]
 fn parse_object() {

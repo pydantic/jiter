@@ -64,8 +64,8 @@ impl AbstractStringDecoder for StringDecoder {
                         return Err(JsonError::UnexpectedEnd);
                     }
                 }
-                // 8 = backspace, 9 = tab, 10 = newline, 12 = formfeed, 13 = carriage return
-                8 | 9 | 10 | 12 | 13 => return Err(JsonError::InvalidString(index - start)),
+                // all values below 32 are invalid
+                next if *next < 32u8 => return Err(JsonError::InvalidString(index - start)),
                 _ => chars.push(*next),
             }
             index += 1;

@@ -1,0 +1,28 @@
+[package]
+name = "jiter-fuzz"
+version = "0.0.0"
+authors = ["Samuel Colvin <s@muelcolvin.com>"]
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+serde_json = {version = "1.0.87", features = ["preserve_order"]}
+serde = "1.0.147"
+indexmap = "2.0.0"
+num-bigint = "0.4.3"
+num-traits = "0.2.16"
+jiter = {path = ".."}
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "compare_to_serde"
+path = "fuzz_targets/compare_to_serde.rs"
+test = false
+doc = false
