@@ -4,23 +4,6 @@ use crate::number_decoder::AbstractNumberDecoder;
 use crate::string_decoder::AbstractStringDecoder;
 use crate::FilePosition;
 
-#[derive(Debug, Clone)]
-pub struct Parser<'a> {
-    data: &'a [u8],
-    length: usize,
-    pub index: usize,
-}
-
-impl<'a> Parser<'a> {
-    pub fn new(data: &'a [u8]) -> Self {
-        Self {
-            data,
-            length: data.len(),
-            index: 0,
-        }
-    }
-}
-
 #[derive(Debug, Display, EnumMessage, PartialEq, Eq, Clone)]
 #[strum(serialize_all = "snake_case")]
 pub enum JsonError {
@@ -70,6 +53,23 @@ impl TryFrom<u8> for Peak {
 static TRUE_REST: [u8; 3] = [b'r', b'u', b'e'];
 static FALSE_REST: [u8; 4] = [b'a', b'l', b's', b'e'];
 static NULL_REST: [u8; 3] = [b'u', b'l', b'l'];
+
+#[derive(Debug, Clone)]
+pub struct Parser<'a> {
+    data: &'a [u8],
+    length: usize,
+    pub index: usize,
+}
+
+impl<'a> Parser<'a> {
+    pub fn new(data: &'a [u8]) -> Self {
+        Self {
+            data,
+            length: data.len(),
+            index: 0,
+        }
+    }
+}
 
 impl<'a> Parser<'a> {
     pub fn current_position(&self) -> FilePosition {
@@ -242,12 +242,11 @@ impl<'a> Parser<'a> {
     fn object_key<D: AbstractStringDecoder>(&mut self) -> JsonResult<D::Output> {
         let output = self.consume_string::<D>()?;
         if let Some(next) = self.eat_whitespace() {
-            match next {
-                b':' => {
-                    self.index += 1;
-                    Ok(output)
-                }
-                _ => Err(JsonError::UnexpectedCharacter),
+            if next == b':' {
+                self.index += 1;
+                Ok(output)
+            } else {
+                Err(JsonError::UnexpectedCharacter)
             }
         } else {
             Err(JsonError::UnexpectedEnd)

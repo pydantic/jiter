@@ -78,15 +78,10 @@ pub(crate) fn take_value(peak: Peak, parser: &mut Parser) -> JsonResult<JsonValu
             if let Some(peak_first) = parser.array_first()? {
                 let v = take_value(peak_first, parser)?;
                 array.push(v);
-                if parser.array_step()? {
-                    loop {
-                        let peak = parser.peak()?;
-                        let v = take_value(peak, parser)?;
-                        array.push(v);
-                        if !parser.array_step()? {
-                            break;
-                        }
-                    }
+                while parser.array_step()? {
+                    let peak = parser.peak()?;
+                    let v = take_value(peak, parser)?;
+                    array.push(v);
                 }
             }
             Ok(JsonValue::Array(array))
