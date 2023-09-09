@@ -50,6 +50,23 @@ pub enum Peak {
     Object,
 }
 
+impl TryFrom<u8> for Peak {
+    type Error = JsonError;
+    fn try_from(next: u8) -> JsonResult<Self> {
+        match next {
+            b'[' => Ok(Self::Array),
+            b'{' => Ok(Self::Object),
+            b'"' => Ok(Self::String),
+            b't' => Ok(Self::True),
+            b'f' => Ok(Self::False),
+            b'n' => Ok(Self::Null),
+            b'0'..=b'9' => Ok(Self::Num(next)),
+            b'-' => Ok(Self::Num(next)),
+            _ => Err(JsonError::UnexpectedCharacter),
+        }
+    }
+}
+
 static TRUE_REST: [u8; 3] = [b'r', b'u', b'e'];
 static FALSE_REST: [u8; 4] = [b'a', b'l', b's', b'e'];
 static NULL_REST: [u8; 3] = [b'u', b'l', b'l'];
@@ -63,30 +80,20 @@ impl<'a> Parser<'a> {
     /// for each call from Jiter.
     pub fn peak(&mut self) -> JsonResult<Peak> {
         if let Some(next) = self.eat_whitespace() {
-            match next {
-                b'[' => Ok(Peak::Array),
-                b'{' => Ok(Peak::Object),
-                b'"' => Ok(Peak::String),
-                b't' => Ok(Peak::True),
-                b'f' => Ok(Peak::False),
-                b'n' => Ok(Peak::Null),
-                b'0'..=b'9' => Ok(Peak::Num(next)),
-                b'-' => Ok(Peak::Num(next)),
-                _ => Err(JsonError::UnexpectedCharacter),
-            }
+            next.try_into()
         } else {
             Err(JsonError::UnexpectedEnd)
         }
     }
 
-    pub fn array_first(&mut self) -> JsonResult<bool> {
+    pub fn array_first(&mut self) -> JsonResult<Option<Peak>> {
         self.index += 1;
         if let Some(next) = self.eat_whitespace() {
             if next == b']' {
                 self.index += 1;
-                Ok(false)
+                Ok(None)
             } else {
-                Ok(true)
+                next.try_into().map(Some)
             }
         } else {
             Err(JsonError::UnexpectedEnd)

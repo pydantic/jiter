@@ -126,7 +126,7 @@ impl<'a> Jiter<'a> {
         take_value(peak, &mut self.parser).map_err(|e| self.map_err(e))
     }
 
-    pub fn next_array(&mut self) -> JiterResult<bool> {
+    pub fn next_array(&mut self) -> JiterResult<Option<Peak>> {
         let peak = self.peak()?;
         match peak {
             Peak::Array => self.array_first(),
@@ -134,7 +134,7 @@ impl<'a> Jiter<'a> {
         }
     }
 
-    pub fn array_first(&mut self) -> JiterResult<bool> {
+    pub fn array_first(&mut self) -> JiterResult<Option<Peak>> {
         self.parser.array_first().map_err(|e| self.map_err(e))
     }
 

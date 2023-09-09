@@ -75,13 +75,17 @@ pub(crate) fn take_value(peak: Peak, parser: &mut Parser) -> JsonResult<JsonValu
         Peak::Array => {
             // we could do something clever about guessing the size of the array
             let mut array: Vec<JsonValue> = Vec::new();
-            if parser.array_first()? {
-                loop {
-                    let peak = parser.peak()?;
-                    let v = take_value(peak, parser)?;
-                    array.push(v);
-                    if !parser.array_step()? {
-                        break;
+            if let Some(peak_first) = parser.array_first()? {
+                let v = take_value(peak_first, parser)?;
+                array.push(v);
+                if parser.array_step()? {
+                    loop {
+                        let peak = parser.peak()?;
+                        let v = take_value(peak, parser)?;
+                        array.push(v);
+                        if !parser.array_step()? {
+                            break;
+                        }
                     }
                 }
             }
