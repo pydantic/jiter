@@ -68,6 +68,7 @@ pub(crate) fn take_value(peak: Peak, parser: &mut Parser) -> JsonResult<JsonValu
             match n {
                 NumberAny::Int(NumberInt::Int(int)) => Ok(JsonValue::Int(int)),
                 NumberAny::Int(NumberInt::BigInt(big_int)) => Ok(JsonValue::BigInt(big_int)),
+                NumberAny::Int(NumberInt::Zero) => Ok(JsonValue::Int(0)),
                 NumberAny::Float(float) => Ok(JsonValue::Float(float)),
             }
         }

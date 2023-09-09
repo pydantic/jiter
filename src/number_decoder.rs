@@ -16,7 +16,7 @@ pub trait AbstractNumber: fmt::Debug + PartialEq + Sized {
     fn new(digit: u8) -> Self;
     fn take_one(first: u8) -> JsonResult<Self>;
 
-    fn add_digit(&mut self, digit: &u8);
+    fn add_digit(&mut self, digit: &u8) -> JsonResult<()>;
 
     fn apply_decimal(self, data: &[u8], index: usize, positive: bool) -> JsonResult<(Self, usize)>;
 
@@ -29,6 +29,8 @@ pub trait AbstractNumber: fmt::Debug + PartialEq + Sized {
 pub enum NumberInt {
     Int(i64),
     BigInt(BigInt),
+    // zero is special since a leading zero is only allowed on it's own or before "." or "e/E"
+    Zero,
 }
 
 impl From<NumberInt> for f64 {
@@ -39,6 +41,7 @@ impl From<NumberInt> for f64 {
                 Some(f) => f,
                 None => f64::NAN,
             },
+            NumberInt::Zero => 0.0,
         }
     }
 }
@@ -50,13 +53,13 @@ impl AbstractNumber for NumberInt {
 
     fn take_one(first: u8) -> JsonResult<Self> {
         match first {
-            b'0'..=b'9' => Ok(Self::new(first)),
-            // Some(digit) if digit == b'0' => Err(JsonError::FloatExpectingInt),
+            b'0' => Ok(Self::Zero),
+            b'1'..=b'9' => Ok(Self::new(first)),
             _ => Err(JsonError::InvalidNumber),
         }
     }
 
-    fn add_digit(&mut self, digit: &u8) {
+    fn add_digit(&mut self, digit: &u8) -> JsonResult<()> {
         let digit_int = digit & 0x0f;
         match self {
             Self::Int(int_64) => {
@@ -79,7 +82,9 @@ impl AbstractNumber for NumberInt {
                 *big_int *= 10;
                 *big_int += digit_int;
             }
+            Self::Zero => return Err(JsonError::InvalidNumber),
         }
+        Ok(())
     }
 
     fn apply_decimal(self, _data: &[u8], _index: usize, _positive: bool) -> JsonResult<(Self, usize)> {
@@ -96,6 +101,7 @@ impl AbstractNumber for NumberInt {
             Self::BigInt(big_int) => {
                 *big_int *= -1;
             }
+            Self::Zero => *self = Self::Int(-0),
         }
     }
 }
@@ -124,10 +130,10 @@ impl AbstractNumber for NumberAny {
         NumberInt::take_one(first).map(Self::Int)
     }
 
-    fn add_digit(&mut self, digit: &u8) {
+    fn add_digit(&mut self, digit: &u8) -> JsonResult<()> {
         match self {
             Self::Int(int) => int.add_digit(digit),
-            Self::Float(_) => panic!("add_digit is not supported for existing floats"),
+            Self::Float(_) => Err(JsonError::InvalidNumber),
         }
     }
 
@@ -168,12 +174,9 @@ impl AbstractNumber for NumberAny {
     }
 
     fn apply_exponential(self, exponent: i32, positive: bool) -> JsonResult<Self> {
-        if let Self::Int(NumberInt::Int(i)) = self {
-            if i == 0 {
-                return Ok(Self::Float(0.0));
-            }
-        }
-        if exponent == i32::MAX {
+        if self == Self::Int(NumberInt::Zero) {
+            Ok(Self::Float(0.0))
+        } else if exponent == i32::MAX {
             if positive {
                 Ok(Self::Float(f64::INFINITY))
             } else {
@@ -224,7 +227,7 @@ impl<Num: AbstractNumber> AbstractNumberDecoder for NumberDecoder<Num> {
         index += 1;
         while let Some(next) = data.get(index) {
             match next {
-                b'0'..=b'9' => num.add_digit(next),
+                b'0'..=b'9' => num.add_digit(next)?,
                 b'.' => return num.apply_decimal(data, index, positive),
                 b'e' | b'E' => {
                     let e = Exponent::decode(data, index)?;
@@ -347,6 +350,7 @@ impl AbstractNumberDecoder for NumberDecoderRange {
         index += 1;
         while let Some(next) = data.get(index) {
             match next {
+                // TODO proper logic related to leading zeros
                 b'0'..=b'9' => (),
                 b'.' => {
                     let end = numeric_range(data, index)?;

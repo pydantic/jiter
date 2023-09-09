@@ -91,9 +91,17 @@ fuzz_target!(|json: String| {
     let serde_value: SerdeValue = match serde_json::from_slice(json_data) {
         Ok(v) => v,
         Err(error) => {
-            dbg!("serde_json failed to parse json that Jiter did", json, jiter_value, error);
-            // panic!("serde_json failed to parse json that Jiter did");
-            return
+            let error_string = error.to_string();
+            if error_string.starts_with("number out of range") {
+                // this happens because of stricter behaviour on exponentials
+                return
+            } else if error_string.starts_with("control character") {
+                // TODO is this okay?
+                dbg!(json, json_data, jiter_value, error);
+                panic!("string!");
+            } else {
+                panic!("serde_json failed to parse json that Jiter did");
+            }
         },
     };
 
