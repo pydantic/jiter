@@ -4,23 +4,6 @@ use crate::number_decoder::AbstractNumberDecoder;
 use crate::string_decoder::AbstractStringDecoder;
 use crate::FilePosition;
 
-#[derive(Debug, Clone)]
-pub struct Parser<'a> {
-    data: &'a [u8],
-    length: usize,
-    pub index: usize,
-}
-
-impl<'a> Parser<'a> {
-    pub fn new(data: &'a [u8]) -> Self {
-        Self {
-            data,
-            length: data.len(),
-            index: 0,
-        }
-    }
-}
-
 #[derive(Debug, Display, EnumMessage, PartialEq, Eq, Clone)]
 #[strum(serialize_all = "snake_case")]
 pub enum JsonError {
@@ -50,9 +33,43 @@ pub enum Peak {
     Object,
 }
 
+impl TryFrom<u8> for Peak {
+    type Error = JsonError;
+    fn try_from(next: u8) -> JsonResult<Self> {
+        match next {
+            b'[' => Ok(Self::Array),
+            b'{' => Ok(Self::Object),
+            b'"' => Ok(Self::String),
+            b't' => Ok(Self::True),
+            b'f' => Ok(Self::False),
+            b'n' => Ok(Self::Null),
+            b'0'..=b'9' => Ok(Self::Num(next)),
+            b'-' => Ok(Self::Num(next)),
+            _ => Err(JsonError::UnexpectedCharacter),
+        }
+    }
+}
+
 static TRUE_REST: [u8; 3] = [b'r', b'u', b'e'];
 static FALSE_REST: [u8; 4] = [b'a', b'l', b's', b'e'];
 static NULL_REST: [u8; 3] = [b'u', b'l', b'l'];
+
+#[derive(Debug, Clone)]
+pub struct Parser<'a> {
+    data: &'a [u8],
+    length: usize,
+    pub index: usize,
+}
+
+impl<'a> Parser<'a> {
+    pub fn new(data: &'a [u8]) -> Self {
+        Self {
+            data,
+            length: data.len(),
+            index: 0,
+        }
+    }
+}
 
 impl<'a> Parser<'a> {
     pub fn current_position(&self) -> FilePosition {
@@ -62,129 +79,93 @@ impl<'a> Parser<'a> {
     /// we should enable PGO, then add `#[inline(always)]` so this method can be optimised
     /// for each call from Jiter.
     pub fn peak(&mut self) -> JsonResult<Peak> {
-        while let Some(next) = self.data.get(self.index) {
-            match next {
-                b' ' | b'\r' | b'\t' | b'\n' => {
-                    self.index += 1;
-                }
-                b'[' => return Ok(Peak::Array),
-                b'{' => return Ok(Peak::Object),
-                b'"' => return Ok(Peak::String),
-                b't' => return Ok(Peak::True),
-                b'f' => return Ok(Peak::False),
-                b'n' => return Ok(Peak::Null),
-                b'0'..=b'9' => return Ok(Peak::Num(*next)),
-                b'-' => return Ok(Peak::Num(*next)),
-                _ => return Err(JsonError::UnexpectedCharacter),
-            }
+        if let Some(next) = self.eat_whitespace() {
+            next.try_into()
+        } else {
+            Err(JsonError::UnexpectedEnd)
         }
-        Err(JsonError::UnexpectedEnd)
     }
 
-    pub fn array_first(&mut self) -> JsonResult<bool> {
+    pub fn array_first(&mut self) -> JsonResult<Option<Peak>> {
         self.index += 1;
-        while let Some(next) = self.data.get(self.index) {
-            match next {
-                b' ' | b'\r' | b'\t' | b'\n' => self.index += 1,
-                b']' => {
-                    self.index += 1;
-                    return Ok(false);
-                }
-                _ => return Ok(true),
+        if let Some(next) = self.eat_whitespace() {
+            if next == b']' {
+                self.index += 1;
+                Ok(None)
+            } else {
+                next.try_into().map(Some)
             }
+        } else {
+            Err(JsonError::UnexpectedEnd)
         }
-        Err(JsonError::UnexpectedEnd)
     }
 
     pub fn array_step(&mut self) -> JsonResult<bool> {
-        while let Some(next) = self.data.get(self.index) {
+        if let Some(next) = self.eat_whitespace() {
             match next {
-                b' ' | b'\r' | b'\t' | b'\n' => self.index += 1,
                 b',' => {
                     self.index += 1;
-                    return Ok(true);
+                    Ok(true)
                 }
                 b']' => {
                     self.index += 1;
-                    return Ok(false);
+                    Ok(false)
                 }
-                _ => return Err(JsonError::UnexpectedCharacter),
+                _ => Err(JsonError::UnexpectedCharacter),
             }
+        } else {
+            Err(JsonError::UnexpectedEnd)
         }
-        Err(JsonError::UnexpectedEnd)
     }
 
     pub fn object_first<D: AbstractStringDecoder>(&mut self) -> JsonResult<Option<D::Output>> {
         self.index += 1;
-        while let Some(next) = self.data.get(self.index) {
+        if let Some(next) = self.eat_whitespace() {
             match next {
-                b' ' | b'\r' | b'\t' | b'\n' => self.index += 1,
+                b'"' => self.object_key::<D>().map(Some),
                 b'}' => {
                     self.index += 1;
-                    return Ok(None);
+                    Ok(None)
                 }
-                b'"' => return self.object_key::<D>(),
-                _ => return Err(JsonError::UnexpectedCharacter),
+                _ => Err(JsonError::UnexpectedCharacter),
             }
+        } else {
+            Err(JsonError::UnexpectedEnd)
         }
-        Err(JsonError::UnexpectedEnd)
     }
 
     pub fn object_step<D: AbstractStringDecoder>(&mut self) -> JsonResult<Option<D::Output>> {
-        loop {
-            if let Some(next) = self.data.get(self.index) {
-                match next {
-                    b' ' | b'\r' | b'\t' | b'\n' => self.index += 1,
-                    b',' => {
-                        self.index += 1;
-                        while let Some(next) = self.data.get(self.index) {
-                            match next {
-                                b' ' | b'\r' | b'\t' | b'\n' => (),
-                                b'"' => return self.object_key::<D>(),
-                                _ => return Err(JsonError::UnexpectedCharacter),
-                            }
-                            self.index += 1;
+        if let Some(next) = self.eat_whitespace() {
+            match next {
+                b',' => {
+                    self.index += 1;
+                    if let Some(next) = self.eat_whitespace() {
+                        if next == b'"' {
+                            self.object_key::<D>().map(Some)
+                        } else {
+                            Err(JsonError::UnexpectedCharacter)
                         }
-                        return Err(JsonError::UnexpectedEnd);
+                    } else {
+                        Err(JsonError::UnexpectedEnd)
                     }
-                    b'}' => {
-                        self.index += 1;
-                        return Ok(None);
-                    }
-                    _ => return Err(JsonError::UnexpectedCharacter),
                 }
-            } else {
-                return Err(JsonError::UnexpectedEnd);
-            }
-        }
-    }
-
-    fn object_key<D: AbstractStringDecoder>(&mut self) -> JsonResult<Option<D::Output>> {
-        let output = self.consume_string::<D>()?;
-        loop {
-            if let Some(next) = self.data.get(self.index) {
-                match next {
-                    b' ' | b'\r' | b'\t' | b'\n' => self.index += 1,
-                    b':' => {
-                        self.index += 1;
-                        return Ok(Some(output));
-                    }
-                    _ => return Err(JsonError::UnexpectedCharacter),
+                b'}' => {
+                    self.index += 1;
+                    Ok(None)
                 }
-            } else {
-                return Err(JsonError::UnexpectedEnd);
+                _ => Err(JsonError::UnexpectedCharacter),
             }
+        } else {
+            Err(JsonError::UnexpectedEnd)
         }
     }
 
     pub fn finish(&mut self) -> JsonResult<()> {
-        while let Some(next) = self.data.get(self.index) {
-            match next {
-                b' ' | b'\r' | b'\t' | b'\n' => self.index += 1,
-                _ => return Err(JsonError::UnexpectedCharacter),
-            }
+        if self.eat_whitespace().is_none() {
+            Ok(())
+        } else {
+            Err(JsonError::UnexpectedCharacter)
         }
-        Ok(())
     }
 
     pub fn consume_true(&mut self) -> JsonResult<()> {
@@ -255,5 +236,30 @@ impl<'a> Parser<'a> {
         let (output, index) = D::decode(self.data, self.index, first)?;
         self.index = index;
         Ok(output)
+    }
+
+    /// private method to get an object key, then consume the colon which should follow
+    fn object_key<D: AbstractStringDecoder>(&mut self) -> JsonResult<D::Output> {
+        let output = self.consume_string::<D>()?;
+        if let Some(next) = self.eat_whitespace() {
+            if next == b':' {
+                self.index += 1;
+                Ok(output)
+            } else {
+                Err(JsonError::UnexpectedCharacter)
+            }
+        } else {
+            Err(JsonError::UnexpectedEnd)
+        }
+    }
+
+    fn eat_whitespace(&mut self) -> Option<u8> {
+        while let Some(next) = self.data.get(self.index) {
+            match next {
+                b' ' | b'\r' | b'\t' | b'\n' => self.index += 1,
+                _ => return Some(*next),
+            }
+        }
+        None
     }
 }

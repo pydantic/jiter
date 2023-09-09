@@ -33,7 +33,7 @@ fn jiter_iter_big(path: &str, bench: &mut Bencher) {
         let mut v_outer = Vec::new();
         loop {
             let mut v_inner = Vec::new();
-            if jiter.next_array().unwrap() {
+            if jiter.next_array().unwrap().is_some() {
                 loop {
                     let i = jiter.next_float().unwrap();
                     v_inner.push(i);
@@ -56,7 +56,7 @@ fn find_string(jiter: &mut Jiter) -> String {
     match peak {
         Peak::String => jiter.known_string().unwrap(),
         Peak::Array => {
-            assert!(jiter.array_first().unwrap());
+            assert!(jiter.array_first().unwrap().is_some());
             let s = find_string(jiter);
             assert!(!jiter.array_step().unwrap());
             s
@@ -101,13 +101,12 @@ fn jiter_iter_true_array(path: &str, bench: &mut Bencher) {
     bench.iter(|| {
         let mut jiter = Jiter::new(json_data);
         let mut v = Vec::new();
-        if jiter.next_array().unwrap() {
-            loop {
-                let i = jiter.next_bool().unwrap();
-                v.push(i);
-                if !jiter.array_step().unwrap() {
-                    break;
-                }
+        assert!(jiter.next_array().unwrap().is_some());
+        loop {
+            let i = jiter.next_bool().unwrap();
+            v.push(i);
+            if !jiter.array_step().unwrap() {
+                break;
             }
         }
         black_box(v)
@@ -138,7 +137,7 @@ fn jiter_iter_bigints_array(path: &str, bench: &mut Bencher) {
     bench.iter(|| {
         let mut jiter = Jiter::new(json_data);
         let mut v = Vec::new();
-        if jiter.next_array().unwrap() {
+        if jiter.next_array().unwrap().is_some() {
             loop {
                 let i = jiter.next_int().unwrap();
                 v.push(i);

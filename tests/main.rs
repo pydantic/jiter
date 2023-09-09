@@ -35,7 +35,7 @@ fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
         }
         Peak::Array => {
             v.push(format!("[ @ {position}"));
-            if parser.array_first()? {
+            if parser.array_first()?.is_some() {
                 loop {
                     let el_vec = json_vec(parser)?;
                     v.extend(el_vec);
@@ -355,6 +355,23 @@ fn parse_object() {
 }
 
 #[test]
+fn parse_array_3() {
+    let json = r#"[1   , null, true]"#;
+    let v = JsonValue::parse(json.as_bytes()).unwrap();
+    assert_eq!(
+        v,
+        JsonValue::Array(vec![JsonValue::Int(1), JsonValue::Null, JsonValue::Bool(true)])
+    );
+}
+
+#[test]
+fn parse_array_empty() {
+    let json = r#"[   ]"#;
+    let v = JsonValue::parse(json.as_bytes()).unwrap();
+    assert_eq!(v, JsonValue::Array(vec![]));
+}
+
+#[test]
 fn repeat_trailing_array() {
     let json = "[1]]";
     let result = JsonValue::parse(json.as_bytes());
@@ -409,7 +426,7 @@ fn jiter_object() {
     assert_eq!(jiter.next_object().unwrap(), Some("foo".to_string()));
     assert_eq!(jiter.next_str().unwrap(), "bar");
     assert_eq!(jiter.next_key().unwrap(), Some("spam".to_string()));
-    assert_eq!(jiter.next_array().unwrap(), true);
+    assert_eq!(jiter.next_array().unwrap(), Some(Peak::Num(b'1')));
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(1));
     assert_eq!(jiter.array_step().unwrap(), true);
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(2));
@@ -423,14 +440,14 @@ fn jiter_object() {
 #[test]
 fn jiter_empty_array() {
     let mut jiter = Jiter::new(b"[]");
-    assert_eq!(jiter.next_array().unwrap(), false);
+    assert_eq!(jiter.next_array().unwrap(), None);
     jiter.finish().unwrap();
 }
 
 #[test]
 fn jiter_trailing_bracket() {
     let mut jiter = Jiter::new(b"[1]]");
-    assert_eq!(jiter.next_array().unwrap(), true);
+    assert_eq!(jiter.next_array().unwrap(), Some(Peak::Num(b'1')));
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(1));
     assert_eq!(jiter.array_step().unwrap(), false);
     let result = jiter.finish();
