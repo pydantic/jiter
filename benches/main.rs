@@ -101,13 +101,12 @@ fn jiter_iter_true_array(path: &str, bench: &mut Bencher) {
     bench.iter(|| {
         let mut jiter = Jiter::new(json_data);
         let mut v = Vec::new();
-        if jiter.next_array().unwrap() {
-            loop {
-                let i = jiter.next_bool().unwrap();
-                v.push(i);
-                if !jiter.array_step().unwrap() {
-                    break;
-                }
+        assert!(jiter.next_array().unwrap());
+        loop {
+            let i = jiter.next_bool().unwrap();
+            v.push(i);
+            if !jiter.array_step().unwrap() {
+                break;
             }
         }
         black_box(v)

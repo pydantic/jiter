@@ -90,10 +90,10 @@ pub(crate) fn take_value(peak: Peak, parser: &mut Parser) -> JsonResult<JsonValu
         Peak::Object => {
             // same for objects
             let mut object = IndexMap::new();
-            if let Some(key) = parser.object_first::<StringDecoder>()? {
+            if let Some(first_key) = parser.object_first::<StringDecoder>()? {
                 let peak = parser.peak()?;
-                let value = take_value(peak, parser)?;
-                object.insert(key, value);
+                let first_value = take_value(peak, parser)?;
+                object.insert(first_key, first_value);
                 while let Some(key) = parser.object_step::<StringDecoder>()? {
                     let peak = parser.peak()?;
                     let value = take_value(peak, parser)?;
