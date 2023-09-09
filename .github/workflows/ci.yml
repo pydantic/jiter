@@ -55,6 +55,19 @@ jobs:
     - run: python benches/generate_big.py
     - run: cargo bench
 
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - uses: dtolnay/rust-toolchain@stable
+    - uses: Swatinem/rust-cache@v2
+
+    - run: cargo install cargo-fuzz
+
+    - run: cargo fuzz run compare_to_serde -- -max_total_time=10s
+      working-directory: fuzz
+
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -79,7 +92,7 @@ jobs:
   # https://github.com/marketplace/actions/alls-green#why used for branch protection checks
   check:
     if: always()
-    needs: [test, bench, lint]
+    needs: [test, bench, fuzz, lint]
     runs-on: ubuntu-latest
     steps:
       - name: Decide whether the needed jobs succeeded or failed
