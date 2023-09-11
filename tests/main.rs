@@ -141,9 +141,12 @@ single_tests! {
     float_exp_pos: ok => "2.2e+10", "Float(22000000000) @ 1:1";
     // NOTICE - this might be brittle, if so move to to a separate test
     float_exp_neg: ok => "2.2e-2", "Float(0.022000000000000002) @ 1:1";
+    float_exp_zero: ok => "0.000e123", "Float(0) @ 1:1";
     float_exp_massive1: ok => "2e2147483647", "Float(inf) @ 1:1";
     float_exp_massive2: ok => "2e2147483648", "Float(inf) @ 1:1";
     float_exp_massive3: ok => "2e2147483646", "Float(inf) @ 1:1";
+    float_exp_massive4: ok => "2e2147483646", "Float(inf) @ 1:1";
+    float_exp_massive5: ok => "18446744073709551615000.0", "Float(18446744073709552000000) @ 1:1";
     float_exp_tiny0: ok => "2e-2147483647", "Float(0) @ 1:1";
     float_exp_tiny1: ok => "2e-2147483648", "Float(0) @ 1:1";
     float_exp_tiny2: ok => "2e-2147483646", "Float(0) @ 1:1";
@@ -227,7 +230,7 @@ string_tests! {
     newline: r#"  "foo\nbar"  "# => "foo\nbar";
     pound_sign: r#"  "\u00a3"  "# => "£";
     double_quote: r#"  "\""  "# => r#"""#;
-    backslash: r#""\\""# => r#"\"#;
+    backslash: r#""\\""# => r"\";
     controls: "\"\\b\\f\\n\\r\\t\"" => "\u{8}\u{c}\n\r\t";
     controls_python: "\"\\b\\f\\n\\r\\t\"" => "\x08\x0c\n\r\t";  // python notation for the same thing
 }
@@ -336,6 +339,16 @@ fn good_high_order_string() {
 }
 
 #[test]
+fn udb_string() {
+    let bytes: Vec<u8> = vec![34, 92, 117, 100, 66, 100, 100, 92, 117, 100, 70, 100, 100, 34];
+    let v = JsonValue::parse(&bytes).unwrap();
+    match v {
+        JsonValue::String(s) => assert_eq!(s.as_bytes(), [244, 135, 159, 157]),
+        _ => panic!("unexpected valid {v:?}"),
+    }
+}
+
+#[test]
 fn parse_object() {
     let json = r#"{"foo": "bar", "spam": [1, null, true]}"#;
     let v = JsonValue::parse(json.as_bytes()).unwrap();
@@ -428,11 +441,11 @@ fn jiter_object() {
     assert_eq!(jiter.next_key().unwrap(), Some("spam".to_string()));
     assert_eq!(jiter.next_array().unwrap(), Some(Peak::Num(b'1')));
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(1));
-    assert_eq!(jiter.array_step().unwrap(), true);
+    assert!(jiter.array_step().unwrap());
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(2));
-    assert_eq!(jiter.array_step().unwrap(), true);
+    assert!(jiter.array_step().unwrap());
     assert_eq!(jiter.next_bytes().unwrap(), b"x");
-    assert_eq!(jiter.array_step().unwrap(), false);
+    assert!(!jiter.array_step().unwrap());
     assert_eq!(jiter.next_key().unwrap(), None);
     jiter.finish().unwrap();
 }
@@ -449,7 +462,7 @@ fn jiter_trailing_bracket() {
     let mut jiter = Jiter::new(b"[1]]");
     assert_eq!(jiter.next_array().unwrap(), Some(Peak::Num(b'1')));
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(1));
-    assert_eq!(jiter.array_step().unwrap(), false);
+    assert!(!jiter.array_step().unwrap());
     let result = jiter.finish();
     match result {
         Ok(t) => panic!("unexpectedly valid: {:?}", t),

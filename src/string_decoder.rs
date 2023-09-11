@@ -14,49 +14,29 @@ impl AbstractStringDecoder for StringDecoder {
 
     fn decode(data: &[u8], mut index: usize) -> JsonResult<(Self::Output, usize)> {
         index += 1;
-        let mut chars = Vec::new();
+        let mut bytes = Vec::new();
         let start = index;
         while let Some(next) = data.get(index) {
             match next {
                 b'"' => {
                     index += 1;
-                    let s = unsafe { String::from_utf8_unchecked(chars) };
+                    let s = unsafe { String::from_utf8_unchecked(bytes) };
                     return Ok((s, index));
                 }
                 b'\\' => {
                     index += 1;
                     if let Some(next_inner) = data.get(index) {
                         match next_inner {
-                            b'"' | b'\\' | b'/' => chars.push(*next_inner),
-                            b'b' => chars.push(b'\x08'),
-                            b'f' => chars.push(b'\x0C'),
-                            b'n' => chars.push(b'\n'),
-                            b'r' => chars.push(b'\r'),
-                            b't' => chars.push(b'\t'),
+                            b'"' | b'\\' | b'/' => bytes.push(*next_inner),
+                            b'b' => bytes.push(b'\x08'),
+                            b'f' => bytes.push(b'\x0C'),
+                            b'n' => bytes.push(b'\n'),
+                            b'r' => bytes.push(b'\r'),
+                            b't' => bytes.push(b'\t'),
                             b'u' => {
-                                let mut n = 0;
-                                for _ in 0..4 {
-                                    index += 1;
-                                    let c = match data.get(index) {
-                                        Some(c) => *c,
-                                        None => return Err(JsonError::InvalidString(index - start)),
-                                    };
-                                    let hex = match c {
-                                        b'0'..=b'9' => (c & 0x0f) as u16,
-                                        b'a'..=b'f' => (c - b'a' + 10) as u16,
-                                        b'A'..=b'F' => (c - b'A' + 10) as u16,
-                                        _ => return Err(JsonError::InvalidStringEscapeSequence(index)),
-                                    };
-                                    n = (n << 4) + hex;
-                                }
-                                match char::from_u32(n as u32) {
-                                    Some(c) => {
-                                        for b in c.to_string().bytes() {
-                                            chars.push(b);
-                                        }
-                                    }
-                                    None => return Err(JsonError::InvalidString(index - start)),
-                                }
+                                let (c, new_index) = parse_escape(data, index, start)?;
+                                index = new_index;
+                                bytes.extend_from_slice(c.encode_utf8(&mut [0_u8; 4]).as_bytes());
                             }
                             _ => return Err(JsonError::InvalidString(index - start)),
                         }
@@ -66,12 +46,58 @@ impl AbstractStringDecoder for StringDecoder {
                 }
                 // all values below 32 are invalid
                 next if *next < 32u8 => return Err(JsonError::InvalidString(index - start)),
-                _ => chars.push(*next),
+                _ => bytes.push(*next),
             }
             index += 1;
         }
         Err(JsonError::UnexpectedEnd)
     }
+}
+
+/// Taken from https://github.com/serde-rs/json/blob/45f10ec816e3f2765ac08f7ca73752326b0475d7/src/read.rs#L873-L928
+fn parse_escape(data: &[u8], index: usize, start: usize) -> JsonResult<(char, usize)> {
+    let (n, index) = parse_u4(data, index, start)?;
+    match n {
+        0xDC00..=0xDFFF => Err(JsonError::InvalidStringEscapeSequence(index - start)),
+        0xD800..=0xDBFF => match (data.get(index + 1), data.get(index + 2)) {
+            (Some(b'\\'), Some(b'u')) => {
+                let (n2, index) = parse_u4(data, index + 2, start)?;
+                if !(0xDC00..=0xDFFF).contains(&n2) {
+                    return Err(JsonError::InvalidStringEscapeSequence(index - start));
+                }
+                let n2 = (((n - 0xD800) as u32) << 10 | (n2 - 0xDC00) as u32) + 0x1_0000;
+
+                match char::from_u32(n2) {
+                    Some(c) => Ok((c, index)),
+                    None => Err(JsonError::InvalidString(index - start)),
+                }
+            }
+            _ => Err(JsonError::InvalidStringEscapeSequence(index - start)),
+        },
+        _ => match char::from_u32(n as u32) {
+            Some(c) => Ok((c, index)),
+            None => Err(JsonError::InvalidString(index - start)),
+        },
+    }
+}
+
+fn parse_u4(data: &[u8], mut index: usize, start: usize) -> JsonResult<(u16, usize)> {
+    let mut n = 0;
+    for _ in 0..4 {
+        index += 1;
+        let c = match data.get(index) {
+            Some(c) => *c,
+            None => return Err(JsonError::InvalidString(index - start)),
+        };
+        let hex = match c {
+            b'0'..=b'9' => (c & 0x0f) as u16,
+            b'a'..=b'f' => (c - b'a' + 10) as u16,
+            b'A'..=b'F' => (c - b'A' + 10) as u16,
+            _ => return Err(JsonError::InvalidStringEscapeSequence(index - start)),
+        };
+        n = (n << 4) + hex;
+    }
+    Ok((n, index))
 }
 
 pub struct StringDecoderRange;
