@@ -507,3 +507,33 @@ fn test_crazy_massive_int() {
     assert!(jiter.next_float().unwrap().is_nan());
     jiter.finish().unwrap();
 }
+
+#[test]
+fn unique_iter_object() {
+    let value = JsonValue::parse(br#" {"x": 1, "x": 2} "#).unwrap();
+    if let JsonValue::Object(obj) = value {
+        assert_eq!(obj.len(), 1);
+        let mut unique = obj.iter_unique();
+        let first = unique.next().unwrap();
+        assert_eq!(first.0, "x");
+        assert_eq!(first.1, &JsonValue::Int(2));
+        assert!(unique.next().is_none());
+    } else {
+        panic!("expected object");
+    }
+}
+
+#[test]
+fn unique_iter_object_repeat() {
+    let value = JsonValue::parse(br#" {"x": 1, "x": 1} "#).unwrap();
+    if let JsonValue::Object(obj) = value {
+        assert_eq!(obj.len(), 1);
+        let mut unique = obj.iter_unique();
+        let first = unique.next().unwrap();
+        assert_eq!(first.0, "x");
+        assert_eq!(first.1, &JsonValue::Int(1));
+        assert!(unique.next().is_none());
+    } else {
+        panic!("expected object");
+    }
+}

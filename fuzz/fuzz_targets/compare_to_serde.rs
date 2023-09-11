@@ -18,8 +18,8 @@ pub fn values_equal(jiter_value: &JiterValue, serde_value: &SerdeValue) -> bool 
             if a1.len() != a2.len() {
                 return false;
             }
-            for (v1, v2) in a1.into_iter().zip(a2.into_iter()) {
-                if !values_equal(v1, v2) {
+            for (v1, v2) in a1.iter().zip(a2.into_iter()) {
+                if !values_equal(&v1, v2) {
                     return false;
                 }
             }
@@ -29,9 +29,9 @@ pub fn values_equal(jiter_value: &JiterValue, serde_value: &SerdeValue) -> bool 
             if o1.len() != o2.len() {
                 return false;
             }
-            for (k1, v1) in o1.into_iter() {
+            for (k1, v1) in o1.iter_unique() {
                 if let Some(v2) = o2.get(k1) {
-                    if !values_equal(&v1, v2) {
+                    if !values_equal(v1, v2) {
                         return false;
                     }
                 } else {
@@ -78,9 +78,9 @@ fn ints_equal(i1: &i64, n2: &SerdeNumber) -> bool {
 }
 
 
-// fuzz_target!(|json: String| {
-//     let json_data = json.as_bytes();
-fuzz_target!(|json_data: &[u8]| {
+fuzz_target!(|json: String| {
+    let json_data = json.as_bytes();
+// fuzz_target!(|json_data: &[u8]| {
     let jiter_value = match JiterValue::parse(json_data) {
         Ok(v) => v,
         Err(error) => {
