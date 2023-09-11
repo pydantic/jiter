@@ -493,3 +493,13 @@ fn jiter_wrong_type() {
         Err(other_err) => panic!("unexpected error: {:?}", other_err),
     }
 }
+
+#[test]
+fn test_crazy_massive_int() {
+    let mut s = "5".to_string();
+    s.push_str(&"0".repeat(500));
+    s.push_str("E-6666");
+    let mut jiter = Jiter::new(s.as_bytes());
+    assert!(jiter.next_float().unwrap().is_nan());
+    jiter.finish().unwrap();
+}
