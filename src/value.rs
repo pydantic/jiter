@@ -1,12 +1,11 @@
-use indexmap::IndexMap;
 use num_bigint::BigInt;
+use smallvec::SmallVec;
 
 use crate::number_decoder::{NumberAny, NumberDecoder, NumberInt};
 use crate::parse::{JsonResult, Parser, Peak};
 use crate::string_decoder::StringDecoder;
-use crate::{FilePosition, JsonError};
+use crate::{FilePosition, JsonError, LazyIndexMap};
 
-/// similar to serde `Value` but with int and float split
 #[derive(Clone, Debug, PartialEq)]
 pub enum JsonValue {
     Null,
@@ -15,11 +14,9 @@ pub enum JsonValue {
     BigInt(BigInt),
     Float(f64),
     String(String),
-    Array(JsonArray),
-    Object(JsonObject),
+    Array(Box<SmallVec<[JsonValue; 8]>>),
+    Object(Box<LazyIndexMap<String, JsonValue>>),
 }
-pub type JsonArray = Vec<JsonValue>;
-pub type JsonObject = IndexMap<String, JsonValue>;
 
 #[derive(Clone, Debug)]
 pub struct JsonErrorPosition {
@@ -74,7 +71,7 @@ pub(crate) fn take_value(peak: Peak, parser: &mut Parser) -> JsonResult<JsonValu
         }
         Peak::Array => {
             // we could do something clever about guessing the size of the array
-            let mut array: Vec<JsonValue> = Vec::new();
+            let mut array: SmallVec<[JsonValue; 8]> = SmallVec::new();
             if let Some(peak_first) = parser.array_first()? {
                 let v = take_value(peak_first, parser)?;
                 array.push(v);
@@ -84,11 +81,11 @@ pub(crate) fn take_value(peak: Peak, parser: &mut Parser) -> JsonResult<JsonValu
                     array.push(v);
                 }
             }
-            Ok(JsonValue::Array(array))
+            Ok(JsonValue::Array(Box::new(array)))
         }
         Peak::Object => {
             // same for objects
-            let mut object = IndexMap::new();
+            let mut object = LazyIndexMap::new();
             if let Some(first_key) = parser.object_first::<StringDecoder>()? {
                 let peak = parser.peak()?;
                 let first_value = take_value(peak, parser)?;
@@ -100,7 +97,7 @@ pub(crate) fn take_value(peak: Peak, parser: &mut Parser) -> JsonResult<JsonValu
                 }
             }
 
-            Ok(JsonValue::Object(object))
+            Ok(JsonValue::Object(Box::new(object)))
         }
     }
 }

@@ -1,10 +1,11 @@
-use indexmap::indexmap;
 use std::fs::File;
 use std::io::Read;
 
+use smallvec::smallvec;
+
 use jiter::{
-    FilePosition, Jiter, JiterError, JsonError, JsonResult, JsonType, JsonValue, NumberAny, NumberDecoder, NumberInt,
-    Parser, Peak, StringDecoder, StringDecoderRange,
+    FilePosition, Jiter, JiterError, JsonError, JsonResult, JsonType, JsonValue, LazyIndexMap, NumberAny,
+    NumberDecoder, NumberInt, Parser, Peak, StringDecoder, StringDecoderRange,
 };
 
 fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
@@ -353,19 +354,18 @@ fn udb_string() {
 fn parse_object() {
     let json = r#"{"foo": "bar", "spam": [1, null, true]}"#;
     let v = JsonValue::parse(json.as_bytes()).unwrap();
-    assert_eq!(
-        v,
-        JsonValue::Object(indexmap! {
-            "foo".to_string() => JsonValue::String("bar".to_string()),
-            "spam".to_string() => JsonValue::Array(
-                vec![
-                    JsonValue::Int(1),
-                    JsonValue::Null,
-                    JsonValue::Bool(true),
-                ],
-            ),
-        },)
+
+    let mut expected = LazyIndexMap::new();
+    expected.insert("foo".to_string(), JsonValue::String("bar".to_string()));
+    expected.insert(
+        "spam".to_string(),
+        JsonValue::Array(Box::new(smallvec![
+            JsonValue::Int(1),
+            JsonValue::Null,
+            JsonValue::Bool(true)
+        ])),
     );
+    assert_eq!(v, JsonValue::Object(Box::new(expected)));
 }
 
 #[test]
@@ -374,7 +374,11 @@ fn parse_array_3() {
     let v = JsonValue::parse(json.as_bytes()).unwrap();
     assert_eq!(
         v,
-        JsonValue::Array(vec![JsonValue::Int(1), JsonValue::Null, JsonValue::Bool(true)])
+        JsonValue::Array(Box::new(smallvec![
+            JsonValue::Int(1),
+            JsonValue::Null,
+            JsonValue::Bool(true)
+        ]))
     );
 }
 
@@ -382,7 +386,7 @@ fn parse_array_3() {
 fn parse_array_empty() {
     let json = r#"[   ]"#;
     let v = JsonValue::parse(json.as_bytes()).unwrap();
-    assert_eq!(v, JsonValue::Array(vec![]));
+    assert_eq!(v, JsonValue::Array(Box::new(smallvec![])));
 }
 
 #[test]
@@ -404,13 +408,13 @@ fn parse_value_nested() {
     let v = JsonValue::parse(json.as_bytes()).unwrap();
     assert_eq!(
         v,
-        JsonValue::Array(vec![
+        JsonValue::Array(Box::new(smallvec![
             JsonValue::Int(1),
             JsonValue::Int(2),
-            JsonValue::Array(vec![JsonValue::Int(3), JsonValue::Int(4)]),
+            JsonValue::Array(Box::new(smallvec![JsonValue::Int(3), JsonValue::Int(4)])),
             JsonValue::Int(5),
             JsonValue::Int(6),
-        ],)
+        ]),)
     )
 }
 

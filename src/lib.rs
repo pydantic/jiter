@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 
 mod jiter;
+mod lazy_index_map;
 mod number_decoder;
 mod parse;
 mod string_decoder;
@@ -9,10 +10,11 @@ mod value;
 use std::fmt;
 
 pub use jiter::{Jiter, JiterError, JiterResult, JsonType};
+pub use lazy_index_map::LazyIndexMap;
 pub use number_decoder::{NumberAny, NumberDecoder, NumberDecoderRange, NumberInt};
 pub use parse::{JsonError, JsonResult, Parser, Peak};
 pub use string_decoder::{StringDecoder, StringDecoderRange};
-pub use value::{JsonArray, JsonObject, JsonValue};
+pub use value::JsonValue;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FilePosition {
