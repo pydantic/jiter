@@ -78,9 +78,9 @@ fn ints_equal(i1: &i64, n2: &SerdeNumber) -> bool {
 }
 
 
-fuzz_target!(|json: String| {
-    let json_data = json.as_bytes();
-// fuzz_target!(|json_data: &[u8]| {
+// fuzz_target!(|json: String| {
+//     let json_data = json.as_bytes();
+fuzz_target!(|json_data: &[u8]| {
     let jiter_value = match JiterValue::parse(json_data) {
         Ok(v) => v,
         Err(error) => {
