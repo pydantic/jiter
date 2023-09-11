@@ -16,14 +16,17 @@ impl AbstractStringDecoder for StringDecoder {
         index += 1;
         let mut bytes = Vec::new();
         let start = index;
+        let mut last_escape = start;
         while let Some(next) = data.get(index) {
             match next {
                 b'"' => {
+                    bytes.extend_from_slice(&data[last_escape..index]);
                     index += 1;
                     let s = unsafe { String::from_utf8_unchecked(bytes) };
                     return Ok((s, index));
                 }
                 b'\\' => {
+                    bytes.extend_from_slice(&data[last_escape..index]);
                     index += 1;
                     if let Some(next_inner) = data.get(index) {
                         match next_inner {
@@ -40,13 +43,15 @@ impl AbstractStringDecoder for StringDecoder {
                             }
                             _ => return Err(JsonError::InvalidString(index - start)),
                         }
+                        last_escape = index + 1;
                     } else {
                         return Err(JsonError::UnexpectedEnd);
                     }
                 }
                 // all values below 32 are invalid
                 next if *next < 32u8 => return Err(JsonError::InvalidString(index - start)),
-                _ => bytes.push(*next),
+                // do nothing, we ex
+                _ => (),
             }
             index += 1;
         }
