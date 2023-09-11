@@ -1,45 +1,52 @@
 use crate::{JsonError, JsonResult};
+use std::marker::PhantomData;
 use std::ops::Range;
 
-pub trait AbstractStringDecoder {
+pub type Tape = Vec<u8>;
+
+pub trait AbstractStringDecoder<'a> {
     type Output;
 
-    fn decode(data: &[u8], index: usize) -> JsonResult<(Self::Output, usize)>;
+    fn decode(data: &[u8], index: usize, tape: &'a mut Tape) -> JsonResult<(Self::Output, usize)>;
 }
 
-pub struct StringDecoder;
+pub struct StringDecoder<'a> {
+    _phantom: &'a PhantomData<()>,
+}
 
-impl AbstractStringDecoder for StringDecoder {
-    type Output = String;
+impl<'a> AbstractStringDecoder<'a> for StringDecoder<'a> {
+    type Output = &'a str;
 
-    fn decode(data: &[u8], mut index: usize) -> JsonResult<(Self::Output, usize)> {
+    fn decode(data: &[u8], mut index: usize, tape: &'a mut Tape) -> JsonResult<(Self::Output, usize)> {
         index += 1;
-        let mut bytes = Vec::new();
+        tape.clear();
         let start = index;
         let mut last_escape = start;
         while let Some(next) = data.get(index) {
             match next {
                 b'"' => {
-                    bytes.extend_from_slice(&data[last_escape..index]);
+                    tape.extend_from_slice(&data[last_escape..index]);
                     index += 1;
-                    let s = unsafe { String::from_utf8_unchecked(bytes) };
-                    return Ok((s, index));
+                    return match std::str::from_utf8(tape) {
+                        Ok(s) => Ok((s, index)),
+                        Err(_) => Err(JsonError::InvalidString(0)),
+                    };
                 }
                 b'\\' => {
-                    bytes.extend_from_slice(&data[last_escape..index]);
+                    tape.extend_from_slice(&data[last_escape..index]);
                     index += 1;
                     if let Some(next_inner) = data.get(index) {
                         match next_inner {
-                            b'"' | b'\\' | b'/' => bytes.push(*next_inner),
-                            b'b' => bytes.push(b'\x08'),
-                            b'f' => bytes.push(b'\x0C'),
-                            b'n' => bytes.push(b'\n'),
-                            b'r' => bytes.push(b'\r'),
-                            b't' => bytes.push(b'\t'),
+                            b'"' | b'\\' | b'/' => tape.push(*next_inner),
+                            b'b' => tape.push(b'\x08'),
+                            b'f' => tape.push(b'\x0C'),
+                            b'n' => tape.push(b'\n'),
+                            b'r' => tape.push(b'\r'),
+                            b't' => tape.push(b'\t'),
                             b'u' => {
                                 let (c, new_index) = parse_escape(data, index, start)?;
                                 index = new_index;
-                                bytes.extend_from_slice(c.encode_utf8(&mut [0_u8; 4]).as_bytes());
+                                tape.extend_from_slice(c.encode_utf8(&mut [0_u8; 4]).as_bytes());
                             }
                             _ => return Err(JsonError::InvalidString(index - start)),
                         }
@@ -107,10 +114,10 @@ fn parse_u4(data: &[u8], mut index: usize, start: usize) -> JsonResult<(u16, usi
 
 pub struct StringDecoderRange;
 
-impl AbstractStringDecoder for StringDecoderRange {
+impl<'a> AbstractStringDecoder<'a> for StringDecoderRange {
     type Output = Range<usize>;
 
-    fn decode(data: &[u8], mut index: usize) -> JsonResult<(Self::Output, usize)> {
+    fn decode(data: &[u8], mut index: usize, _tape: &'a mut Tape) -> JsonResult<(Self::Output, usize)> {
         index += 1;
         let start = index;
         while let Some(next) = data.get(index) {

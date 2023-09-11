@@ -10,6 +10,7 @@ use jiter::{
 
 fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
     let mut v = Vec::new();
+    let mut tape: Vec<u8> = Vec::new();
     let peak = parser.peak()?;
     let position = parser.current_position();
     match peak {
@@ -27,7 +28,7 @@ fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
             v.push(format!("null @ {position}"));
         }
         Peak::String => {
-            let range = parser.consume_string::<StringDecoderRange>()?;
+            let range = parser.consume_string::<StringDecoderRange>(&mut tape)?;
             v.push(format!("String({range:?}) @ {position}"));
         }
         Peak::Num(first) => {
@@ -49,11 +50,11 @@ fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
         }
         Peak::Object => {
             v.push(format!("{{ @ {position}"));
-            if let Some(key) = parser.object_first::<StringDecoderRange>()? {
+            if let Some(key) = parser.object_first::<StringDecoderRange>(&mut tape)? {
                 v.push(format!("Key({key:?})"));
                 let value_vec = json_vec(parser)?;
                 v.extend(value_vec);
-                while let Some(key) = parser.object_step::<StringDecoderRange>()? {
+                while let Some(key) = parser.object_step::<StringDecoderRange>(&mut tape)? {
                     v.push(format!("Key({key:?}"));
                     let value_vec = json_vec(parser)?;
                     v.extend(value_vec);
@@ -183,11 +184,12 @@ single_tests! {
 #[test]
 fn invalid_string_controls() {
     let json = "\"123\x08\x0c\n\r\t\"";
+    let mut tape: Vec<u8> = Vec::new();
     let b = json.as_bytes();
     let mut parser = Parser::new(b);
     let peak = parser.peak().unwrap();
     assert!(matches!(peak, Peak::String));
-    let result = parser.consume_string::<StringDecoder>();
+    let result = parser.consume_string::<StringDecoder>(&mut tape);
     match result {
         Ok(t) => panic!("unexpectedly valid: {:?} -> {:?}", json, t),
         Err(e) => assert_eq!(e, JsonError::InvalidString(3)),
@@ -197,13 +199,14 @@ fn invalid_string_controls() {
 #[test]
 fn json_parse_str() {
     let json = r#" "foobar" "#;
+    let mut tape: Vec<u8> = Vec::new();
     let data = json.as_bytes();
     let mut parser = Parser::new(data);
     let peak = parser.peak().unwrap();
     assert!(matches!(peak, Peak::String));
     assert_eq!(parser.current_position(), FilePosition::new(1, 2));
 
-    let result_string = parser.consume_string::<StringDecoder>().unwrap();
+    let result_string = parser.consume_string::<StringDecoder>(&mut tape).unwrap();
     assert_eq!(result_string, "foobar");
     parser.finish().unwrap();
 }
@@ -215,10 +218,11 @@ macro_rules! string_tests {
                 #[test]
                 fn [< string_parsing_ $name >]() {
                     let data = $json.as_bytes();
+                    let mut tape: Vec<u8> = Vec::new();
                     let mut parser = Parser::new(data);
                     let peak = parser.peak().unwrap();
                     assert!(matches!(peak, Peak::String));
-                    let result_string = parser.consume_string::<StringDecoder>().unwrap();
+                    let result_string = parser.consume_string::<StringDecoder>(&mut tape).unwrap();
                     assert_eq!(result_string, $expected);
                     parser.finish().unwrap();
                 }
@@ -240,16 +244,17 @@ string_tests! {
 #[test]
 fn test_key_str() {
     let json = r#"{"foo": "bar"}"#;
+    let mut tape: Vec<u8> = Vec::new();
     let mut parser = Parser::new(json.as_bytes());
     let p = parser.peak().unwrap();
     assert!(matches!(p, Peak::Object));
-    let k = parser.object_first::<StringDecoder>().unwrap();
-    assert_eq!(k, Some("foo".to_string()));
+    let k = parser.object_first::<StringDecoder>(&mut tape).unwrap();
+    assert_eq!(k, Some("foo"));
     let p = parser.peak().unwrap();
     assert!(matches!(p, Peak::String));
-    let v = parser.consume_string::<StringDecoder>().unwrap();
+    let v = parser.consume_string::<StringDecoder>(&mut tape).unwrap();
     assert_eq!(v, "bar");
-    let next_key = parser.object_step::<StringDecoder>().unwrap();
+    let next_key = parser.object_step::<StringDecoder>(&mut tape).unwrap();
     assert!(next_key.is_none());
     parser.finish().unwrap();
 }
@@ -257,16 +262,17 @@ fn test_key_str() {
 #[test]
 fn test_key_bytes() {
     let json = r#"{"foo": "bar"}"#.as_bytes();
+    let mut tape: Vec<u8> = Vec::new();
     let mut parser = Parser::new(json);
     let p = parser.peak().unwrap();
     assert!(matches!(p, Peak::Object));
-    let k = parser.object_first::<StringDecoderRange>().unwrap().unwrap();
+    let k = parser.object_first::<StringDecoderRange>(&mut tape).unwrap().unwrap();
     assert_eq!(json[k], *b"foo");
     let p = parser.peak().unwrap();
     assert!(matches!(p, Peak::String));
-    let v = parser.consume_string::<StringDecoderRange>().unwrap();
+    let v = parser.consume_string::<StringDecoderRange>(&mut tape).unwrap();
     assert_eq!(json[v], *b"bar");
-    let next_key = parser.object_step::<StringDecoder>().unwrap();
+    let next_key = parser.object_step::<StringDecoder>(&mut tape).unwrap();
     assert!(next_key.is_none());
     parser.finish().unwrap();
 }
@@ -441,9 +447,9 @@ fn pass1_to_value() {
 #[test]
 fn jiter_object() {
     let mut jiter = Jiter::new(br#"{"foo": "bar", "spam": [   1, 2, "x"]}"#);
-    assert_eq!(jiter.next_object().unwrap(), Some("foo".to_string()));
+    assert_eq!(jiter.next_object().unwrap(), Some("foo"));
     assert_eq!(jiter.next_str().unwrap(), "bar");
-    assert_eq!(jiter.next_key().unwrap(), Some("spam".to_string()));
+    assert_eq!(jiter.next_key().unwrap(), Some("spam"));
     assert_eq!(jiter.next_array().unwrap(), Some(Peak::Num(b'1')));
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(1));
     assert!(jiter.array_step().unwrap());
