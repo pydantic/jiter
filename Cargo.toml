@@ -2,6 +2,13 @@
 name = "jiter"
 version = "0.0.1"
 edition = "2021"
+description = "Iterable JSON parser"
+readme = "README.md"
+license = "MIT"
+keywords = ["JSON", "parsing", "deserialization", "iter"]
+categories = ["parser-implementations", "parsing"]
+homepage = "https://github.com/pydantic/jiter/"
+repository = "https://github.com/pydantic/jiter/"
 
 [dependencies]
 indexmap = "2.0.0"
