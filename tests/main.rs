@@ -147,6 +147,7 @@ single_tests! {
     float_exp_massive3: ok => "2e2147483646", "Float(inf) @ 1:1";
     float_exp_massive4: ok => "2e2147483646", "Float(inf) @ 1:1";
     float_exp_massive5: ok => "18446744073709551615000.0", "Float(18446744073709552000000) @ 1:1";
+    float_exp_massive6: ok => "0.0E667", "Float(0) @ 1:1";
     float_exp_tiny0: ok => "2e-2147483647", "Float(0) @ 1:1";
     float_exp_tiny1: ok => "2e-2147483648", "Float(0) @ 1:1";
     float_exp_tiny2: ok => "2e-2147483646", "Float(0) @ 1:1";

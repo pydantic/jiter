@@ -47,13 +47,9 @@ pub fn values_equal(jiter_value: &JiterValue, serde_value: &SerdeValue) -> bool 
 fn floats_approx(f1: Option<f64>, f2: Option<f64>) -> bool {
     match (f1, f2) {
         (Some(f1), Some(f2)) => {
-            if f1.is_nan() {
-                // TODO is this okay?
-                return true
-            }
-            let mut threshold = f1.abs() / 100_000_f64;
-            if threshold < 0.0001 {
-                threshold = 0.0001;
+            let mut threshold = f1.abs() / 1_000_000_f64;
+            if threshold < 0.000_000_1 {
+                threshold = 0.000_000_1;
             }
             let diff = f1 - f2;
             if diff.abs() <= threshold {

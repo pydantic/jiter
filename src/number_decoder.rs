@@ -174,9 +174,13 @@ impl AbstractNumber for NumberAny {
     }
 
     fn apply_exponential(self, exponent: i32, positive: bool) -> JsonResult<Self> {
-        if self == Self::Int(NumberInt::Zero) {
-            Ok(Self::Float(0.0))
-        } else if exponent == i32::MAX {
+        match self {
+            Self::Int(NumberInt::Zero) => return Ok(Self::Float(0.0)),
+            Self::Float(f) if f == 0.0 => return Ok(Self::Float(0.0)),
+            _ => (),
+        }
+
+        if exponent == i32::MAX {
             if positive {
                 Ok(Self::Float(f64::INFINITY))
             } else {
