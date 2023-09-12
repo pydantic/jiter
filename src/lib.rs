@@ -1,5 +1,6 @@
 #![doc = include_str!("../README.md")]
 
+mod errors;
 mod jiter;
 mod lazy_index_map;
 mod number_decoder;
@@ -7,49 +8,12 @@ mod parse;
 mod string_decoder;
 mod value;
 
-use std::fmt;
-
-pub use jiter::{Jiter, JiterError, JiterResult, JsonType};
+pub use errors::{
+    FilePosition, JiterError, JiterErrorType, JsonError, JsonErrorType, JsonResult, JsonType, JsonValueError,
+};
+pub use jiter::{Jiter, JiterResult};
 pub use lazy_index_map::LazyIndexMap;
 pub use number_decoder::{NumberAny, NumberDecoder, NumberDecoderRange, NumberInt};
-pub use parse::{JsonError, JsonResult, Parser, Peak};
+pub use parse::{Parser, Peak};
 pub use string_decoder::{StringDecoder, StringDecoderRange};
 pub use value::JsonValue;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FilePosition {
-    pub line: usize,
-    pub column: usize,
-}
-
-impl fmt::Display for FilePosition {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}", self.line, self.column)
-    }
-}
-
-impl FilePosition {
-    pub fn new(line: usize, column: usize) -> Self {
-        Self { line, column }
-    }
-
-    /// Find the line and column of a byte index in a string.
-    pub fn find(data: &[u8], find: usize) -> Self {
-        let mut line = 1;
-        let mut last_line_start = 0;
-        let mut index = 0;
-        while let Some(next) = data.get(index) {
-            if index == find {
-                break;
-            } else if *next == b'\n' {
-                line += 1;
-                last_line_start = index + 1;
-            }
-            index += 1;
-        }
-        Self {
-            line,
-            column: index - last_line_start + 1,
-        }
-    }
-}

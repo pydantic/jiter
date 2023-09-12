@@ -54,10 +54,10 @@ fn jiter_iter_big(path: &str, bench: &mut Bencher) {
 fn find_string(jiter: &mut Jiter) -> String {
     let peak = jiter.peak().unwrap();
     match peak {
-        Peak::String => jiter.known_string().unwrap(),
+        Peak::String => jiter.known_string().unwrap().to_string(),
         Peak::Array => {
             assert!(jiter.array_first().unwrap().is_some());
-            let s = find_string(jiter);
+            let s = find_string(jiter).to_string();
             assert!(!jiter.array_step().unwrap());
             s
         }
@@ -84,10 +84,11 @@ fn jiter_iter_string_array(path: &str, bench: &mut Bencher) {
         let mut v = Vec::new();
         jiter.array_first().unwrap();
         let i = jiter.next_str().unwrap();
-        v.push(i);
+        // record len instead of allocating the string to simulate something like constructing a PyString
+        v.push(i.len());
         while jiter.array_step().unwrap() {
             let i = jiter.next_str().unwrap();
-            v.push(i);
+            v.push(i.len());
         }
         jiter.finish().unwrap();
         black_box(v)
@@ -118,9 +119,11 @@ fn jiter_iter_true_object(path: &str, bench: &mut Bencher) {
         let mut jiter = Jiter::new(json_data);
         let mut v = Vec::new();
         if let Some(first_key) = jiter.next_object().unwrap() {
+            let first_key = first_key.to_string();
             let first_value = jiter.next_bool().unwrap();
             v.push((first_key, first_value));
             while let Some(key) = jiter.next_key().unwrap() {
+                let key = key.to_string();
                 let value = jiter.next_bool().unwrap();
                 v.push((key, value));
             }
