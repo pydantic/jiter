@@ -4,7 +4,7 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::ops::Range;
 
-use crate::{JsonError, JsonResult};
+use crate::errors::{json_err, json_error, JsonError, JsonErrorType, JsonResult};
 
 pub trait AbstractNumberDecoder {
     type Output;
@@ -14,13 +14,13 @@ pub trait AbstractNumberDecoder {
 
 pub trait AbstractNumber: fmt::Debug + PartialEq + Sized {
     fn new(digit: u8) -> Self;
-    fn take_one(first: u8) -> JsonResult<Self>;
+    fn take_one(first: u8) -> Result<Self, JsonErrorType>;
 
-    fn add_digit(&mut self, digit: &u8) -> JsonResult<()>;
+    fn add_digit(&mut self, digit: &u8) -> Result<(), JsonErrorType>;
 
     fn apply_decimal(self, data: &[u8], index: usize, positive: bool) -> JsonResult<(Self, usize)>;
 
-    fn apply_exponential(self, exponent: i32, positive: bool) -> JsonResult<Self>;
+    fn apply_exponential(self, exponent: i32, positive: bool) -> Result<Self, JsonErrorType>;
 
     fn negate(&mut self);
 }
@@ -51,15 +51,15 @@ impl AbstractNumber for NumberInt {
         Self::Int((digit & 0x0f) as i64)
     }
 
-    fn take_one(first: u8) -> JsonResult<Self> {
+    fn take_one(first: u8) -> Result<Self, JsonErrorType> {
         match first {
             b'0' => Ok(Self::Zero),
             b'1'..=b'9' => Ok(Self::new(first)),
-            _ => Err(JsonError::InvalidNumber),
+            _ => Err(JsonErrorType::InvalidNumber),
         }
     }
 
-    fn add_digit(&mut self, digit: &u8) -> JsonResult<()> {
+    fn add_digit(&mut self, digit: &u8) -> Result<(), JsonErrorType> {
         let digit_int = digit & 0x0f;
         match self {
             Self::Int(int_64) => {
@@ -82,17 +82,17 @@ impl AbstractNumber for NumberInt {
                 *big_int *= 10;
                 *big_int += digit_int;
             }
-            Self::Zero => return Err(JsonError::InvalidNumber),
+            Self::Zero => return Err(JsonErrorType::InvalidNumber),
         }
         Ok(())
     }
 
-    fn apply_decimal(self, _data: &[u8], _index: usize, _positive: bool) -> JsonResult<(Self, usize)> {
-        Err(JsonError::FloatExpectingInt)
+    fn apply_decimal(self, _data: &[u8], index: usize, _positive: bool) -> JsonResult<(Self, usize)> {
+        json_err!(FloatExpectingInt, index)
     }
 
-    fn apply_exponential(self, _exponent: i32, _positive: bool) -> JsonResult<Self> {
-        Err(JsonError::FloatExpectingInt)
+    fn apply_exponential(self, _exponent: i32, _positive: bool) -> Result<Self, JsonErrorType> {
+        Err(JsonErrorType::FloatExpectingInt)
     }
 
     fn negate(&mut self) {
@@ -126,28 +126,28 @@ impl AbstractNumber for NumberAny {
         Self::Int(NumberInt::new(digit))
     }
 
-    fn take_one(first: u8) -> JsonResult<Self> {
+    fn take_one(first: u8) -> Result<Self, JsonErrorType> {
         NumberInt::take_one(first).map(Self::Int)
     }
 
-    fn add_digit(&mut self, digit: &u8) -> JsonResult<()> {
+    fn add_digit(&mut self, digit: &u8) -> Result<(), JsonErrorType> {
         match self {
             Self::Int(int) => int.add_digit(digit),
-            Self::Float(_) => Err(JsonError::InvalidNumber),
+            Self::Float(_) => Err(JsonErrorType::InvalidNumber),
         }
     }
 
     fn apply_decimal(self, data: &[u8], mut index: usize, positive: bool) -> JsonResult<(Self, usize)> {
         let mut result: f64 = match self {
             Self::Int(int) => int.into(),
-            Self::Float(_) => return Err(JsonError::InvalidNumber),
+            Self::Float(_) => return json_err!(InvalidNumber, index),
         };
 
         index += 1;
         let first = match data.get(index) {
             Some(v) if v.is_ascii_digit() => v,
-            Some(_) => return Err(JsonError::InvalidNumber),
-            None => return Err(JsonError::UnexpectedEnd),
+            Some(_) => return json_err!(InvalidNumber, index),
+            None => return json_err!(UnexpectedEnd, index),
         };
         result += (first & 0x0f) as f64 / 10.0;
         let mut div = 100.0;
@@ -161,8 +161,10 @@ impl AbstractNumber for NumberAny {
                 }
                 b'e' | b'E' => {
                     let e = Exponent::decode(data, index)?;
-                    let num = Self::Float(result).apply_exponential(e.0.value, positive)?;
-                    return Ok((num, e.1));
+                    return match Self::Float(result).apply_exponential(e.0.value, positive) {
+                        Ok(n) => Ok((n, e.1)),
+                        Err(t) => return Err(JsonError::new(t, index)),
+                    };
                 }
                 _ => break,
             }
@@ -173,7 +175,7 @@ impl AbstractNumber for NumberAny {
         Ok((Self::Float(v), index))
     }
 
-    fn apply_exponential(self, exponent: i32, positive: bool) -> JsonResult<Self> {
+    fn apply_exponential(self, exponent: i32, positive: bool) -> Result<Self, JsonErrorType> {
         match self {
             Self::Int(NumberInt::Zero) => return Ok(Self::Float(0.0)),
             Self::Float(f) if f == 0.0 => return Ok(Self::Float(0.0)),
@@ -225,18 +227,20 @@ impl<Num: AbstractNumber> AbstractNumberDecoder for NumberDecoder<Num> {
         } else {
             // we started with a minus sign, so the first digit is at index + 1
             index += 1;
-            *data.get(index).ok_or(JsonError::UnexpectedEnd)?
+            *data.get(index).ok_or_else(|| json_error!(UnexpectedEnd, index))?
         };
-        let mut num = Num::take_one(first_num)?;
+        let mut num = Num::take_one(first_num).map_err(|t| JsonError::new(t, index))?;
         index += 1;
         while let Some(next) = data.get(index) {
             match next {
-                b'0'..=b'9' => num.add_digit(next)?,
+                b'0'..=b'9' => num.add_digit(next).map_err(|t| JsonError::new(t, index))?,
                 b'.' => return num.apply_decimal(data, index, positive),
                 b'e' | b'E' => {
                     let e = Exponent::decode(data, index)?;
-                    num = num.apply_exponential(e.0.value, positive)?;
-                    return Ok((num, e.1));
+                    return match num.apply_exponential(e.0.value, positive) {
+                        Ok(n) => Ok((n, e.1)),
+                        Err(t) => Err(JsonError::new(t, index)),
+                    };
                 }
                 _ => break,
             }
@@ -266,8 +270,8 @@ impl Exponent {
     fn take_one(data: &[u8], index: usize) -> JsonResult<Self> {
         match data.get(index) {
             Some(digit) if digit.is_ascii_digit() => Ok(Self::new(*digit)),
-            Some(_) => Err(JsonError::InvalidNumber),
-            None => Err(JsonError::UnexpectedEnd),
+            Some(_) => json_err!(InvalidNumber, index),
+            None => json_err!(UnexpectedEnd, index),
         }
     }
 
@@ -286,8 +290,8 @@ impl Exponent {
                 Self::take_one(data, index)?
             }
             Some(digit) if digit.is_ascii_digit() => Self::new(*digit),
-            Some(_) => return Err(JsonError::InvalidNumber),
-            None => return Err(JsonError::UnexpectedEnd),
+            Some(_) => return json_err!(InvalidNumber, index),
+            None => return json_err!(UnexpectedEnd, index),
         };
 
         index += 1;
@@ -348,8 +352,8 @@ impl AbstractNumberDecoder for NumberDecoderRange {
         // TODO special logic on zero
         match data.get(index) {
             Some(digit) if digit.is_ascii_digit() => (),
-            Some(_) => return Err(JsonError::InvalidNumber),
-            None => return Err(JsonError::UnexpectedEnd),
+            Some(_) => return json_err!(InvalidNumber, index),
+            None => return json_err!(UnexpectedEnd, index),
         };
         index += 1;
         while let Some(next) = data.get(index) {
@@ -381,8 +385,8 @@ fn exponent_range(data: &[u8], mut index: usize) -> JsonResult<usize> {
             index += 1;
         }
         Some(v) if v.is_ascii_digit() => (),
-        Some(_) => return Err(JsonError::InvalidNumber),
-        None => return Err(JsonError::UnexpectedEnd),
+        Some(_) => return json_err!(InvalidNumber, index),
+        None => return json_err!(UnexpectedEnd, index),
     };
     numeric_range(data, index)
 }
@@ -392,8 +396,8 @@ fn numeric_range(data: &[u8], mut index: usize) -> JsonResult<usize> {
 
     match data.get(index) {
         Some(v) if v.is_ascii_digit() => (),
-        Some(_) => return Err(JsonError::InvalidNumber),
-        None => return Err(JsonError::UnexpectedEnd),
+        Some(_) => return json_err!(InvalidNumber, index),
+        None => return json_err!(UnexpectedEnd, index),
     };
     index += 1;
 

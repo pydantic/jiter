@@ -1,10 +1,11 @@
 use num_bigint::BigInt;
 use smallvec::SmallVec;
 
+use crate::errors::JsonResult;
+use crate::lazy_index_map::LazyIndexMap;
 use crate::number_decoder::{NumberAny, NumberDecoder, NumberInt};
-use crate::parse::{JsonResult, Parser, Peak};
+use crate::parse::{Parser, Peak};
 use crate::string_decoder::{StringDecoder, Tape};
-use crate::{FilePosition, JsonError, LazyIndexMap};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum JsonValue {
@@ -18,28 +19,16 @@ pub enum JsonValue {
     Object(Box<LazyIndexMap<String, JsonValue>>),
 }
 
-#[derive(Clone, Debug)]
-pub struct JsonErrorPosition {
-    pub error: JsonError,
-    pub position: FilePosition,
-}
-
 impl JsonValue {
-    pub fn parse(data: &[u8]) -> Result<Self, JsonErrorPosition> {
+    pub fn parse(data: &[u8]) -> JsonResult<Self> {
         let mut parser = Parser::new(data);
 
-        _parse(&mut parser).map_err(|e| JsonErrorPosition {
-            error: e,
-            position: FilePosition::find(data, parser.index),
-        })
+        let mut tape = Tape::default();
+        let peak = parser.peak()?;
+        let v = take_value(peak, &mut parser, &mut tape)?;
+        parser.finish()?;
+        Ok(v)
     }
-}
-fn _parse(parser: &mut Parser) -> Result<JsonValue, JsonError> {
-    let mut tape = Tape::default();
-    let peak = parser.peak()?;
-    let v = take_value(peak, parser, &mut tape)?;
-    parser.finish()?;
-    Ok(v)
 }
 
 pub(crate) fn take_value(peak: Peak, parser: &mut Parser, tape: &mut Tape) -> JsonResult<JsonValue> {

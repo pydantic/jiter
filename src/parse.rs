@@ -1,41 +1,21 @@
-use strum::{Display, EnumMessage};
-
+use crate::errors::{json_err, FilePosition, JsonResult};
 use crate::number_decoder::AbstractNumberDecoder;
 use crate::string_decoder::{AbstractStringDecoder, Tape};
-use crate::FilePosition;
-
-#[derive(Debug, Display, EnumMessage, PartialEq, Eq, Clone)]
-#[strum(serialize_all = "snake_case")]
-pub enum JsonError {
-    UnexpectedCharacter,
-    UnexpectedEnd,
-    InvalidTrue,
-    InvalidFalse,
-    InvalidNull,
-    InvalidString(usize),
-    InvalidStringEscapeSequence(usize),
-    InvalidNumber,
-    IntTooLarge,
-    FloatExpectingInt,
-    InternalError,
-}
-
-pub type JsonResult<T> = Result<T, JsonError>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Peak {
     Null,
     True,
     False,
+    // we keep the first character of the number as we'll need it when decoding
     Num(u8),
     String,
     Array,
     Object,
 }
 
-impl TryFrom<u8> for Peak {
-    type Error = JsonError;
-    fn try_from(next: u8) -> JsonResult<Self> {
+impl Peak {
+    fn new(next: u8, index: usize) -> JsonResult<Self> {
         match next {
             b'[' => Ok(Self::Array),
             b'{' => Ok(Self::Object),
@@ -45,7 +25,7 @@ impl TryFrom<u8> for Peak {
             b'n' => Ok(Self::Null),
             b'0'..=b'9' => Ok(Self::Num(next)),
             b'-' => Ok(Self::Num(next)),
-            _ => Err(JsonError::UnexpectedCharacter),
+            _ => json_err!(UnexpectedCharacter, index),
         }
     }
 }
@@ -71,13 +51,17 @@ impl<'a> Parser<'a> {
         FilePosition::find(self.data, self.index)
     }
 
+    pub fn error_position(&self, index: usize) -> FilePosition {
+        FilePosition::find(self.data, index)
+    }
+
     /// we should enable PGO, then add `#[inline(always)]` so this method can be optimised
     /// for each call from Jiter.
     pub fn peak(&mut self) -> JsonResult<Peak> {
         if let Some(next) = self.eat_whitespace() {
-            next.try_into()
+            Peak::new(next, self.index)
         } else {
-            Err(JsonError::UnexpectedEnd)
+            json_err!(UnexpectedEnd, self.index)
         }
     }
 
@@ -88,10 +72,10 @@ impl<'a> Parser<'a> {
                 self.index += 1;
                 Ok(None)
             } else {
-                next.try_into().map(Some)
+                Peak::new(next, self.index).map(Some)
             }
         } else {
-            Err(JsonError::UnexpectedEnd)
+            json_err!(UnexpectedEnd, self.index)
         }
     }
 
@@ -106,10 +90,10 @@ impl<'a> Parser<'a> {
                     self.index += 1;
                     Ok(false)
                 }
-                _ => Err(JsonError::UnexpectedCharacter),
+                _ => json_err!(UnexpectedCharacter, self.index),
             }
         } else {
-            Err(JsonError::UnexpectedEnd)
+            json_err!(UnexpectedEnd, self.index)
         }
     }
 
@@ -128,10 +112,10 @@ impl<'a> Parser<'a> {
                     self.index += 1;
                     Ok(None)
                 }
-                _ => Err(JsonError::UnexpectedCharacter),
+                _ => json_err!(UnexpectedCharacter, self.index),
             }
         } else {
-            Err(JsonError::UnexpectedEnd)
+            json_err!(UnexpectedEnd, self.index)
         }
     }
 
@@ -150,20 +134,20 @@ impl<'a> Parser<'a> {
                         if next == b'"' {
                             self.object_key::<D>(tape).map(Some)
                         } else {
-                            Err(JsonError::UnexpectedCharacter)
+                            json_err!(UnexpectedCharacter, self.index)
                         }
                     } else {
-                        Err(JsonError::UnexpectedEnd)
+                        json_err!(UnexpectedEnd, self.index)
                     }
                 }
                 b'}' => {
                     self.index += 1;
                     Ok(None)
                 }
-                _ => Err(JsonError::UnexpectedCharacter),
+                _ => json_err!(UnexpectedCharacter, self.index),
             }
         } else {
-            Err(JsonError::UnexpectedEnd)
+            json_err!(UnexpectedEnd, self.index)
         }
     }
 
@@ -171,13 +155,13 @@ impl<'a> Parser<'a> {
         if self.eat_whitespace().is_none() {
             Ok(())
         } else {
-            Err(JsonError::UnexpectedCharacter)
+            json_err!(UnexpectedCharacter, self.index)
         }
     }
 
     pub fn consume_true(&mut self) -> JsonResult<()> {
         if self.index + 3 >= self.data.len() {
-            return Err(JsonError::UnexpectedEnd);
+            return json_err!(UnexpectedEnd, self.index);
         }
         let v = unsafe {
             [
@@ -190,13 +174,13 @@ impl<'a> Parser<'a> {
             self.index += 4;
             Ok(())
         } else {
-            Err(JsonError::InvalidTrue)
+            json_err!(InvalidTrue, self.index)
         }
     }
 
     pub fn consume_false(&mut self) -> JsonResult<()> {
         if self.index + 4 >= self.data.len() {
-            return Err(JsonError::UnexpectedEnd);
+            return json_err!(UnexpectedEnd, self.index);
         }
         let v = unsafe {
             [
@@ -210,13 +194,13 @@ impl<'a> Parser<'a> {
             self.index += 5;
             Ok(())
         } else {
-            Err(JsonError::InvalidFalse)
+            json_err!(InvalidFalse, self.index)
         }
     }
 
     pub fn consume_null(&mut self) -> JsonResult<()> {
         if self.index + 3 >= self.data.len() {
-            return Err(JsonError::UnexpectedEnd);
+            return json_err!(UnexpectedEnd, self.index);
         }
         let v = unsafe {
             [
@@ -229,7 +213,7 @@ impl<'a> Parser<'a> {
             self.index += 4;
             Ok(())
         } else {
-            Err(JsonError::InvalidNull)
+            json_err!(InvalidNull, self.index)
         }
     }
 
@@ -263,10 +247,10 @@ impl<'a> Parser<'a> {
                 self.index += 1;
                 Ok(output)
             } else {
-                Err(JsonError::UnexpectedCharacter)
+                json_err!(UnexpectedCharacter, self.index)
             }
         } else {
-            Err(JsonError::UnexpectedEnd)
+            json_err!(UnexpectedEnd, self.index)
         }
     }
 
