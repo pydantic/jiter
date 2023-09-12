@@ -44,7 +44,7 @@ macro_rules! map_err {
     ($self:ident, $error:ident) => {
         JiterError::JsonError {
             error: $error,
-            position: $self.parser.current_position(),
+            position: FilePosition::new(0, 0),
         }
     };
 }

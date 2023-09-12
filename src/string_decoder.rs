@@ -4,35 +4,47 @@ use std::ops::Range;
 
 pub type Tape = Vec<u8>;
 
-pub trait AbstractStringDecoder<'a> {
+pub trait AbstractStringDecoder<'t> {
     type Output;
 
-    fn decode(data: &[u8], index: usize, tape: &'a mut Tape) -> JsonResult<(Self::Output, usize)>;
+    fn decode<'d>(data: &'d [u8], index: usize, tape: &'t mut Tape) -> JsonResult<(Self::Output, usize)>
+    where
+        'd: 't;
 }
 
-pub struct StringDecoder<'a> {
-    _phantom: &'a PhantomData<()>,
+pub struct StringDecoder<'t> {
+    _phantom: &'t PhantomData<()>,
 }
 
-impl<'a> AbstractStringDecoder<'a> for StringDecoder<'a> {
-    type Output = &'a str;
+impl<'t> AbstractStringDecoder<'t> for StringDecoder<'t> {
+    type Output = &'t str;
 
-    fn decode(data: &[u8], mut index: usize, tape: &'a mut Tape) -> JsonResult<(Self::Output, usize)> {
+    fn decode<'d>(data: &'d [u8], mut index: usize, tape: &'t mut Tape) -> JsonResult<(Self::Output, usize)>
+    where
+        'd: 't,
+    {
         index += 1;
         tape.clear();
         let start = index;
         let mut last_escape = start;
+        let mut found_escape = false;
         while let Some(next) = data.get(index) {
             match next {
                 b'"' => {
-                    tape.extend_from_slice(&data[last_escape..index]);
+                    let result = if found_escape {
+                        tape.extend_from_slice(&data[last_escape..index]);
+                        std::str::from_utf8(tape)
+                    } else {
+                        std::str::from_utf8(&data[start..index])
+                    };
                     index += 1;
-                    return match std::str::from_utf8(tape) {
+                    return match result {
                         Ok(s) => Ok((s, index)),
                         Err(_) => Err(JsonError::InvalidString(0)),
                     };
                 }
                 b'\\' => {
+                    found_escape = true;
                     tape.extend_from_slice(&data[last_escape..index]);
                     index += 1;
                     if let Some(next_inner) = data.get(index) {
@@ -114,10 +126,13 @@ fn parse_u4(data: &[u8], mut index: usize, start: usize) -> JsonResult<(u16, usi
 
 pub struct StringDecoderRange;
 
-impl<'a> AbstractStringDecoder<'a> for StringDecoderRange {
+impl<'t> AbstractStringDecoder<'t> for StringDecoderRange {
     type Output = Range<usize>;
 
-    fn decode(data: &[u8], mut index: usize, _tape: &'a mut Tape) -> JsonResult<(Self::Output, usize)> {
+    fn decode<'d>(data: &'d [u8], mut index: usize, _tape: &'t mut Tape) -> JsonResult<(Self::Output, usize)>
+    where
+        'd: 't,
+    {
         index += 1;
         let start = index;
         while let Some(next) = data.get(index) {

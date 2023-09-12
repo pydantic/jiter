@@ -113,10 +113,13 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn object_first<'s, D: AbstractStringDecoder<'s>>(
-        &mut self,
-        tape: &'s mut Tape,
-    ) -> JsonResult<Option<D::Output>> {
+    pub fn object_first<'s, 't, D: AbstractStringDecoder<'t>>(
+        &'s mut self,
+        tape: &'t mut Tape,
+    ) -> JsonResult<Option<D::Output>>
+    where
+        's: 't,
+    {
         self.index += 1;
         if let Some(next) = self.eat_whitespace() {
             match next {
@@ -132,10 +135,13 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn object_step<'s, D: AbstractStringDecoder<'s>>(
-        &mut self,
-        tape: &'s mut Tape,
-    ) -> JsonResult<Option<D::Output>> {
+    pub fn object_step<'s, 't, D: AbstractStringDecoder<'t>>(
+        &'s mut self,
+        tape: &'t mut Tape,
+    ) -> JsonResult<Option<D::Output>>
+    where
+        's: 't,
+    {
         if let Some(next) = self.eat_whitespace() {
             match next {
                 b',' => {
@@ -227,7 +233,13 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn consume_string<'s, D: AbstractStringDecoder<'s>>(&mut self, tape: &'s mut Tape) -> JsonResult<D::Output> {
+    pub fn consume_string<'s, 't, D: AbstractStringDecoder<'t>>(
+        &'s mut self,
+        tape: &'t mut Tape,
+    ) -> JsonResult<D::Output>
+    where
+        's: 't,
+    {
         let (output, index) = D::decode(self.data, self.index, tape)?;
         self.index = index;
         Ok(output)
@@ -240,8 +252,12 @@ impl<'a> Parser<'a> {
     }
 
     /// private method to get an object key, then consume the colon which should follow
-    fn object_key<'s, D: AbstractStringDecoder<'s>>(&mut self, tape: &'s mut Tape) -> JsonResult<D::Output> {
-        let output = self.consume_string::<D>(tape)?;
+    fn object_key<'s, 't, D: AbstractStringDecoder<'t>>(&'s mut self, tape: &'t mut Tape) -> JsonResult<D::Output>
+    where
+        's: 't,
+    {
+        let (output, index) = D::decode(self.data, self.index, tape)?;
+        self.index = index;
         if let Some(next) = self.eat_whitespace() {
             if next == b':' {
                 self.index += 1;
