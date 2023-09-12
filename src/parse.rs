@@ -1,41 +1,21 @@
-use strum::{Display, EnumMessage};
-
+use crate::errors::{json_err, FilePosition, JsonResult};
 use crate::number_decoder::AbstractNumberDecoder;
-use crate::string_decoder::AbstractStringDecoder;
-use crate::FilePosition;
-
-#[derive(Debug, Display, EnumMessage, PartialEq, Eq, Clone)]
-#[strum(serialize_all = "snake_case")]
-pub enum JsonError {
-    UnexpectedCharacter,
-    UnexpectedEnd,
-    InvalidTrue,
-    InvalidFalse,
-    InvalidNull,
-    InvalidString(usize),
-    InvalidStringEscapeSequence(usize),
-    InvalidNumber,
-    IntTooLarge,
-    FloatExpectingInt,
-    InternalError,
-}
-
-pub type JsonResult<T> = Result<T, JsonError>;
+use crate::string_decoder::{AbstractStringDecoder, Tape};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Peak {
     Null,
     True,
     False,
+    // we keep the first character of the number as we'll need it when decoding
     Num(u8),
     String,
     Array,
     Object,
 }
 
-impl TryFrom<u8> for Peak {
-    type Error = JsonError;
-    fn try_from(next: u8) -> JsonResult<Self> {
+impl Peak {
+    fn new(next: u8, index: usize) -> JsonResult<Self> {
         match next {
             b'[' => Ok(Self::Array),
             b'{' => Ok(Self::Object),
@@ -45,7 +25,7 @@ impl TryFrom<u8> for Peak {
             b'n' => Ok(Self::Null),
             b'0'..=b'9' => Ok(Self::Num(next)),
             b'-' => Ok(Self::Num(next)),
-            _ => Err(JsonError::UnexpectedCharacter),
+            _ => json_err!(UnexpectedCharacter, index),
         }
     }
 }
@@ -57,17 +37,12 @@ static NULL_REST: [u8; 3] = [b'u', b'l', b'l'];
 #[derive(Debug, Clone)]
 pub struct Parser<'a> {
     data: &'a [u8],
-    length: usize,
     pub index: usize,
 }
 
 impl<'a> Parser<'a> {
     pub fn new(data: &'a [u8]) -> Self {
-        Self {
-            data,
-            length: data.len(),
-            index: 0,
-        }
+        Self { data, index: 0 }
     }
 }
 
@@ -76,13 +51,17 @@ impl<'a> Parser<'a> {
         FilePosition::find(self.data, self.index)
     }
 
+    pub fn error_position(&self, index: usize) -> FilePosition {
+        FilePosition::find(self.data, index)
+    }
+
     /// we should enable PGO, then add `#[inline(always)]` so this method can be optimised
     /// for each call from Jiter.
     pub fn peak(&mut self) -> JsonResult<Peak> {
         if let Some(next) = self.eat_whitespace() {
-            next.try_into()
+            Peak::new(next, self.index)
         } else {
-            Err(JsonError::UnexpectedEnd)
+            json_err!(UnexpectedEnd, self.index)
         }
     }
 
@@ -93,10 +72,10 @@ impl<'a> Parser<'a> {
                 self.index += 1;
                 Ok(None)
             } else {
-                next.try_into().map(Some)
+                Peak::new(next, self.index).map(Some)
             }
         } else {
-            Err(JsonError::UnexpectedEnd)
+            json_err!(UnexpectedEnd, self.index)
         }
     }
 
@@ -111,52 +90,64 @@ impl<'a> Parser<'a> {
                     self.index += 1;
                     Ok(false)
                 }
-                _ => Err(JsonError::UnexpectedCharacter),
+                _ => json_err!(UnexpectedCharacter, self.index),
             }
         } else {
-            Err(JsonError::UnexpectedEnd)
+            json_err!(UnexpectedEnd, self.index)
         }
     }
 
-    pub fn object_first<D: AbstractStringDecoder>(&mut self) -> JsonResult<Option<D::Output>> {
+    pub fn object_first<'s, 't, D: AbstractStringDecoder<'t>>(
+        &'s mut self,
+        tape: &'t mut Tape,
+    ) -> JsonResult<Option<D::Output>>
+    where
+        's: 't,
+    {
         self.index += 1;
         if let Some(next) = self.eat_whitespace() {
             match next {
-                b'"' => self.object_key::<D>().map(Some),
+                b'"' => self.object_key::<D>(tape).map(Some),
                 b'}' => {
                     self.index += 1;
                     Ok(None)
                 }
-                _ => Err(JsonError::UnexpectedCharacter),
+                _ => json_err!(UnexpectedCharacter, self.index),
             }
         } else {
-            Err(JsonError::UnexpectedEnd)
+            json_err!(UnexpectedEnd, self.index)
         }
     }
 
-    pub fn object_step<D: AbstractStringDecoder>(&mut self) -> JsonResult<Option<D::Output>> {
+    pub fn object_step<'s, 't, D: AbstractStringDecoder<'t>>(
+        &'s mut self,
+        tape: &'t mut Tape,
+    ) -> JsonResult<Option<D::Output>>
+    where
+        's: 't,
+    {
         if let Some(next) = self.eat_whitespace() {
             match next {
                 b',' => {
                     self.index += 1;
                     if let Some(next) = self.eat_whitespace() {
                         if next == b'"' {
-                            self.object_key::<D>().map(Some)
+                            self.object_key::<D>(tape).map(Some)
                         } else {
-                            Err(JsonError::UnexpectedCharacter)
+                            json_err!(UnexpectedCharacter, self.index)
                         }
                     } else {
-                        Err(JsonError::UnexpectedEnd)
+                        json_err!(UnexpectedEnd, self.index)
                     }
                 }
                 b'}' => {
                     self.index += 1;
                     Ok(None)
                 }
-                _ => Err(JsonError::UnexpectedCharacter),
+                _ => json_err!(UnexpectedCharacter, self.index),
             }
         } else {
-            Err(JsonError::UnexpectedEnd)
+            json_err!(UnexpectedEnd, self.index)
         }
     }
 
@@ -164,13 +155,13 @@ impl<'a> Parser<'a> {
         if self.eat_whitespace().is_none() {
             Ok(())
         } else {
-            Err(JsonError::UnexpectedCharacter)
+            json_err!(UnexpectedCharacter, self.index)
         }
     }
 
     pub fn consume_true(&mut self) -> JsonResult<()> {
-        if self.index + 3 >= self.length {
-            return Err(JsonError::UnexpectedEnd);
+        if self.index + 3 >= self.data.len() {
+            return json_err!(UnexpectedEnd, self.index);
         }
         let v = unsafe {
             [
@@ -183,13 +174,13 @@ impl<'a> Parser<'a> {
             self.index += 4;
             Ok(())
         } else {
-            Err(JsonError::InvalidTrue)
+            json_err!(InvalidTrue, self.index)
         }
     }
 
     pub fn consume_false(&mut self) -> JsonResult<()> {
-        if self.index + 4 >= self.length {
-            return Err(JsonError::UnexpectedEnd);
+        if self.index + 4 >= self.data.len() {
+            return json_err!(UnexpectedEnd, self.index);
         }
         let v = unsafe {
             [
@@ -203,13 +194,13 @@ impl<'a> Parser<'a> {
             self.index += 5;
             Ok(())
         } else {
-            Err(JsonError::InvalidFalse)
+            json_err!(InvalidFalse, self.index)
         }
     }
 
     pub fn consume_null(&mut self) -> JsonResult<()> {
-        if self.index + 3 >= self.length {
-            return Err(JsonError::UnexpectedEnd);
+        if self.index + 3 >= self.data.len() {
+            return json_err!(UnexpectedEnd, self.index);
         }
         let v = unsafe {
             [
@@ -222,12 +213,18 @@ impl<'a> Parser<'a> {
             self.index += 4;
             Ok(())
         } else {
-            Err(JsonError::InvalidNull)
+            json_err!(InvalidNull, self.index)
         }
     }
 
-    pub fn consume_string<D: AbstractStringDecoder>(&mut self) -> JsonResult<D::Output> {
-        let (output, index) = D::decode(self.data, self.index)?;
+    pub fn consume_string<'s, 't, D: AbstractStringDecoder<'t>>(
+        &'s mut self,
+        tape: &'t mut Tape,
+    ) -> JsonResult<D::Output>
+    where
+        's: 't,
+    {
+        let (output, index) = D::decode(self.data, self.index, tape)?;
         self.index = index;
         Ok(output)
     }
@@ -239,17 +236,21 @@ impl<'a> Parser<'a> {
     }
 
     /// private method to get an object key, then consume the colon which should follow
-    fn object_key<D: AbstractStringDecoder>(&mut self) -> JsonResult<D::Output> {
-        let output = self.consume_string::<D>()?;
+    fn object_key<'s, 't, D: AbstractStringDecoder<'t>>(&'s mut self, tape: &'t mut Tape) -> JsonResult<D::Output>
+    where
+        's: 't,
+    {
+        let (output, index) = D::decode(self.data, self.index, tape)?;
+        self.index = index;
         if let Some(next) = self.eat_whitespace() {
             if next == b':' {
                 self.index += 1;
                 Ok(output)
             } else {
-                Err(JsonError::UnexpectedCharacter)
+                json_err!(UnexpectedCharacter, self.index)
             }
         } else {
-            Err(JsonError::UnexpectedEnd)
+            json_err!(UnexpectedEnd, self.index)
         }
     }
 
