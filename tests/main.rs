@@ -193,7 +193,7 @@ fn invalid_string_controls() {
     match result {
         Ok(t) => panic!("unexpectedly valid: {:?} -> {:?}", json, t),
         Err(e) => {
-            assert_eq!(e.index, 4);
+            assert_eq!(e.index, 0);
             assert_eq!(e.error_type, JsonErrorType::InvalidString(3))
         }
     }
@@ -334,7 +334,7 @@ fn bad_string() {
     match r {
         Ok(v) => panic!("unexpected valid {v:?}"),
         Err(e) => {
-            assert_eq!(e.index, 1);
+            assert_eq!(e.index, 0);
             assert_eq!(e.error_type, JsonErrorType::InvalidString(0))
         }
     };
@@ -347,8 +347,9 @@ fn good_high_order_string() {
     match r {
         Ok(v) => panic!("unexpected valid {v:?}"),
         Err(e) => {
-            assert_eq!(e.index, 5);
-            assert_eq!(e.error_type, JsonErrorType::InvalidString(2))
+            assert_eq!(e.error_type, JsonErrorType::InvalidString(2));
+            assert_eq!(e.index, 0);
+            assert_eq!(e.position, FilePosition::new(1, 1));
         }
     };
 }
@@ -489,8 +490,7 @@ fn jiter_trailing_bracket() {
                 e.error_type,
                 JiterErrorType::JsonError(JsonErrorType::UnexpectedCharacter)
             );
-            // TODO:
-            // assert_eq!(position, FilePosition::new(1, 4));
+            assert_eq!(jiter.error_position(&e), FilePosition::new(1, 4));
         }
     }
 }
@@ -509,10 +509,8 @@ fn jiter_wrong_type() {
                     actual: JsonType::Int,
                 }
             );
-            // TODO this is wrong!
-            assert_eq!(e.index, 4);
-            // TODO:
-            // assert_eq!(jiter.position(e), FilePosition::new(1, 2));
+            assert_eq!(e.index, 1);
+            assert_eq!(jiter.error_position(&e), FilePosition::new(1, 2));
         }
     }
 }

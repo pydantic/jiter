@@ -1,4 +1,4 @@
-use crate::errors::{FilePosition, JiterError, JsonError, JsonType};
+use crate::errors::{FilePosition, JiterError, JsonType};
 use crate::number_decoder::{NumberAny, NumberDecoder, NumberInt};
 use crate::parse::{Parser, Peak};
 use crate::string_decoder::{StringDecoder, StringDecoderRange, Tape};
@@ -21,7 +21,7 @@ impl<'a> Jiter<'a> {
         }
     }
 
-    pub fn error_position(&self, error: &JsonError) -> FilePosition {
+    pub fn error_position(&self, error: &JiterError) -> FilePosition {
         FilePosition::find(self.data, error.index)
     }
 
@@ -168,6 +168,6 @@ impl<'a> Jiter<'a> {
             Ok(NumberAny::Float { .. }) => JsonType::Float,
             Err(e) => return e.into(),
         };
-        JiterError::wrong_type(expected, actual, parser2.index)
+        JiterError::wrong_type(expected, actual, self.parser.index)
     }
 }

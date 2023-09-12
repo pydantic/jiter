@@ -8,7 +8,9 @@ mod parse;
 mod string_decoder;
 mod value;
 
-pub use errors::{FilePosition, JiterError, JiterErrorType, JsonError, JsonErrorType, JsonResult, JsonType};
+pub use errors::{
+    FilePosition, JiterError, JiterErrorType, JsonError, JsonErrorType, JsonResult, JsonType, JsonValueError,
+};
 pub use jiter::{Jiter, JiterResult};
 pub use lazy_index_map::LazyIndexMap;
 pub use number_decoder::{NumberAny, NumberDecoder, NumberDecoderRange, NumberInt};

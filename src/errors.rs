@@ -101,6 +101,13 @@ impl From<JsonError> for JiterError {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct JsonValueError {
+    pub error_type: JsonErrorType,
+    pub index: usize,
+    pub position: FilePosition,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FilePosition {
     pub line: usize,

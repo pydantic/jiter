@@ -1,11 +1,12 @@
 use num_bigint::BigInt;
 use smallvec::SmallVec;
 
-use crate::errors::JsonResult;
+use crate::errors::{FilePosition, JsonResult, JsonValueError};
 use crate::lazy_index_map::LazyIndexMap;
 use crate::number_decoder::{NumberAny, NumberDecoder, NumberInt};
 use crate::parse::{Parser, Peak};
 use crate::string_decoder::{StringDecoder, Tape};
+use crate::JsonError;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum JsonValue {
@@ -20,13 +21,22 @@ pub enum JsonValue {
 }
 
 impl JsonValue {
-    pub fn parse(data: &[u8]) -> JsonResult<Self> {
+    pub fn parse(data: &[u8]) -> Result<Self, JsonValueError> {
         let mut parser = Parser::new(data);
 
+        let map_err = |e: JsonError| {
+            let position = FilePosition::find(data, e.index);
+            JsonValueError {
+                error_type: e.error_type,
+                index: e.index,
+                position,
+            }
+        };
+
         let mut tape = Tape::default();
-        let peak = parser.peak()?;
-        let v = take_value(peak, &mut parser, &mut tape)?;
-        parser.finish()?;
+        let peak = parser.peak().map_err(map_err)?;
+        let v = take_value(peak, &mut parser, &mut tape).map_err(map_err)?;
+        parser.finish().map_err(map_err)?;
         Ok(v)
     }
 }
