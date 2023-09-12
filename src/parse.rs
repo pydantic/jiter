@@ -160,60 +160,35 @@ impl<'a> Parser<'a> {
     }
 
     pub fn consume_true(&mut self) -> JsonResult<()> {
-        if self.index + 3 >= self.data.len() {
-            return json_err!(UnexpectedEnd, self.index);
-        }
-        let v = unsafe {
-            [
-                *self.data.get_unchecked(self.index + 1),
-                *self.data.get_unchecked(self.index + 2),
-                *self.data.get_unchecked(self.index + 3),
-            ]
-        };
-        if v == TRUE_REST {
-            self.index += 4;
-            Ok(())
-        } else {
-            json_err!(InvalidTrue, self.index)
+        match self.data.get(self.index + 1..self.index + 4) {
+            Some(s) if s == TRUE_REST => {
+                self.index += 4;
+                Ok(())
+            }
+            Some(_) => json_err!(InvalidTrue, self.index),
+            None => json_err!(UnexpectedEnd, self.data.len()),
         }
     }
 
     pub fn consume_false(&mut self) -> JsonResult<()> {
-        if self.index + 4 >= self.data.len() {
-            return json_err!(UnexpectedEnd, self.index);
-        }
-        let v = unsafe {
-            [
-                *self.data.get_unchecked(self.index + 1),
-                *self.data.get_unchecked(self.index + 2),
-                *self.data.get_unchecked(self.index + 3),
-                *self.data.get_unchecked(self.index + 4),
-            ]
-        };
-        if v == FALSE_REST {
-            self.index += 5;
-            Ok(())
-        } else {
-            json_err!(InvalidFalse, self.index)
+        match self.data.get(self.index + 1..self.index + 5) {
+            Some(s) if s == FALSE_REST => {
+                self.index += 5;
+                Ok(())
+            }
+            Some(_) => json_err!(InvalidFalse, self.index),
+            None => json_err!(UnexpectedEnd, self.data.len()),
         }
     }
 
     pub fn consume_null(&mut self) -> JsonResult<()> {
-        if self.index + 3 >= self.data.len() {
-            return json_err!(UnexpectedEnd, self.index);
-        }
-        let v = unsafe {
-            [
-                *self.data.get_unchecked(self.index + 1),
-                *self.data.get_unchecked(self.index + 2),
-                *self.data.get_unchecked(self.index + 3),
-            ]
-        };
-        if v == NULL_REST {
-            self.index += 4;
-            Ok(())
-        } else {
-            json_err!(InvalidNull, self.index)
+        match self.data.get(self.index + 1..self.index + 4) {
+            Some(s) if s == NULL_REST => {
+                self.index += 4;
+                Ok(())
+            }
+            Some(_) => json_err!(InvalidNull, self.index),
+            None => json_err!(UnexpectedEnd, self.data.len()),
         }
     }
 
