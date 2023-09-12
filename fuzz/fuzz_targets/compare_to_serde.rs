@@ -98,10 +98,7 @@ fuzz_target!(|json_data: &[u8]| {
         Err(error) => {
             let error_string = error.to_string();
             if error_string.starts_with("number out of range") {
-                // this happens because of stricter behaviour on exponentials
-                return
-            } else if error_string.starts_with("invalid unicode code point") {
-                // I think this is okay, bytes like `[34, 210, 34]` are valid in python
+                // this happens because of stricter behaviour on exponential floats in serde
                 return
             } else {
                 dbg!(error, error_string, jiter_value);
