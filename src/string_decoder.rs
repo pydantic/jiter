@@ -31,6 +31,10 @@ impl<'t> AbstractStringDecoder<'t> for StringDecoder<'t> {
         while let Some(next) = data.get(index) {
             match next {
                 b'"' => {
+                    // in theory we could use `std::str::from_utf8_unchecked` here,
+                    // it leads to big performance gains but some cases e.g. good_high_order_string
+                    // passing when they error here, serde uses `std::str::from_utf8`, python's `json.loads`
+                    // allows these higher order strings
                     let result = if found_escape {
                         tape.extend_from_slice(&data[last_escape..index]);
                         std::str::from_utf8(tape)
@@ -40,7 +44,7 @@ impl<'t> AbstractStringDecoder<'t> for StringDecoder<'t> {
                     index += 1;
                     return match result {
                         Ok(s) => Ok((s, index)),
-                        Err(_) => Err(JsonError::InvalidString(0)),
+                        Err(err) => Err(JsonError::InvalidString(err.valid_up_to())),
                     };
                 }
                 b'\\' => {

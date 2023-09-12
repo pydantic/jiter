@@ -84,10 +84,11 @@ fn jiter_iter_string_array(path: &str, bench: &mut Bencher) {
         let mut v = Vec::new();
         jiter.array_first().unwrap();
         let i = jiter.next_str().unwrap();
-        v.push(i.to_string());
+        // record len instead of allocating the string to simulate something like constructing a PyString
+        v.push(i.len());
         while jiter.array_step().unwrap() {
             let i = jiter.next_str().unwrap();
-            v.push(i.to_string());
+            v.push(i.len());
         }
         jiter.finish().unwrap();
         black_box(v)
