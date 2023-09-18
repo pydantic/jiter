@@ -493,7 +493,6 @@ fn jiter_bytes_u_escape() {
     }
 }
 
-
 #[test]
 fn jiter_empty_array() {
     let mut jiter = Jiter::new(b"[]");
