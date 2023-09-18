@@ -26,7 +26,7 @@ impl<'a> Jiter<'a> {
     }
 
     pub fn peak(&mut self) -> JiterResult<Peak> {
-        self.parser.peak().map_err(|e| e.into())
+        self.parser.peak().map_err(Into::into)
     }
 
     pub fn next_null(&mut self) -> JiterResult<()> {
@@ -92,7 +92,7 @@ impl<'a> Jiter<'a> {
 
     pub fn next_value(&mut self) -> JiterResult<JsonValue> {
         let peak = self.peak()?;
-        take_value(peak, &mut self.parser, &mut self.tape).map_err(|e| e.into())
+        take_value(peak, &mut self.parser, &mut self.tape).map_err(Into::into)
     }
 
     pub fn next_array(&mut self) -> JiterResult<Option<Peak>> {
@@ -104,11 +104,11 @@ impl<'a> Jiter<'a> {
     }
 
     pub fn array_first(&mut self) -> JiterResult<Option<Peak>> {
-        self.parser.array_first().map_err(|e| e.into())
+        self.parser.array_first().map_err(Into::into)
     }
 
     pub fn array_step(&mut self) -> JiterResult<bool> {
-        self.parser.array_step().map_err(|e| e.into())
+        self.parser.array_step().map_err(Into::into)
     }
 
     pub fn next_object(&mut self) -> JiterResult<Option<&str>> {
@@ -117,7 +117,18 @@ impl<'a> Jiter<'a> {
             Peak::Object => self
                 .parser
                 .object_first::<StringDecoder<'_>>(&mut self.tape)
-                .map_err(|e| e.into()),
+                .map_err(Into::into),
+            _ => Err(self.wrong_type(JsonType::Object, peak)),
+        }
+    }
+
+    pub fn next_object_bytes(&mut self) -> JiterResult<Option<&[u8]>> {
+        let peak = self.peak()?;
+        match peak {
+            Peak::Object => {
+                let op_range = self.parser.object_first::<StringDecoderRange>(&mut self.tape)?;
+                Ok(op_range.map(|r| &self.data[r]))
+            },
             _ => Err(self.wrong_type(JsonType::Object, peak)),
         }
     }
@@ -128,26 +139,31 @@ impl<'a> Jiter<'a> {
             .map_err(Into::into)
     }
 
+    pub fn next_key_bytes(&mut self) -> JiterResult<Option<&[u8]>> {
+        let op_range = self.parser.object_step::<StringDecoderRange>(&mut self.tape)?;
+        Ok(op_range.map(|r| &self.data[r]))
+    }
+
     pub fn finish(&mut self) -> JiterResult<()> {
-        self.parser.finish().map_err(|e| e.into())
+        self.parser.finish().map_err(Into::into)
     }
 
     pub fn known_string(&mut self) -> JiterResult<&str> {
         self.parser
             .consume_string::<StringDecoder>(&mut self.tape)
-            .map_err(|e| e.into())
+            .map_err(Into::into)
     }
 
     pub fn known_int(&mut self, first: u8) -> JiterResult<NumberInt> {
         self.parser
             .consume_number::<NumberDecoder<NumberInt>>(first)
-            .map_err(|e| e.into())
+            .map_err(Into::into)
     }
 
     pub fn known_float(&mut self, first: u8) -> JiterResult<NumberAny> {
         self.parser
             .consume_number::<NumberDecoder<NumberAny>>(first)
-            .map_err(|e| e.into())
+            .map_err(Into::into)
     }
 
     fn wrong_type(&self, expected: JsonType, peak: Peak) -> JiterError {

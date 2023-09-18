@@ -470,6 +470,31 @@ fn jiter_object() {
 }
 
 #[test]
+fn jiter_bytes() {
+    let mut jiter = Jiter::new(br#"{"foo": "bar", "new-line": "\\n"}"#);
+    assert_eq!(jiter.next_object_bytes().unwrap().unwrap(), b"foo");
+    assert_eq!(jiter.next_bytes().unwrap(), b"bar");
+    assert_eq!(jiter.next_key_bytes().unwrap().unwrap(), b"new-line");
+    assert_eq!(jiter.next_bytes().unwrap(), br#"\\n"#);
+    assert_eq!(jiter.next_key_bytes().unwrap(), None);
+    jiter.finish().unwrap();
+}
+
+#[test]
+fn jiter_bytes_u_escape() {
+    let mut jiter = Jiter::new(br#"{"foo": "xx \u00a3"}"#);
+    assert_eq!(jiter.next_object_bytes().unwrap().unwrap(), b"foo");
+    match jiter.next_bytes() {
+        Ok(r) => panic!("unexpectedly valid: {:?}", r),
+        Err(e) => {
+            assert_eq!(e.error_type, JiterErrorType::JsonError(JsonErrorType::StringEscapeNotSupported(4)));
+            assert_eq!(jiter.error_position(&e), FilePosition::new(1, 9));
+        }
+    }
+}
+
+
+#[test]
 fn jiter_empty_array() {
     let mut jiter = Jiter::new(b"[]");
     assert_eq!(jiter.next_array().unwrap(), None);
