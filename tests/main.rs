@@ -16,7 +16,6 @@ fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
     match peak {
         Peak::True => {
             parser.consume_true()?;
-            dbg!("true");
             v.push(format!("true @ {position}"));
         }
         Peak::False => {

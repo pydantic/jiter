@@ -27,7 +27,7 @@ repos:
     pass_filenames: false
   - id: test
     name: Test
-    entry: cargo test
+    entry: cargo test --test main
     types: [rust]
     language: system
     pass_filenames: false
