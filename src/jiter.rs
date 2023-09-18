@@ -128,7 +128,7 @@ impl<'a> Jiter<'a> {
             Peak::Object => {
                 let op_range = self.parser.object_first::<StringDecoderRange>(&mut self.tape)?;
                 Ok(op_range.map(|r| &self.data[r]))
-            },
+            }
             _ => Err(self.wrong_type(JsonType::Object, peak)),
         }
     }

@@ -152,7 +152,7 @@ impl<'t> AbstractStringDecoder<'t> for StringDecoderRange {
                     if let Some(next_inner) = data.get(index) {
                         match next_inner {
                             // these escapes are easy to validate
-                            b'"' | b'\\' | b'/' | b'b'| b'f' | b'n'| b'r' | b't' => (),
+                            b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't' => (),
                             // unicode escapes are harder to validate, we just prevent them here
                             b'u' => return json_err!(StringEscapeNotSupported, index - start, start - 1),
                             _ => return json_err!(InvalidString, index - start, start - 1),

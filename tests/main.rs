@@ -487,7 +487,10 @@ fn jiter_bytes_u_escape() {
     match jiter.next_bytes() {
         Ok(r) => panic!("unexpectedly valid: {:?}", r),
         Err(e) => {
-            assert_eq!(e.error_type, JiterErrorType::JsonError(JsonErrorType::StringEscapeNotSupported(4)));
+            assert_eq!(
+                e.error_type,
+                JiterErrorType::JsonError(JsonErrorType::StringEscapeNotSupported(4))
+            );
             assert_eq!(jiter.error_position(&e), FilePosition::new(1, 9));
         }
     }
