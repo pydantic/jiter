@@ -21,6 +21,11 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
+    - name: set up python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
     - uses: dtolnay/rust-toolchain@master
       with:
         toolchain: ${{ matrix.rust-version }}
@@ -33,7 +38,7 @@ jobs:
 
     - run: rustup component add llvm-tools-preview
 
-    - run: cargo test --test main
+    - run: cargo test -F python
       env:
         RUST_BACKTRACE: 1
         RUSTFLAGS: '-C instrument-coverage'
