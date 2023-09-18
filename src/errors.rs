@@ -12,8 +12,10 @@ pub enum JsonErrorType {
     InvalidNull,
     // the usize here is the position within the string that is invalid
     InvalidString(usize),
-    // same here
+    // same
     InvalidStringEscapeSequence(usize),
+    // same
+    StringEscapeNotSupported(usize),
     InvalidNumber,
     FloatExpectingInt,
 }

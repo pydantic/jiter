@@ -148,8 +148,19 @@ impl<'t> AbstractStringDecoder<'t> for StringDecoderRange {
                     return Ok((r, index));
                 }
                 b'\\' => {
-                    index += 2;
-                    // TODO check hex escape sequence
+                    index += 1;
+                    if let Some(next_inner) = data.get(index) {
+                        match next_inner {
+                            // these escapes are easy to validate
+                            b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't' => (),
+                            // unicode escapes are harder to validate, we just prevent them here
+                            b'u' => return json_err!(StringEscapeNotSupported, index - start, start - 1),
+                            _ => return json_err!(InvalidString, index - start, start - 1),
+                        }
+                    } else {
+                        return json_err!(UnexpectedEnd, start - 1);
+                    }
+                    index += 1;
                 }
                 _ => {
                     index += 1;
