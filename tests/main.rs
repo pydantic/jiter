@@ -248,7 +248,7 @@ fn json_parse_str() {
     assert_eq!(parser.current_position(), FilePosition::new(1, 2));
 
     let result_string = parser.consume_string::<StringDecoder>(&mut tape).unwrap();
-    assert_eq!(result_string, "foobar");
+    assert_eq!(result_string.as_str(), "foobar");
     parser.finish().unwrap();
 }
 
@@ -263,8 +263,8 @@ macro_rules! string_tests {
                     let mut parser = Parser::new(data);
                     let peak = parser.peak().unwrap();
                     assert!(matches!(peak, Peak::String));
-                    let result_string = parser.consume_string::<StringDecoder>(&mut tape).unwrap();
-                    assert_eq!(result_string, $expected);
+                    let strs = parser.consume_string::<StringDecoder>(&mut tape).unwrap();
+                    assert_eq!(strs.as_str(), $expected);
                     parser.finish().unwrap();
                 }
             }
@@ -343,11 +343,11 @@ fn test_key_str() {
     let p = parser.peak().unwrap();
     assert!(matches!(p, Peak::Object));
     let k = parser.object_first::<StringDecoder>(&mut tape).unwrap();
-    assert_eq!(k, Some("foo"));
+    assert_eq!(k.map(|s| s.as_str()), Some("foo"));
     let p = parser.peak().unwrap();
     assert!(matches!(p, Peak::String));
     let v = parser.consume_string::<StringDecoder>(&mut tape).unwrap();
-    assert_eq!(v, "bar");
+    assert_eq!(v.as_str(), "bar");
     let next_key = parser.object_step::<StringDecoder>(&mut tape).unwrap();
     assert!(next_key.is_none());
     parser.finish().unwrap();
@@ -451,12 +451,12 @@ fn udb_string() {
 }
 
 #[test]
-fn parse_object() {
+fn json_value_object() {
     let json = r#"{"foo": "bar", "spam": [1, null, true]}"#;
     let v = JsonValue::parse(json.as_bytes()).unwrap();
 
     let mut expected = LazyIndexMap::new();
-    expected.insert("foo".to_string(), JsonValue::String("bar".to_string()));
+    expected.insert("foo".to_string(), JsonValue::Str("bar"));
     expected.insert(
         "spam".to_string(),
         JsonValue::Array(Arc::new(smallvec![
@@ -466,6 +466,19 @@ fn parse_object() {
         ])),
     );
     assert_eq!(v, JsonValue::Object(Arc::new(expected)));
+}
+
+#[test]
+fn json_value_str_string() {
+    let json = r#"["foo", "\u00a3", "\""]"#;
+    let v = JsonValue::parse(json.as_bytes()).unwrap();
+
+    let expected = JsonValue::Array(Arc::new(smallvec![
+        JsonValue::Str("foo"),
+        JsonValue::String("£".to_string()),
+        JsonValue::String("\"".to_string())
+    ]));
+    assert_eq!(v, expected);
 }
 
 #[test]
@@ -539,7 +552,7 @@ fn pass1_to_value() {
         v => panic!("expected array, not {:?}", v),
     };
     assert_eq!(array.len(), 20);
-    assert_eq!(array[0], JsonValue::String("JSON Test Pattern pass1".to_string()));
+    assert_eq!(array[0], JsonValue::Str("JSON Test Pattern pass1"));
 }
 
 #[test]

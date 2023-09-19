@@ -1,29 +1,58 @@
-use std::marker::PhantomData;
+use std::fmt::Display;
 use std::ops::Range;
 
 use crate::errors::{json_err, json_error, JsonResult};
 
 pub type Tape = Vec<u8>;
 
-pub trait AbstractStringDecoder<'t> {
+/// `'t` is the lifetime of the tape (reusable buffer), `'j` is the lifetime of the JSON data itself
+/// data must outlive tape, so if you return data with the lifetime of tape,
+/// a slice of data the original JSON data is okay too
+pub trait AbstractStringDecoder<'t, 'j>
+where
+    'j: 't,
+{
     type Output;
 
-    fn decode<'d>(data: &'d [u8], index: usize, tape: &'t mut Tape) -> JsonResult<(Self::Output, usize)>
-    where
-        'd: 't;
+    fn decode(data: &'j [u8], index: usize, tape: &'t mut Tape) -> JsonResult<(Self::Output, usize)>;
 }
 
-pub struct StringDecoder<'t> {
-    _phantom: &'t PhantomData<()>,
+pub struct StringDecoder;
+
+#[derive(Debug)]
+pub enum StringOutput<'t, 'j>
+where
+    'j: 't,
+{
+    Tape(&'t str),
+    Data(&'j str),
 }
 
-impl<'t> AbstractStringDecoder<'t> for StringDecoder<'t> {
-    type Output = &'t str;
+impl Display for StringOutput<'_, '_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Tape(s) => write!(f, "{}", s),
+            Self::Data(s) => write!(f, "{}", s),
+        }
+    }
+}
 
-    fn decode<'d>(data: &'d [u8], mut index: usize, tape: &'t mut Tape) -> JsonResult<(Self::Output, usize)>
-    where
-        'd: 't,
-    {
+impl<'t, 'j> StringOutput<'t, 'j> {
+    pub fn as_str(&self) -> &'t str {
+        match self {
+            Self::Tape(s) => s,
+            Self::Data(s) => s,
+        }
+    }
+}
+
+impl<'t, 'j> AbstractStringDecoder<'t, 'j> for StringDecoder
+where
+    'j: 't,
+{
+    type Output = StringOutput<'t, 'j>;
+
+    fn decode(data: &'j [u8], mut index: usize, tape: &'t mut Tape) -> JsonResult<(Self::Output, usize)> {
         index += 1;
         tape.clear();
         let start = index;
@@ -34,18 +63,16 @@ impl<'t> AbstractStringDecoder<'t> for StringDecoder<'t> {
         while let Some(next) = data.get(index) {
             match next {
                 b'"' => {
-                    // in theory we could use `std::str::from_utf8_unchecked` here,
-                    // it leads to big performance gains but some cases e.g. good_high_order_string
-                    // passing when they error here, serde uses `std::str::from_utf8`, python's `json.loads`
-                    // allows these higher order strings
-                    let s = if found_escape {
+                    return if found_escape {
                         tape.extend_from_slice(&data[last_escape..index]);
-                        to_str(tape, ascii_only, start)?
+                        index += 1;
+                        let s = to_str(tape, ascii_only, start)?;
+                        Ok((StringOutput::Tape(s), index))
                     } else {
-                        to_str(&data[start..index], ascii_only, start)?
+                        let s = to_str(&data[start..index], ascii_only, start)?;
+                        index += 1;
+                        Ok((StringOutput::Data(s), index))
                     };
-                    index += 1;
-                    return Ok((s, index));
                 }
                 b'\\' => {
                     found_escape = true;
@@ -147,13 +174,13 @@ fn parse_u4(data: &[u8], mut index: usize) -> JsonResult<(u16, usize)> {
 
 pub struct StringDecoderRange;
 
-impl<'t> AbstractStringDecoder<'t> for StringDecoderRange {
+impl<'t, 'j> AbstractStringDecoder<'t, 'j> for StringDecoderRange
+where
+    'j: 't,
+{
     type Output = Range<usize>;
 
-    fn decode<'d>(data: &'d [u8], mut index: usize, _tape: &'t mut Tape) -> JsonResult<(Self::Output, usize)>
-    where
-        'd: 't,
-    {
+    fn decode(data: &'j [u8], mut index: usize, _tape: &'t mut Tape) -> JsonResult<(Self::Output, usize)> {
         index += 1;
         let start = index;
         while let Some(next) = data.get(index) {

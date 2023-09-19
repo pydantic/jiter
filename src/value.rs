@@ -7,25 +7,27 @@ use crate::errors::{FilePosition, JsonResult, JsonValueError, DEFAULT_RECURSION_
 use crate::lazy_index_map::LazyIndexMap;
 use crate::number_decoder::{NumberAny, NumberInt};
 use crate::parse::{Parser, Peak};
-use crate::string_decoder::{StringDecoder, Tape};
+use crate::string_decoder::{StringDecoder, StringOutput, Tape};
 use crate::JsonError;
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum JsonValue {
+pub enum JsonValue<'j> {
     Null,
     Bool(bool),
     Int(i64),
     BigInt(BigInt),
     Float(f64),
     String(String),
-    Array(JsonArray),
-    Object(JsonObject),
+    Str(&'j str),
+    Array(JsonArray<'j>),
+    Object(JsonObject<'j>),
 }
-pub type JsonArray = Arc<SmallVec<[JsonValue; 8]>>;
-pub type JsonObject = Arc<LazyIndexMap<String, JsonValue>>;
+
+pub type JsonArray<'j> = Arc<SmallVec<[JsonValue<'j>; 8]>>;
+pub type JsonObject<'j> = Arc<LazyIndexMap<String, JsonValue<'j>>>;
 
 #[cfg(feature = "python")]
-impl pyo3::ToPyObject for JsonValue {
+impl<'j> pyo3::ToPyObject for JsonValue<'j> {
     fn to_object(&self, py: pyo3::Python<'_>) -> pyo3::PyObject {
         match self {
             Self::Null => py.None(),
@@ -34,6 +36,7 @@ impl pyo3::ToPyObject for JsonValue {
             Self::BigInt(b) => b.to_object(py),
             Self::Float(f) => f.to_object(py),
             Self::String(s) => s.to_object(py),
+            Self::Str(s) => s.to_object(py),
             Self::Array(v) => pyo3::types::PyList::new(py, v.iter().map(|v| v.to_object(py))).to_object(py),
             Self::Object(o) => {
                 let dict = pyo3::types::PyDict::new(py);
@@ -46,8 +49,8 @@ impl pyo3::ToPyObject for JsonValue {
     }
 }
 
-impl JsonValue {
-    pub fn parse(data: &[u8]) -> Result<Self, JsonValueError> {
+impl<'j> JsonValue<'j> {
+    pub fn parse(data: &'j [u8]) -> Result<Self, JsonValueError> {
         let mut parser = Parser::new(data);
 
         let map_err = |e: JsonError| {
@@ -76,12 +79,12 @@ macro_rules! check_recursion {
     };
 }
 
-pub(crate) fn take_value(
+pub(crate) fn take_value<'j>(
     peak: Peak,
-    parser: &mut Parser,
+    parser: &mut Parser<'j>,
     tape: &mut Tape,
     mut recursion_limit: u8,
-) -> JsonResult<JsonValue> {
+) -> JsonResult<JsonValue<'j>> {
     match peak {
         Peak::True => {
             parser.consume_true()?;
@@ -97,7 +100,10 @@ pub(crate) fn take_value(
         }
         Peak::String => {
             let s = parser.consume_string::<StringDecoder>(tape)?;
-            Ok(JsonValue::String(s.to_string()))
+            match s {
+                StringOutput::Tape(s) => Ok(JsonValue::String(s.to_string())),
+                StringOutput::Data(s) => Ok(JsonValue::Str(s)),
+            }
         }
         Peak::Num(first) => {
             let n = parser.consume_number::<NumberAny>(first)?;
