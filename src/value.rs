@@ -16,9 +16,11 @@ pub enum JsonValue {
     BigInt(BigInt),
     Float(f64),
     String(String),
-    Array(Box<SmallVec<[JsonValue; 8]>>),
-    Object(Box<LazyIndexMap<String, JsonValue>>),
+    Array(JsonArray),
+    Object(JsonObject),
 }
+pub type JsonArray = Box<SmallVec<[JsonValue; 8]>>;
+pub type JsonObject = Box<LazyIndexMap<String, JsonValue>>;
 
 #[cfg(feature = "python")]
 impl pyo3::ToPyObject for JsonValue {
