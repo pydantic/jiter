@@ -70,7 +70,7 @@ jobs:
 
     - run: cargo install cargo-fuzz
 
-    - run: cargo fuzz run compare_to_serde -- -max_total_time=10s
+    - run: cargo fuzz run compare_to_serde -- -max_total_time=300s
       working-directory: fuzz
 
   lint:
