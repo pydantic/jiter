@@ -14,6 +14,7 @@ pub fn values_equal(jiter_value: &JiterValue, serde_value: &SerdeValue) -> bool 
         (JiterValue::BigInt(i1), SerdeValue::Number(n2)) => floats_approx(i1.to_f64(), n2.as_f64()),
         (JiterValue::Float(f1), SerdeValue::Number(n2)) => floats_approx(Some(*f1), n2.as_f64()),
         (JiterValue::String(s1), SerdeValue::String(s2)) => s1 == s2,
+        (JiterValue::Str(s1), SerdeValue::String(s2)) => s1 == s2,
         (JiterValue::Array(a1), SerdeValue::Array(a2)) => {
             if a1.len() != a2.len() {
                 return false;
@@ -30,7 +31,7 @@ pub fn values_equal(jiter_value: &JiterValue, serde_value: &SerdeValue) -> bool 
                 return false;
             }
             for (k1, v1) in o1.iter_unique() {
-                if let Some(v2) = o2.get(k1) {
+                if let Some(v2) = o2.get(k1.as_ref()) {
                     if !values_equal(v1, v2) {
                         return false;
                     }
