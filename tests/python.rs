@@ -1,7 +1,7 @@
 use pyo3::prelude::*;
 use pyo3::ToPyObject;
 
-use jiter::JsonValue;
+use jiter::{python_parse, JsonValue};
 
 #[test]
 fn test_to_py_object_numeric() {
@@ -24,5 +24,28 @@ fn test_to_py_object_other() {
         let python_value = value.to_object(py);
         let string = python_value.as_ref(py).to_string();
         assert_eq!(string, "['string', True, False, None]");
+    })
+}
+
+#[test]
+fn test_python_parse_numeric() {
+    Python::with_gil(|py| {
+        let obj = python_parse(
+            py,
+            br#"  { "int": 1, "bigint": 123456789012345678901234567890, "float": 1.2}  "#,
+        )
+        .unwrap();
+        assert_eq!(
+            obj.as_ref(py).to_string(),
+            "{'int': 1, 'bigint': 123456789012345678901234567890, 'float': 1.2}"
+        );
+    })
+}
+
+#[test]
+fn test_python_parse_other() {
+    Python::with_gil(|py| {
+        let obj = python_parse(py, br#"["string", true, false, null]"#).unwrap();
+        assert_eq!(obj.as_ref(py).to_string(), "['string', True, False, None]");
     })
 }
