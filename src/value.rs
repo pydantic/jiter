@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::borrow::Cow;
 
 use num_bigint::BigInt;
 use smallvec::SmallVec;
@@ -24,7 +25,7 @@ pub enum JsonValue<'j> {
 }
 
 pub type JsonArray<'j> = Arc<SmallVec<[JsonValue<'j>; 8]>>;
-pub type JsonObject<'j> = Arc<LazyIndexMap<String, JsonValue<'j>>>;
+pub type JsonObject<'j> = Arc<LazyIndexMap<Cow<'j, str>, JsonValue<'j>>>;
 
 #[cfg(feature = "python")]
 impl<'j> pyo3::ToPyObject for JsonValue<'j> {
@@ -64,6 +65,23 @@ impl<'j> JsonValue<'j> {
         parser.finish().map_err(map_err)?;
         Ok(v)
     }
+
+    // Not working yet, needs some kind of fix to copy_vec
+    // pub fn into_owned(self) -> JsonValue<'static> {
+    //     match self {
+    //         Self::Null => JsonValue::Null,
+    //         Self::Bool(b) => JsonValue::Bool(b),
+    //         Self::Int(i) => JsonValue::Int(i),
+    //         Self::BigInt(b) => JsonValue::BigInt(b),
+    //         Self::Float(f) => JsonValue::Float(f),
+    //         Self::String(s) => JsonValue::String(s),
+    //         Self::Str(s) => JsonValue::String(s.to_string()),
+    //         Self::Array(v) => JsonValue::Array(Box::new(v.into_iter().map(|v| v.into_owned()).collect())),
+    //         Self::Object(o) => {
+    //             JsonValue::Object(Box::new(o.copy_vec(|(k, v)| (k.into_owned().into(), v.into_owned()))))
+    //         }
+    //     }
+    // }
 }
 
 macro_rules! check_recursion {
@@ -134,14 +152,14 @@ pub(crate) fn take_value<'j>(
             // same for objects
             let mut object = LazyIndexMap::new();
             if let Some(first_key) = parser.object_first::<StringDecoder>(tape)? {
-                let first_key = first_key.to_string();
+                let first_key = first_key.to_cow();
                 let peak = parser.peak()?;
                 check_recursion!(recursion_limit, parser.index,
                     let first_value = take_value(peak, parser, tape, recursion_limit)?;
                 );
                 object.insert(first_key, first_value);
                 while let Some(key) = parser.object_step::<StringDecoder>(tape)? {
-                    let key = key.to_string();
+                    let key = key.to_cow();
                     let peak = parser.peak()?;
                     check_recursion!(recursion_limit, parser.index,
                         let value = take_value(peak, parser, tape, recursion_limit)?;

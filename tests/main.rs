@@ -1,9 +1,10 @@
-use num_bigint::BigInt;
+use std::borrow::Cow;
 use std::fs::File;
 use std::io::Read;
 use std::str::FromStr;
 use std::sync::Arc;
 
+use num_bigint::BigInt;
 use smallvec::smallvec;
 
 use jiter::{
@@ -456,9 +457,9 @@ fn json_value_object() {
     let v = JsonValue::parse(json.as_bytes()).unwrap();
 
     let mut expected = LazyIndexMap::new();
-    expected.insert("foo".to_string(), JsonValue::Str("bar"));
+    expected.insert(Cow::Borrowed("foo"), JsonValue::Str("bar"));
     expected.insert(
-        "spam".to_string(),
+        Cow::Borrowed("spam"),
         JsonValue::Array(Arc::new(smallvec![
             JsonValue::Int(1),
             JsonValue::Null,

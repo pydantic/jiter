@@ -82,6 +82,16 @@ where
                 .collect()
         })
     }
+
+    // will be used by `JsonValue::into_owned` if we implement it
+    // TODO rename to something better
+    // pub fn copy_vec<F: FnMut((K, V)) -> (K, V)>(self, f: F) -> Self {
+    //     let vec = self.vec.into_iter().map(f).collect();
+    //     Self {
+    //         vec,
+    //         map: OnceLock::new(),
+    //     }
+    // }
 }
 
 impl<K: PartialEq, V: PartialEq> PartialEq for LazyIndexMap<K, V> {
