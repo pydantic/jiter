@@ -72,3 +72,15 @@ fn test_recursion_limit() {
         }
     })
 }
+
+#[test]
+fn test_recursion_limit_incr() {
+    let json = (0..2000).map(|_| "[1]".to_string()).collect::<Vec<_>>().join(", ");
+    let json = format!("[{}]", json);
+    let bytes = json.as_bytes();
+
+    Python::with_gil(|py| {
+        let v = python_parse(py, bytes).unwrap();
+        assert_eq!(v.as_ref(py).len().unwrap(), 2000);
+    })
+}
