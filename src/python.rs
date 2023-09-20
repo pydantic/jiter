@@ -52,7 +52,7 @@ impl<'j> PythonParser<'j> {
                     .parser
                     .consume_string::<StringDecoder>(&mut self.tape)
                     .map_err(mje)?;
-                Ok(PyString::new(py, s).to_object(py))
+                Ok(PyString::new(py, s.as_str()).to_object(py))
             }
             Peak::Num(first) => {
                 let n = self.parser.consume_number::<NumberAny>(first).map_err(mje)?;
@@ -80,12 +80,12 @@ impl<'j> PythonParser<'j> {
             Peak::Object => {
                 let dict = PyDict::new(py);
                 if let Some(first_key) = self.parser.object_first::<StringDecoder>(&mut self.tape).map_err(mje)? {
-                    let first_key = PyString::new(py, first_key);
+                    let first_key = PyString::new(py, first_key.as_str());
                     let peak = self.parser.peak().map_err(mje)?;
                     let first_value = self._check_take_value(py, peak)?;
                     dict.set_item(first_key, first_value)?;
                     while let Some(key) = self.parser.object_step::<StringDecoder>(&mut self.tape).map_err(mje)? {
-                        let key = PyString::new(py, key);
+                        let key = PyString::new(py, key.as_str());
                         let peak = self.parser.peak().map_err(mje)?;
                         let value = self._check_take_value(py, peak)?;
                         dict.set_item(key, value)?;
