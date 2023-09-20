@@ -483,6 +483,60 @@ fn json_value_str_string() {
 }
 
 #[test]
+fn json_value_into_owned_array() {
+    let json = r#"["foo", 123]"#;
+    let v = JsonValue::parse(json.as_bytes()).unwrap();
+
+    assert_eq!(
+        v,
+        JsonValue::Array(Box::new(smallvec![JsonValue::Str("foo"), JsonValue::Int(123)]))
+    );
+    let v2 = v.into_owned();
+    assert_eq!(
+        v2,
+        JsonValue::Array(Box::new(smallvec![
+            JsonValue::String("foo".to_string()),
+            JsonValue::Int(123)
+        ]))
+    );
+}
+
+#[test]
+fn json_value_into_owned_object() {
+    let json = r#"{"foo": "bar"}"#;
+    let v = JsonValue::parse(json.as_bytes()).unwrap();
+
+    let mut expected = LazyIndexMap::new();
+    expected.insert(Cow::Borrowed("foo"), JsonValue::Str("bar"));
+    assert_eq!(v, JsonValue::Object(Box::new(expected)));
+
+    // check that key is borrowed
+    match &v {
+        JsonValue::Object(object) => {
+            let key = object.keys().next().unwrap();
+            assert!(matches!(key, Cow::Borrowed(_)));
+        }
+        _ => panic!("unexpected value: {:?}", v),
+    }
+
+    let v2 = v.into_owned();
+
+    let mut expected = LazyIndexMap::new();
+    // Note Cow's are equal even if they're different variants, hence using borrowed again here
+    expected.insert(Cow::Borrowed("foo"), JsonValue::String("bar".to_string()));
+    assert_eq!(v2, JsonValue::Object(Box::new(expected)));
+
+    // check that key is now owned
+    match &v2 {
+        JsonValue::Object(object) => {
+            let key = object.keys().next().unwrap();
+            assert!(matches!(key, Cow::Owned(_)));
+        }
+        _ => panic!("unexpected value: {:?}", v2),
+    }
+}
+
+#[test]
 fn parse_array_3() {
     let json = r#"[1   , null, true]"#;
     let v = JsonValue::parse(json.as_bytes()).unwrap();

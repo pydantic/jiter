@@ -1,4 +1,4 @@
-use std::borrow::Borrow;
+use std::borrow::{Borrow, Cow};
 use std::cmp::{Eq, PartialEq};
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -7,6 +7,8 @@ use std::sync::OnceLock;
 
 use ahash::AHashMap;
 use smallvec::SmallVec;
+
+use crate::JsonValue;
 
 #[derive(Debug, Clone, Default)]
 pub struct LazyIndexMap<K, V> {
@@ -85,13 +87,19 @@ where
 
     // will be used by `JsonValue::into_owned` if we implement it
     // TODO rename to something better
-    // pub fn copy_vec<F: FnMut((K, V)) -> (K, V)>(self, f: F) -> Self {
-    //     let vec = self.vec.into_iter().map(f).collect();
-    //     Self {
-    //         vec,
-    //         map: OnceLock::new(),
-    //     }
-    // }
+}
+
+impl<'j> LazyIndexMap<Cow<'j, str>, JsonValue<'j>> {
+    pub fn into_owned(self) -> LazyIndexMap<Cow<'static, str>, JsonValue<'static>> {
+        LazyIndexMap {
+            vec: self
+                .vec
+                .into_iter()
+                .map(|(k, v)| (k.into_owned().into(), v.into_owned()))
+                .collect(),
+            map: OnceLock::new(),
+        }
+    }
 }
 
 impl<K: PartialEq, V: PartialEq> PartialEq for LazyIndexMap<K, V> {

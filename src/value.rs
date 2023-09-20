@@ -66,22 +66,19 @@ impl<'j> JsonValue<'j> {
         Ok(v)
     }
 
-    // Not working yet, needs some kind of fix to copy_vec
-    // pub fn into_owned(self) -> JsonValue<'static> {
-    //     match self {
-    //         Self::Null => JsonValue::Null,
-    //         Self::Bool(b) => JsonValue::Bool(b),
-    //         Self::Int(i) => JsonValue::Int(i),
-    //         Self::BigInt(b) => JsonValue::BigInt(b),
-    //         Self::Float(f) => JsonValue::Float(f),
-    //         Self::String(s) => JsonValue::String(s),
-    //         Self::Str(s) => JsonValue::String(s.to_string()),
-    //         Self::Array(v) => JsonValue::Array(Box::new(v.into_iter().map(|v| v.into_owned()).collect())),
-    //         Self::Object(o) => {
-    //             JsonValue::Object(Box::new(o.copy_vec(|(k, v)| (k.into_owned().into(), v.into_owned()))))
-    //         }
-    //     }
-    // }
+    pub fn into_owned(self) -> JsonValue<'static> {
+        match self {
+            Self::Null => JsonValue::Null,
+            Self::Bool(b) => JsonValue::Bool(b),
+            Self::Int(i) => JsonValue::Int(i),
+            Self::BigInt(b) => JsonValue::BigInt(b),
+            Self::Float(f) => JsonValue::Float(f),
+            Self::String(s) => JsonValue::String(s),
+            Self::Str(s) => JsonValue::String(s.to_string()),
+            Self::Array(v) => JsonValue::Array(Box::new(v.into_iter().map(|v| v.into_owned()).collect())),
+            Self::Object(o) => JsonValue::Object(Box::new(o.into_owned())),
+        }
+    }
 }
 
 macro_rules! check_recursion {
