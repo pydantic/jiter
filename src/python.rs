@@ -4,7 +4,9 @@ use pyo3::types::{PyDict, PyList, PyString};
 
 use smallvec::SmallVec;
 
+use crate::errors::json_error;
 use crate::string_decoder::Tape;
+use crate::value::DEFAULT_RECURSION_LIMIT;
 use crate::{FilePosition, JsonError, NumberAny, NumberDecoder, NumberInt, Parser, Peak, StringDecoder};
 
 pub fn python_parse(py: Python, data: &[u8]) -> PyResult<PyObject> {
@@ -12,6 +14,7 @@ pub fn python_parse(py: Python, data: &[u8]) -> PyResult<PyObject> {
         parser: Parser::new(data),
         tape: Tape::default(),
         data,
+        recursion_limit: DEFAULT_RECURSION_LIMIT,
     };
 
     let mje = |e: JsonError| map_json_error(data, e);
@@ -26,11 +29,16 @@ struct PythonParser<'j> {
     parser: Parser<'j>,
     tape: Tape,
     data: &'j [u8],
+    recursion_limit: u8,
 }
 
 impl<'j> PythonParser<'j> {
     fn py_take_value(&mut self, py: Python, peak: Peak) -> PyResult<PyObject> {
         let mje = |e: JsonError| map_json_error(self.data, e);
+        self.recursion_limit = match self.recursion_limit.checked_sub(1) {
+            Some(limit) => limit,
+            None => return Err(mje(json_error!(RecursionLimitExceeded, self.parser.index))),
+        };
         match peak {
             Peak::True => {
                 self.parser.consume_true().map_err(mje)?;

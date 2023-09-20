@@ -18,6 +18,7 @@ pub enum JsonErrorType {
     StringEscapeNotSupported(usize),
     InvalidNumber,
     FloatExpectingInt,
+    RecursionLimitExceeded,
 }
 
 pub type JsonResult<T> = Result<T, JsonError>;
