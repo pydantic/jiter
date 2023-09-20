@@ -1,8 +1,8 @@
-use crate::errors::{FilePosition, JiterError, JsonType};
+use crate::errors::{FilePosition, JiterError, JsonType, DEFAULT_RECURSION_LIMIT};
 use crate::number_decoder::{NumberAny, NumberDecoder, NumberInt};
 use crate::parse::{Parser, Peak};
 use crate::string_decoder::{StringDecoder, StringDecoderRange, Tape};
-use crate::value::{take_value, JsonValue, DEFAULT_RECURSION_LIMIT};
+use crate::value::{take_value, JsonValue};
 
 pub type JiterResult<T> = Result<T, JiterError>;
 

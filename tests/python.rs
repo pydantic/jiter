@@ -68,7 +68,7 @@ fn test_recursion_limit() {
     Python::with_gil(|py| match python_parse(py, bytes) {
         Ok(v) => panic!("unexpectedly valid: {:?}", v),
         Err(e) => {
-            assert_eq!(e.to_string(), "ValueError: recursion_limit_exceeded at 1:256");
+            assert_eq!(e.to_string(), "ValueError: recursion_limit_exceeded at 1:202");
         }
     })
 }

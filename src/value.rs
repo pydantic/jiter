@@ -1,7 +1,7 @@
 use num_bigint::BigInt;
 use smallvec::SmallVec;
 
-use crate::errors::{json_err, FilePosition, JsonResult, JsonValueError};
+use crate::errors::{FilePosition, JsonResult, JsonValueError, DEFAULT_RECURSION_LIMIT};
 use crate::lazy_index_map::LazyIndexMap;
 use crate::number_decoder::{NumberAny, NumberDecoder, NumberInt};
 use crate::parse::{Parser, Peak};
@@ -65,18 +65,25 @@ impl JsonValue {
     }
 }
 
-pub(crate) const DEFAULT_RECURSION_LIMIT: u8 = 255;
+macro_rules! check_recursion {
+    ($recursion_limit:ident, $index:expr, $($body:tt)*) => {
+        $recursion_limit = match $recursion_limit.checked_sub(1) {
+            Some(limit) => limit,
+            None => return crate::errors::json_err!(RecursionLimitExceeded, $index),
+        };
+
+        $($body)*
+
+        $recursion_limit += 1;
+    };
+}
 
 pub(crate) fn take_value(
     peak: Peak,
     parser: &mut Parser,
     tape: &mut Tape,
-    recursion_limit: u8,
+    mut recursion_limit: u8,
 ) -> JsonResult<JsonValue> {
-    let recursion_limit = match recursion_limit.checked_sub(1) {
-        Some(limit) => limit,
-        None => return json_err!(RecursionLimitExceeded, parser.index),
-    };
     match peak {
         Peak::True => {
             parser.consume_true()?;
@@ -107,11 +114,15 @@ pub(crate) fn take_value(
             // we could do something clever about guessing the size of the array
             let mut array: SmallVec<[JsonValue; 8]> = SmallVec::new();
             if let Some(peak_first) = parser.array_first()? {
-                let v = take_value(peak_first, parser, tape, recursion_limit)?;
+                check_recursion!(recursion_limit, parser.index,
+                    let v = take_value(peak_first, parser, tape, recursion_limit)?;
+                );
                 array.push(v);
                 while parser.array_step()? {
                     let peak = parser.peak()?;
-                    let v = take_value(peak, parser, tape, recursion_limit)?;
+                    check_recursion!(recursion_limit, parser.index,
+                        let v = take_value(peak, parser, tape, recursion_limit)?;
+                    );
                     array.push(v);
                 }
             }
@@ -123,12 +134,16 @@ pub(crate) fn take_value(
             if let Some(first_key) = parser.object_first::<StringDecoder>(tape)? {
                 let first_key = first_key.to_string();
                 let peak = parser.peak()?;
-                let first_value = take_value(peak, parser, tape, recursion_limit)?;
+                check_recursion!(recursion_limit, parser.index,
+                    let first_value = take_value(peak, parser, tape, recursion_limit)?;
+                );
                 object.insert(first_key, first_value);
                 while let Some(key) = parser.object_step::<StringDecoder>(tape)? {
                     let key = key.to_string();
                     let peak = parser.peak()?;
-                    let value = take_value(peak, parser, tape, recursion_limit)?;
+                    check_recursion!(recursion_limit, parser.index,
+                        let value = take_value(peak, parser, tape, recursion_limit)?;
+                    );
                     object.insert(key, value);
                 }
             }

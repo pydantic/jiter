@@ -4,9 +4,8 @@ use pyo3::types::{PyDict, PyList, PyString};
 
 use smallvec::SmallVec;
 
-use crate::errors::json_error;
+use crate::errors::{json_error, DEFAULT_RECURSION_LIMIT};
 use crate::string_decoder::Tape;
-use crate::value::DEFAULT_RECURSION_LIMIT;
 use crate::{FilePosition, JsonError, NumberAny, NumberDecoder, NumberInt, Parser, Peak, StringDecoder};
 
 pub fn python_parse(py: Python, data: &[u8]) -> PyResult<PyObject> {
@@ -35,10 +34,6 @@ struct PythonParser<'j> {
 impl<'j> PythonParser<'j> {
     fn py_take_value(&mut self, py: Python, peak: Peak) -> PyResult<PyObject> {
         let mje = |e: JsonError| map_json_error(self.data, e);
-        self.recursion_limit = match self.recursion_limit.checked_sub(1) {
-            Some(limit) => limit,
-            None => return Err(mje(json_error!(RecursionLimitExceeded, self.parser.index))),
-        };
         match peak {
             Peak::True => {
                 self.parser.consume_true().map_err(mje)?;
@@ -74,11 +69,11 @@ impl<'j> PythonParser<'j> {
             Peak::Array => {
                 let list = if let Some(peak_first) = self.parser.array_first().map_err(mje)? {
                     let mut vec: SmallVec<[PyObject; 8]> = SmallVec::with_capacity(8);
-                    let v = self.py_take_value(py, peak_first)?;
+                    let v = self._check_take_value(py, peak_first)?;
                     vec.push(v);
                     while self.parser.array_step().map_err(mje)? {
                         let peak = self.parser.peak().map_err(mje)?;
-                        let v = self.py_take_value(py, peak)?;
+                        let v = self._check_take_value(py, peak)?;
                         vec.push(v);
                     }
                     PyList::new(py, vec)
@@ -92,18 +87,35 @@ impl<'j> PythonParser<'j> {
                 if let Some(first_key) = self.parser.object_first::<StringDecoder>(&mut self.tape).map_err(mje)? {
                     let first_key = PyString::new(py, first_key);
                     let peak = self.parser.peak().map_err(mje)?;
-                    let first_value = self.py_take_value(py, peak)?;
+                    let first_value = self._check_take_value(py, peak)?;
                     dict.set_item(first_key, first_value)?;
                     while let Some(key) = self.parser.object_step::<StringDecoder>(&mut self.tape).map_err(mje)? {
                         let key = PyString::new(py, key);
                         let peak = self.parser.peak().map_err(mje)?;
-                        let value = self.py_take_value(py, peak)?;
+                        let value = self._check_take_value(py, peak)?;
                         dict.set_item(key, value)?;
                     }
                 }
                 Ok(dict.to_object(py))
             }
         }
+    }
+
+    fn _check_take_value(&mut self, py: Python, peak: Peak) -> PyResult<PyObject> {
+        self.recursion_limit = match self.recursion_limit.checked_sub(1) {
+            Some(limit) => limit,
+            None => {
+                return Err(map_json_error(
+                    self.data,
+                    json_error!(RecursionLimitExceeded, self.parser.index),
+                ))
+            }
+        };
+
+        let r = self.py_take_value(py, peak);
+
+        self.recursion_limit += 1;
+        r
     }
 }
 
