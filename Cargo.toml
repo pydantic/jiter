@@ -30,6 +30,11 @@ serde = "1.0.147"
 pyo3 = { version = "0.19.2", features = ["num-bigint", "auto-initialize"] }
 
 [profile.bench]
+debug = true
 lto = true
 opt-level = 3
 codegen-units = 1
+
+[[bench]]
+name = "python_parse"
+required-features = ["python"]

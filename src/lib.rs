@@ -5,6 +5,8 @@ mod jiter;
 mod lazy_index_map;
 mod number_decoder;
 mod parse;
+#[cfg(feature = "python")]
+mod python;
 mod string_decoder;
 mod value;
 
@@ -17,3 +19,6 @@ pub use number_decoder::{NumberAny, NumberDecoder, NumberDecoderRange, NumberInt
 pub use parse::{Parser, Peak};
 pub use string_decoder::{StringDecoder, StringDecoderRange};
 pub use value::{JsonArray, JsonObject, JsonValue};
+
+#[cfg(feature = "python")]
+pub use python::python_parse;

@@ -83,8 +83,8 @@ pub(crate) fn take_value(peak: Peak, parser: &mut Parser, tape: &mut Tape) -> Js
             let s = parser.consume_string::<StringDecoder>(tape)?;
             Ok(JsonValue::String(s.to_string()))
         }
-        Peak::Num(positive) => {
-            let n = parser.consume_number::<NumberDecoder<NumberAny>>(positive)?;
+        Peak::Num(first) => {
+            let n = parser.consume_number::<NumberDecoder<NumberAny>>(first)?;
             match n {
                 NumberAny::Int(NumberInt::Int(int)) => Ok(JsonValue::Int(int)),
                 NumberAny::Int(NumberInt::BigInt(big_int)) => Ok(JsonValue::BigInt(big_int)),
