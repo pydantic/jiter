@@ -18,6 +18,7 @@ pub enum JsonErrorType {
     StringEscapeNotSupported(usize),
     InvalidNumber,
     FloatExpectingInt,
+    RecursionLimitExceeded,
 }
 
 pub type JsonResult<T> = Result<T, JsonError>;
@@ -57,6 +58,8 @@ macro_rules! json_err {
 }
 
 pub(crate) use json_err;
+
+pub(crate) const DEFAULT_RECURSION_LIMIT: u8 = 200;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum JsonType {

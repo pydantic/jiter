@@ -49,3 +49,38 @@ fn test_python_parse_other() {
         assert_eq!(obj.as_ref(py).to_string(), "['string', True, False, None]");
     })
 }
+
+#[test]
+fn test_error() {
+    Python::with_gil(|py| match python_parse(py, br#"["string""#) {
+        Ok(v) => panic!("unexpectedly valid: {:?}", v),
+        Err(e) => {
+            assert_eq!(e.to_string(), "ValueError: unexpected_end at 1:10");
+        }
+    })
+}
+
+#[test]
+fn test_recursion_limit() {
+    let json = (0..10_000).map(|_| "[").collect::<String>();
+    let bytes = json.as_bytes();
+
+    Python::with_gil(|py| match python_parse(py, bytes) {
+        Ok(v) => panic!("unexpectedly valid: {:?}", v),
+        Err(e) => {
+            assert_eq!(e.to_string(), "ValueError: recursion_limit_exceeded at 1:202");
+        }
+    })
+}
+
+#[test]
+fn test_recursion_limit_incr() {
+    let json = (0..2000).map(|_| "[1]".to_string()).collect::<Vec<_>>().join(", ");
+    let json = format!("[{}]", json);
+    let bytes = json.as_bytes();
+
+    Python::with_gil(|py| {
+        let v = python_parse(py, bytes).unwrap();
+        assert_eq!(v.as_ref(py).len().unwrap(), 2000);
+    })
+}

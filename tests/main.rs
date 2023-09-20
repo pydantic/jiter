@@ -580,3 +580,30 @@ fn unique_iter_object_repeat() {
         panic!("expected object");
     }
 }
+
+#[test]
+fn test_recursion_limit() {
+    let json = (0..2000).map(|_| "[").collect::<String>();
+    let bytes = json.as_bytes();
+    match JsonValue::parse(bytes) {
+        Ok(v) => panic!("unexpectedly valid: {:?}", v),
+        Err(e) => {
+            assert_eq!(e.error_type, JsonErrorType::RecursionLimitExceeded);
+            assert_eq!(e.index, 201);
+        }
+    }
+}
+
+#[test]
+fn test_recursion_limit_incr() {
+    let json = (0..2000).map(|_| "[1]".to_string()).collect::<Vec<_>>().join(", ");
+    let json = format!("[{}]", json);
+    let bytes = json.as_bytes();
+    let value = JsonValue::parse(bytes).unwrap();
+    match value {
+        JsonValue::Array(v) => {
+            assert_eq!(v.len(), 2000);
+        }
+        _ => panic!("expected array"),
+    }
+}

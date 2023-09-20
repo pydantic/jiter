@@ -1,4 +1,4 @@
-use crate::errors::{FilePosition, JiterError, JsonType};
+use crate::errors::{FilePosition, JiterError, JsonType, DEFAULT_RECURSION_LIMIT};
 use crate::number_decoder::{NumberAny, NumberDecoder, NumberInt};
 use crate::parse::{Parser, Peak};
 use crate::string_decoder::{StringDecoder, StringDecoderRange, Tape};
@@ -92,7 +92,7 @@ impl<'a> Jiter<'a> {
 
     pub fn next_value(&mut self) -> JiterResult<JsonValue> {
         let peak = self.peak()?;
-        take_value(peak, &mut self.parser, &mut self.tape).map_err(Into::into)
+        take_value(peak, &mut self.parser, &mut self.tape, DEFAULT_RECURSION_LIMIT).map_err(Into::into)
     }
 
     pub fn next_array(&mut self) -> JiterResult<Option<Peak>> {
