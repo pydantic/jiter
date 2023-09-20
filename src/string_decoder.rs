@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 use std::ops::Range;
 
-use crate::errors::{json_err, JsonResult};
+use crate::errors::{json_err, json_error, JsonResult};
 
 pub type Tape = Vec<u8>;
 
@@ -29,6 +29,8 @@ impl<'t> AbstractStringDecoder<'t> for StringDecoder<'t> {
         let start = index;
         let mut last_escape = start;
         let mut found_escape = false;
+        let mut ascii_only = true;
+
         while let Some(next) = data.get(index) {
             match next {
                 b'"' => {
@@ -36,17 +38,14 @@ impl<'t> AbstractStringDecoder<'t> for StringDecoder<'t> {
                     // it leads to big performance gains but some cases e.g. good_high_order_string
                     // passing when they error here, serde uses `std::str::from_utf8`, python's `json.loads`
                     // allows these higher order strings
-                    let result = if found_escape {
+                    let s = if found_escape {
                         tape.extend_from_slice(&data[last_escape..index]);
-                        std::str::from_utf8(tape)
+                        to_str(tape, ascii_only, start)?
                     } else {
-                        std::str::from_utf8(&data[start..index])
+                        to_str(&data[start..index], ascii_only, start)?
                     };
                     index += 1;
-                    return match result {
-                        Ok(s) => Ok((s, index)),
-                        Err(err) => json_err!(InvalidString, err.valid_up_to(), start - 1),
-                    };
+                    return Ok((s, index));
                 }
                 b'\\' => {
                     found_escape = true;
@@ -74,12 +73,24 @@ impl<'t> AbstractStringDecoder<'t> for StringDecoder<'t> {
                 }
                 // all values below 32 are invalid
                 next if *next < 32u8 => return json_err!(InvalidString, index - start, start - 1),
-                // do nothing, we ex
+                next if *next >= 128u8 && ascii_only => {
+                    ascii_only = false;
+                }
                 _ => (),
             }
             index += 1;
         }
         json_err!(UnexpectedEnd, index)
+    }
+}
+
+fn to_str(bytes: &[u8], ascii_only: bool, start: usize) -> JsonResult<&str> {
+    if ascii_only {
+        // safety: in this case we've already confirmed that all characters are ascii, we can safely
+        // transmute from bytes to str
+        Ok(unsafe { std::str::from_utf8_unchecked(bytes) })
+    } else {
+        std::str::from_utf8(bytes).map_err(|e| json_error!(InvalidString, e.valid_up_to(), start - 1))
     }
 }
 
