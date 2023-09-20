@@ -2,6 +2,8 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyString};
 
+use smallvec::SmallVec;
+
 use crate::string_decoder::Tape;
 use crate::{FilePosition, JsonError, NumberAny, NumberDecoder, NumberInt, Parser, Peak, StringDecoder};
 
@@ -62,9 +64,8 @@ impl<'j> PythonParser<'j> {
                 }
             }
             Peak::Array => {
-                // TODO we should create the list with the correct size and insert directly into it
-                let mut vec = Vec::new();
-                if let Some(peak_first) = self.parser.array_first().map_err(mje)? {
+                let list = if let Some(peak_first) = self.parser.array_first().map_err(mje)? {
+                    let mut vec: SmallVec<[PyObject; 8]> = SmallVec::with_capacity(8);
                     let v = self.py_take_value(py, peak_first)?;
                     vec.push(v);
                     while self.parser.array_step().map_err(mje)? {
@@ -72,8 +73,10 @@ impl<'j> PythonParser<'j> {
                         let v = self.py_take_value(py, peak)?;
                         vec.push(v);
                     }
-                }
-                let list = PyList::new(py, vec);
+                    PyList::new(py, vec)
+                } else {
+                    PyList::empty(py)
+                };
                 Ok(list.to_object(py))
             }
             Peak::Object => {
@@ -90,7 +93,6 @@ impl<'j> PythonParser<'j> {
                         dict.set_item(key, value)?;
                     }
                 }
-
                 Ok(dict.to_object(py))
             }
         }
