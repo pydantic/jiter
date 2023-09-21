@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use num_bigint::BigInt;
 use smallvec::SmallVec;
 
@@ -19,8 +21,8 @@ pub enum JsonValue {
     Array(JsonArray),
     Object(JsonObject),
 }
-pub type JsonArray = Box<SmallVec<[JsonValue; 8]>>;
-pub type JsonObject = Box<LazyIndexMap<String, JsonValue>>;
+pub type JsonArray = Arc<SmallVec<[JsonValue; 8]>>;
+pub type JsonObject = Arc<LazyIndexMap<String, JsonValue>>;
 
 #[cfg(feature = "python")]
 impl pyo3::ToPyObject for JsonValue {
@@ -124,7 +126,7 @@ pub(crate) fn take_value(
                     array.push(v);
                 }
             }
-            Ok(JsonValue::Array(Box::new(array)))
+            Ok(JsonValue::Array(Arc::new(array)))
         }
         Peak::Object => {
             // same for objects
@@ -146,7 +148,7 @@ pub(crate) fn take_value(
                 }
             }
 
-            Ok(JsonValue::Object(Box::new(object)))
+            Ok(JsonValue::Object(Arc::new(object)))
         }
     }
 }
