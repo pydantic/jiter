@@ -68,7 +68,7 @@ impl<'t> AbstractStringDecoder<'t> for StringDecoder<'t> {
                         }
                         last_escape = index + 1;
                     } else {
-                        return json_err!(UnexpectedEnd, start - 1);
+                        break;
                     }
                 }
                 // all values below 32 are invalid
@@ -80,7 +80,7 @@ impl<'t> AbstractStringDecoder<'t> for StringDecoder<'t> {
             }
             index += 1;
         }
-        json_err!(UnexpectedEnd, index)
+        json_err!(EofWhileParsingString, index - 1) // -1 to help match serde's error locations
     }
 }
 

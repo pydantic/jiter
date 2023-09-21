@@ -11,9 +11,6 @@ homepage = "https://github.com/pydantic/jiter/"
 repository = "https://github.com/pydantic/jiter/"
 
 [dependencies]
-indexmap = "2.0.0"
-strum = { version = "0.25.0", features = ["derive"] }
-strum_macros = "0.25.0"
 num-bigint = "0.4.4"
 num-traits = "0.2.16"
 ahash = "0.8.0"

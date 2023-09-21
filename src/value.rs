@@ -117,8 +117,7 @@ pub(crate) fn take_value(
                     let v = take_value(peak_first, parser, tape, recursion_limit)?;
                 );
                 array.push(v);
-                while parser.array_step()? {
-                    let peak = parser.peak()?;
+                while let Some(peak) = parser.array_step()? {
                     check_recursion!(recursion_limit, parser.index,
                         let v = take_value(peak, parser, tape, recursion_limit)?;
                     );

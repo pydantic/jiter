@@ -126,7 +126,7 @@ impl<'a> Jiter<'a> {
         self.parser.array_first().map_err(Into::into)
     }
 
-    pub fn array_step(&mut self) -> JiterResult<bool> {
+    pub fn array_step(&mut self) -> JiterResult<Option<Peak>> {
         self.parser.array_step().map_err(Into::into)
     }
 

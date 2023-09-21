@@ -25,7 +25,19 @@ impl Peak {
             b'n' => Ok(Self::Null),
             b'0'..=b'9' => Ok(Self::Num(next)),
             b'-' => Ok(Self::Num(next)),
-            _ => json_err!(UnexpectedCharacter, index),
+            _ => json_err!(ExpectedValue, index),
+        }
+    }
+
+    pub fn display_type(&self) -> &'static str {
+        match self {
+            Self::Null => "a null",
+            Self::True => "a true",
+            Self::False => "a false",
+            Self::Num(_) => "a number",
+            Self::String => "a string",
+            Self::Array => "an array",
+            Self::Object => "an object",
         }
     }
 }
@@ -79,16 +91,20 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn array_step(&mut self) -> JsonResult<bool> {
+    pub fn array_step(&mut self) -> JsonResult<Option<Peak>> {
         if let Some(next) = self.eat_whitespace() {
             match next {
                 b',' => {
                     self.index += 1;
-                    Ok(true)
+                    match self.eat_whitespace() {
+                        Some(b']') => json_err!(TrailingComma, self.index),
+                        Some(next) => Peak::new(next, self.index).map(Some),
+                        None => json_err!(UnexpectedEnd, self.index),
+                    }
                 }
                 b']' => {
                     self.index += 1;
-                    Ok(false)
+                    Ok(None)
                 }
                 _ => json_err!(UnexpectedCharacter, self.index),
             }
@@ -112,7 +128,10 @@ impl<'a> Parser<'a> {
                     self.index += 1;
                     Ok(None)
                 }
-                _ => json_err!(UnexpectedCharacter, self.index),
+                _ => match self.peak() {
+                    Ok(_) => json_err!(NonStringKey, self.index),
+                    Err(e) => Err(e),
+                },
             }
         } else {
             json_err!(UnexpectedEnd, self.index)
@@ -166,7 +185,7 @@ impl<'a> Parser<'a> {
                 Ok(())
             }
             Some(_) => json_err!(InvalidTrue, self.index),
-            None => json_err!(UnexpectedEnd, self.data.len()),
+            None => json_err!(ExpectedIdent, self.data.len()),
         }
     }
 
@@ -177,7 +196,7 @@ impl<'a> Parser<'a> {
                 Ok(())
             }
             Some(_) => json_err!(InvalidFalse, self.index),
-            None => json_err!(UnexpectedEnd, self.data.len()),
+            None => json_err!(ExpectedIdent, self.data.len()),
         }
     }
 
@@ -187,8 +206,17 @@ impl<'a> Parser<'a> {
                 self.index += 4;
                 Ok(())
             }
-            Some(_) => json_err!(InvalidNull, self.index),
-            None => json_err!(UnexpectedEnd, self.data.len()),
+            Some(_) | None => {
+                // determine the error position to match serde
+                self.index += 1;
+                for c in NULL_REST.iter() {
+                    if !self.data.get(self.index + 1).is_some_and(|v| v == c) {
+                        break;
+                    }
+                    self.index += 1;
+                }
+                json_err!(ExpectedIdent, self.index)
+            }
         }
     }
 

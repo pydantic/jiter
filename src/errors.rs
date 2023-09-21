@@ -1,9 +1,6 @@
 use std::fmt;
 
-use strum::{Display, EnumMessage};
-
-#[derive(Debug, Display, EnumMessage, PartialEq, Eq, Clone)]
-#[strum(serialize_all = "snake_case")]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum JsonErrorType {
     UnexpectedCharacter,
     UnexpectedEnd,
@@ -20,6 +17,41 @@ pub enum JsonErrorType {
     NumberTooLarge,
     FloatExpectingInt,
     RecursionLimitExceeded,
+    // These are designed to match serde
+    NonStringKey,
+    ExpectedIdent,
+    ExpectedValue,
+    EofWhileParsingString,
+    TrailingComma,
+}
+
+impl std::fmt::Display for JsonErrorType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // the outputs here are chosen to match serde
+        match self {
+            JsonErrorType::UnexpectedCharacter => write!(f, "unexpected_character"),
+            JsonErrorType::UnexpectedEnd => write!(f, "unexpected_end"),
+            JsonErrorType::InvalidTrue => write!(f, "invalid_true"),
+            JsonErrorType::InvalidFalse => write!(f, "invalid_false"),
+            JsonErrorType::InvalidNull => write!(f, "invalid_null"),
+            JsonErrorType::InvalidString(_) => write!(f, "invalid_string"),
+            JsonErrorType::InvalidStringEscapeSequence(_) => {
+                write!(f, "invalid_string_escape_sequence")
+            }
+            JsonErrorType::StringEscapeNotSupported(_) => {
+                write!(f, "string_escape_not_supported")
+            }
+            JsonErrorType::InvalidNumber => write!(f, "invalid_number"),
+            JsonErrorType::FloatExpectingInt => write!(f, "float_expecting_int"),
+            JsonErrorType::RecursionLimitExceeded => write!(f, "recursion_limit_exceeded"),
+            // These are designed to match serde
+            JsonErrorType::NonStringKey => write!(f, "key must be a string"),
+            JsonErrorType::ExpectedIdent => write!(f, "expected ident"),
+            JsonErrorType::ExpectedValue => write!(f, "expected value"),
+            JsonErrorType::EofWhileParsingString => write!(f, "EOF while parsing a string"),
+            JsonErrorType::TrailingComma => write!(f, "trailing comma"),
+        }
+    }
 }
 
 pub type JsonResult<T> = Result<T, JsonError>;
@@ -114,6 +146,12 @@ pub struct JsonValueError {
     pub position: FilePosition,
 }
 
+impl std::fmt::Display for JsonValueError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} at {}", self.error_type, self.position)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FilePosition {
     pub line: usize,
@@ -122,7 +160,7 @@ pub struct FilePosition {
 
 impl fmt::Display for FilePosition {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}", self.line, self.column)
+        write!(f, "line {} column {}", self.line, self.column)
     }
 }
 

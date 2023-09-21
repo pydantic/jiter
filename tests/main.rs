@@ -42,7 +42,7 @@ fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
                 loop {
                     let el_vec = json_vec(parser)?;
                     v.extend(el_vec);
-                    if !parser.array_step()? {
+                    if parser.array_step()?.is_none() {
                         break;
                     }
                 }
@@ -460,11 +460,11 @@ fn jiter_object() {
     assert_eq!(jiter.next_key().unwrap(), Some("spam"));
     assert_eq!(jiter.next_array().unwrap(), Some(Peak::Num(b'1')));
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(1));
-    assert!(jiter.array_step().unwrap());
+    assert!(jiter.array_step().unwrap().is_some());
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(2));
-    assert!(jiter.array_step().unwrap());
+    assert!(jiter.array_step().unwrap().is_some());
     assert_eq!(jiter.next_bytes().unwrap(), b"x");
-    assert!(!jiter.array_step().unwrap());
+    assert!(!jiter.array_step().unwrap().is_some());
     assert_eq!(jiter.next_key().unwrap(), None);
     jiter.finish().unwrap();
 }
@@ -524,7 +524,7 @@ fn jiter_trailing_bracket() {
     let mut jiter = Jiter::new(b"[1]]");
     assert_eq!(jiter.next_array().unwrap(), Some(Peak::Num(b'1')));
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(1));
-    assert!(!jiter.array_step().unwrap());
+    assert!(jiter.array_step().unwrap().is_none());
     let result = jiter.finish();
     match result {
         Ok(t) => panic!("unexpectedly valid: {:?}", t),

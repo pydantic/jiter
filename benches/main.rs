@@ -37,13 +37,13 @@ fn jiter_iter_big(path: &str, bench: &mut Bencher) {
             if jiter.array_first().unwrap().is_some() {
                 let i = jiter.next_float().unwrap();
                 v_inner.push(i);
-                while jiter.array_step().unwrap() {
+                while jiter.array_step().unwrap().is_some() {
                     let i = jiter.next_float().unwrap();
                     v_inner.push(i);
                 }
             }
             v_outer.push(v_inner);
-            if !jiter.array_step().unwrap() {
+            if !jiter.array_step().unwrap().is_some() {
                 break;
             }
         }
@@ -58,7 +58,7 @@ fn find_string(jiter: &mut Jiter) -> String {
         Peak::Array => {
             assert!(jiter.array_first().unwrap().is_some());
             let s = find_string(jiter).to_string();
-            assert!(!jiter.array_step().unwrap());
+            assert!(!jiter.array_step().unwrap().is_some());
             s
         }
         _ => panic!("Expected string or array"),
@@ -86,7 +86,7 @@ fn jiter_iter_string_array(path: &str, bench: &mut Bencher) {
         let i = jiter.next_str().unwrap();
         // record len instead of allocating the string to simulate something like constructing a PyString
         v.push(i.len());
-        while jiter.array_step().unwrap() {
+        while jiter.array_step().unwrap().is_some() {
             let i = jiter.next_str().unwrap();
             v.push(i.len());
         }
@@ -104,7 +104,7 @@ fn jiter_iter_true_array(path: &str, bench: &mut Bencher) {
         jiter.array_first().unwrap();
         let i = jiter.next_bool().unwrap();
         v.push(i);
-        while jiter.array_step().unwrap() {
+        while jiter.array_step().unwrap().is_some() {
             let i = jiter.next_bool().unwrap();
             v.push(i);
         }
@@ -141,7 +141,7 @@ fn jiter_iter_ints_array(path: &str, bench: &mut Bencher) {
         jiter.array_first().unwrap();
         let i = jiter.next_int().unwrap();
         v.push(i);
-        while jiter.array_step().unwrap() {
+        while jiter.array_step().unwrap().is_some() {
             let i = jiter.next_int().unwrap();
             v.push(i);
         }
