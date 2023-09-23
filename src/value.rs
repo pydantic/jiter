@@ -10,14 +10,14 @@ use crate::JsonError;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum JsonValue {
-    Null,
-    Bool(bool),
-    Int(i64),
-    BigInt(BigInt),
-    Float(f64),
-    String(String),
-    Array(JsonArray),
-    Object(JsonObject),
+    Null(usize),
+    Bool(usize, bool),
+    Int(usize, i64),
+    BigInt(usize, BigInt),
+    Float(usize, f64),
+    String(usize, String),
+    Array(usize, JsonArray),
+    Object(usize, JsonObject),
 }
 pub type JsonArray = Box<SmallVec<[JsonValue; 8]>>;
 pub type JsonObject = Box<LazyIndexMap<String, JsonValue>>;
@@ -26,14 +26,14 @@ pub type JsonObject = Box<LazyIndexMap<String, JsonValue>>;
 impl pyo3::ToPyObject for JsonValue {
     fn to_object(&self, py: pyo3::Python<'_>) -> pyo3::PyObject {
         match self {
-            Self::Null => py.None(),
-            Self::Bool(b) => b.to_object(py),
-            Self::Int(i) => i.to_object(py),
-            Self::BigInt(b) => b.to_object(py),
-            Self::Float(f) => f.to_object(py),
-            Self::String(s) => s.to_object(py),
-            Self::Array(v) => pyo3::types::PyList::new(py, v.iter().map(|v| v.to_object(py))).to_object(py),
-            Self::Object(o) => {
+            Self::Null(_) => py.None(),
+            Self::Bool(_, b) => b.to_object(py),
+            Self::Int(_, i) => i.to_object(py),
+            Self::BigInt(_, b) => b.to_object(py),
+            Self::Float(_, f) => f.to_object(py),
+            Self::String(_, s) => s.to_object(py),
+            Self::Array(_, v) => pyo3::types::PyList::new(py, v.iter().map(|v| v.to_object(py))).to_object(py),
+            Self::Object(_, o) => {
                 let dict = pyo3::types::PyDict::new(py);
                 for (k, v) in o.iter() {
                     dict.set_item(k, v.to_object(py)).unwrap();
@@ -84,30 +84,31 @@ pub(crate) fn take_value(
     tape: &mut Tape,
     mut recursion_limit: u8,
 ) -> JsonResult<JsonValue> {
+    let start = parser.index;
     match peak {
         Peak::True => {
             parser.consume_true()?;
-            Ok(JsonValue::Bool(true))
+            Ok(JsonValue::Bool(start, true))
         }
         Peak::False => {
             parser.consume_false()?;
-            Ok(JsonValue::Bool(false))
+            Ok(JsonValue::Bool(start, false))
         }
         Peak::Null => {
             parser.consume_null()?;
-            Ok(JsonValue::Null)
+            Ok(JsonValue::Null(start))
         }
         Peak::String => {
             let s = parser.consume_string::<StringDecoder>(tape)?;
-            Ok(JsonValue::String(s.to_string()))
+            Ok(JsonValue::String(start, s.to_string()))
         }
         Peak::Num(first) => {
             let n = parser.consume_number::<NumberDecoder<NumberAny>>(first)?;
             match n {
-                NumberAny::Int(NumberInt::Int(int)) => Ok(JsonValue::Int(int)),
-                NumberAny::Int(NumberInt::BigInt(big_int)) => Ok(JsonValue::BigInt(big_int)),
-                NumberAny::Int(NumberInt::Zero) => Ok(JsonValue::Int(0)),
-                NumberAny::Float(float) => Ok(JsonValue::Float(float)),
+                NumberAny::Int(NumberInt::Int(int)) => Ok(JsonValue::Int(start, int)),
+                NumberAny::Int(NumberInt::BigInt(big_int)) => Ok(JsonValue::BigInt(start, big_int)),
+                NumberAny::Int(NumberInt::Zero) => Ok(JsonValue::Int(start, 0)),
+                NumberAny::Float(float) => Ok(JsonValue::Float(start, float)),
             }
         }
         Peak::Array => {
@@ -126,7 +127,7 @@ pub(crate) fn take_value(
                     array.push(v);
                 }
             }
-            Ok(JsonValue::Array(Box::new(array)))
+            Ok(JsonValue::Array(start, Box::new(array)))
         }
         Peak::Object => {
             // same for objects
@@ -148,7 +149,7 @@ pub(crate) fn take_value(
                 }
             }
 
-            Ok(JsonValue::Object(Box::new(object)))
+            Ok(JsonValue::Object(start, Box::new(object)))
         }
     }
 }

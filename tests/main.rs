@@ -305,23 +305,29 @@ test_position! {
 #[test]
 fn parse_tiny_float() {
     let v = JsonValue::parse(b"8e-7766666666").unwrap();
-    assert_eq!(v, JsonValue::Float(0.0));
+    assert_eq!(v, JsonValue::Float(0, 0.0));
 }
 
 #[test]
 fn parse_zero_float() {
     let v = JsonValue::parse(b"0.1234").unwrap();
     match v {
-        JsonValue::Float(v) => assert!((0.1234 - v).abs() < 1e-6),
+        JsonValue::Float(index, v) => {
+            assert_eq!(index, 0);
+            assert!((0.1234 - v).abs() < 1e-6)
+        }
         other => panic!("unexpected value: {other:?}"),
     };
 }
 
 #[test]
 fn parse_zero_exp_float() {
-    let v = JsonValue::parse(b"0.12e3").unwrap();
+    let v = JsonValue::parse(b" 0.12e3").unwrap();
     match v {
-        JsonValue::Float(v) => assert!((120.0 - v).abs() < 1e-3),
+        JsonValue::Float(index, v) => {
+            assert_eq!(index, 1);
+            assert!((120.0 - v).abs() < 1e-3)
+        }
         other => panic!("unexpected value: {other:?}"),
     };
 }
@@ -358,7 +364,7 @@ fn udb_string() {
     let bytes: Vec<u8> = vec![34, 92, 117, 100, 66, 100, 100, 92, 117, 100, 70, 100, 100, 34];
     let v = JsonValue::parse(&bytes).unwrap();
     match v {
-        JsonValue::String(s) => assert_eq!(s.as_bytes(), [244, 135, 159, 157]),
+        JsonValue::String(0, s) => assert_eq!(s.as_bytes(), [244, 135, 159, 157]),
         _ => panic!("unexpected valid {v:?}"),
     }
 }
@@ -369,16 +375,19 @@ fn parse_object() {
     let v = JsonValue::parse(json.as_bytes()).unwrap();
 
     let mut expected = LazyIndexMap::new();
-    expected.insert("foo".to_string(), JsonValue::String("bar".to_string()));
+    expected.insert("foo".to_string(), JsonValue::String(8, "bar".to_string()));
     expected.insert(
         "spam".to_string(),
-        JsonValue::Array(Box::new(smallvec![
-            JsonValue::Int(1),
-            JsonValue::Null,
-            JsonValue::Bool(true)
-        ])),
+        JsonValue::Array(
+            23,
+            Box::new(smallvec![
+                JsonValue::Int(24, 1),
+                JsonValue::Null(27),
+                JsonValue::Bool(33, true)
+            ]),
+        ),
     );
-    assert_eq!(v, JsonValue::Object(Box::new(expected)));
+    assert_eq!(v, JsonValue::Object(0, Box::new(expected)));
 }
 
 #[test]
@@ -387,11 +396,14 @@ fn parse_array_3() {
     let v = JsonValue::parse(json.as_bytes()).unwrap();
     assert_eq!(
         v,
-        JsonValue::Array(Box::new(smallvec![
-            JsonValue::Int(1),
-            JsonValue::Null,
-            JsonValue::Bool(true)
-        ]))
+        JsonValue::Array(
+            0,
+            Box::new(smallvec![
+                JsonValue::Int(1, 1),
+                JsonValue::Null(7),
+                JsonValue::Bool(13, true)
+            ])
+        )
     );
 }
 
@@ -399,7 +411,7 @@ fn parse_array_3() {
 fn parse_array_empty() {
     let json = r#"[   ]"#;
     let v = JsonValue::parse(json.as_bytes()).unwrap();
-    assert_eq!(v, JsonValue::Array(Box::new(smallvec![])));
+    assert_eq!(v, JsonValue::Array(0, Box::new(smallvec![])));
 }
 
 #[test]
@@ -421,13 +433,16 @@ fn parse_value_nested() {
     let v = JsonValue::parse(json.as_bytes()).unwrap();
     assert_eq!(
         v,
-        JsonValue::Array(Box::new(smallvec![
-            JsonValue::Int(1),
-            JsonValue::Int(2),
-            JsonValue::Array(Box::new(smallvec![JsonValue::Int(3), JsonValue::Int(4)])),
-            JsonValue::Int(5),
-            JsonValue::Int(6),
-        ]),)
+        JsonValue::Array(
+            0,
+            Box::new(smallvec![
+                JsonValue::Int(1, 1),
+                JsonValue::Int(4, 2),
+                JsonValue::Array(7, Box::new(smallvec![JsonValue::Int(8, 3), JsonValue::Int(11, 4)])),
+                JsonValue::Int(15, 5),
+                JsonValue::Int(18, 6),
+            ]),
+        )
     )
 }
 
@@ -444,11 +459,11 @@ fn pass1_to_value() {
     let json_data = json.as_bytes();
     let v = JsonValue::parse(json_data).unwrap();
     let array = match v {
-        JsonValue::Array(array) => array,
+        JsonValue::Array(0, array) => array,
         v => panic!("expected array, not {:?}", v),
     };
     assert_eq!(array.len(), 20);
-    assert_eq!(array[0], JsonValue::String("JSON Test Pattern pass1".to_string()));
+    assert_eq!(array[0], JsonValue::String(6, "JSON Test Pattern pass1".to_string()));
 }
 
 #[test]
@@ -554,12 +569,13 @@ fn test_crazy_massive_int() {
 #[test]
 fn unique_iter_object() {
     let value = JsonValue::parse(br#" {"x": 1, "x": 2} "#).unwrap();
-    if let JsonValue::Object(obj) = value {
+    if let JsonValue::Object(index, obj) = value {
+        assert_eq!(index, 1);
         assert_eq!(obj.len(), 1);
         let mut unique = obj.iter_unique();
         let first = unique.next().unwrap();
         assert_eq!(first.0, "x");
-        assert_eq!(first.1, &JsonValue::Int(2));
+        assert_eq!(first.1, &JsonValue::Int(15, 2));
         assert!(unique.next().is_none());
     } else {
         panic!("expected object");
@@ -569,12 +585,12 @@ fn unique_iter_object() {
 #[test]
 fn unique_iter_object_repeat() {
     let value = JsonValue::parse(br#" {"x": 1, "x": 1} "#).unwrap();
-    if let JsonValue::Object(obj) = value {
+    if let JsonValue::Object(1, obj) = value {
         assert_eq!(obj.len(), 1);
         let mut unique = obj.iter_unique();
         let first = unique.next().unwrap();
         assert_eq!(first.0, "x");
-        assert_eq!(first.1, &JsonValue::Int(1));
+        assert_eq!(first.1, &JsonValue::Int(15, 1));
         assert!(unique.next().is_none());
     } else {
         panic!("expected object");
@@ -601,7 +617,8 @@ fn test_recursion_limit_incr() {
     let bytes = json.as_bytes();
     let value = JsonValue::parse(bytes).unwrap();
     match value {
-        JsonValue::Array(v) => {
+        JsonValue::Array(index, v) => {
+            assert_eq!(index, 0);
             assert_eq!(v.len(), 2000);
         }
         _ => panic!("expected array"),
