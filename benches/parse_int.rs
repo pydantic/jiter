@@ -59,13 +59,12 @@ fn parse_3(b: &[u8]) -> i64 {
 fn parse_2(b: &[u8]) -> i64 {
     let p = b.as_ptr() as *const _;
     let mut chunk = 0;
-    let len = b.len();
     unsafe {
-        std::ptr::copy_nonoverlapping(p, &mut chunk, len);
+        std::ptr::copy_nonoverlapping(p, &mut chunk, 2);
     }
 
     // shift the chunk to the right
-    chunk <<= (8 - len) * 8;
+    chunk <<= (8 - 2) * 8;
 
     // 1-byte mask trick (works on 4 pairs of single digits)
     let lower_digits = (chunk & 0x0f000f000f000f00) >> 8;
@@ -141,6 +140,18 @@ pub fn parse_16(b: &[u8]) -> i64 {
     }
 }
 
+fn parse_fast(b: &[u8]) -> i64 {
+    let mut index: usize = 0;
+    while let Some(next) = b.get(index) {
+        match next {
+            b'0'..=b'9' => (),
+            _ => return parse_16(&b[0..index]),
+        }
+        index += 1;
+    }
+    parse_16(&b[0..index])
+}
+
 fn simple(b: &[u8]) -> i64 {
     let mut index: usize = 0;
     let mut value: i64 = 0;
@@ -158,7 +169,7 @@ fn simple(b: &[u8]) -> i64 {
                     panic!("overflow");
                 }
             }
-            _ => panic!("unexpected char"),
+            _ => return value,
         }
         index += 1;
     }
@@ -167,40 +178,40 @@ fn simple(b: &[u8]) -> i64 {
 
 #[bench]
 fn one_to_16_fast(bench: &mut Bencher) {
-    assert_eq!(parse_16(b"1"), 1);
-    assert_eq!(parse_16(b"12"), 12);
-    assert_eq!(parse_16(b"123"), 123);
-    assert_eq!(parse_16(b"1234"), 1234);
-    assert_eq!(parse_16(b"12345"), 12345);
-    assert_eq!(parse_16(b"123456"), 123456);
-    assert_eq!(parse_16(b"1234567"), 1234567);
-    assert_eq!(parse_16(b"12345678"), 12345678);
-    assert_eq!(parse_16(b"123456789"), 123456789);
-    assert_eq!(parse_16(b"1234567890"), 1234567890);
-    assert_eq!(parse_16(b"12345678901"), 12345678901);
-    assert_eq!(parse_16(b"123456789012"), 123456789012);
-    assert_eq!(parse_16(b"1234567890123"), 1234567890123);
-    assert_eq!(parse_16(b"12345678901234"), 12345678901234);
-    assert_eq!(parse_16(b"123456789012345"), 123456789012345);
-    assert_eq!(parse_16(b"1234567890123456"), 1234567890123456);
+    assert_eq!(parse_fast(b"1"), 1);
+    assert_eq!(parse_fast(b"12"), 12);
+    assert_eq!(parse_fast(b"123"), 123);
+    assert_eq!(parse_fast(b"1234"), 1234);
+    assert_eq!(parse_fast(b"12345"), 12345);
+    assert_eq!(parse_fast(b"123456"), 123456);
+    assert_eq!(parse_fast(b"1234567"), 1234567);
+    assert_eq!(parse_fast(b"12345678"), 12345678);
+    assert_eq!(parse_fast(b"123456789"), 123456789);
+    assert_eq!(parse_fast(b"1234567890"), 1234567890);
+    assert_eq!(parse_fast(b"12345678901"), 12345678901);
+    assert_eq!(parse_fast(b"123456789012"), 123456789012);
+    assert_eq!(parse_fast(b"1234567890123"), 1234567890123);
+    assert_eq!(parse_fast(b"12345678901234"), 12345678901234);
+    assert_eq!(parse_fast(b"123456789012345"), 123456789012345);
+    assert_eq!(parse_fast(b"1234567890123456"), 1234567890123456);
 
     bench.iter(|| {
-        let mut v = parse_16(black_box(b"1"));
-        v += parse_16(black_box(b"12"));
-        v += parse_16(black_box(b"123"));
-        v += parse_16(black_box(b"1234"));
-        v += parse_16(black_box(b"12345"));
-        v += parse_16(black_box(b"123456"));
-        v += parse_16(black_box(b"1234567"));
-        v += parse_16(black_box(b"12345678"));
-        v += parse_16(black_box(b"123456789"));
-        v += parse_16(black_box(b"1234567890"));
-        v += parse_16(black_box(b"12345678901"));
-        v += parse_16(black_box(b"123456789012"));
-        v += parse_16(black_box(b"1234567890123"));
-        v += parse_16(black_box(b"12345678901234"));
-        v += parse_16(black_box(b"123456789012345"));
-        v += parse_16(black_box(b"1234567890123456"));
+        let mut v = parse_fast(black_box(b"1"));
+        v += parse_fast(black_box(b"12"));
+        v += parse_fast(black_box(b"123"));
+        v += parse_fast(black_box(b"1234"));
+        v += parse_fast(black_box(b"12345"));
+        v += parse_fast(black_box(b"123456"));
+        v += parse_fast(black_box(b"1234567"));
+        v += parse_fast(black_box(b"12345678"));
+        v += parse_fast(black_box(b"123456789"));
+        v += parse_fast(black_box(b"1234567890"));
+        v += parse_fast(black_box(b"12345678901"));
+        v += parse_fast(black_box(b"123456789012"));
+        v += parse_fast(black_box(b"1234567890123"));
+        v += parse_fast(black_box(b"12345678901234"));
+        v += parse_fast(black_box(b"123456789012345"));
+        v += parse_fast(black_box(b"1234567890123456"));
         black_box(v)
     })
 }
@@ -231,7 +242,7 @@ fn one_to_16_simple(bench: &mut Bencher) {
 #[bench]
 fn size_4_fast(bench: &mut Bencher) {
     bench.iter(|| {
-        black_box(parse_16(black_box(b"1234")));
+        black_box(parse_fast(black_box(b"1234")));
     })
 }
 
@@ -243,9 +254,23 @@ fn size_4_simple(bench: &mut Bencher) {
 }
 
 #[bench]
+fn size_7_fast(bench: &mut Bencher) {
+    bench.iter(|| {
+        black_box(parse_fast(black_box(b"1234567")));
+    })
+}
+
+#[bench]
+fn size_7_simple(bench: &mut Bencher) {
+    bench.iter(|| {
+        black_box(simple(black_box(b"1234567")));
+    })
+}
+
+#[bench]
 fn size_8_fast(bench: &mut Bencher) {
     bench.iter(|| {
-        black_box(parse_16(black_box(b"12345678")));
+        black_box(parse_fast(black_box(b"12345678")));
     })
 }
 
