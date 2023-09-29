@@ -63,8 +63,10 @@ fn parse_2(b: &[u8]) -> i64 {
         std::ptr::copy_nonoverlapping(p, &mut chunk, 2);
     }
 
-    // shift the chunk to the right
+    dbg!(format!("{:#x?}", chunk));
+    // shift the chunk to the left by 6 bytes
     chunk <<= (8 - 2) * 8;
+    dbg!(format!("{:#x?}", chunk));
 
     // 1-byte mask trick (works on 4 pairs of single digits)
     let lower_digits = (chunk & 0x0f000f000f000f00) >> 8;
@@ -72,8 +74,7 @@ fn parse_2(b: &[u8]) -> i64 {
     let chunk = lower_digits + upper_digits;
 
     // 2-byte mask trick (works on 2 pairs of two digits)
-    let lower_digits = (chunk & 0x00ff000000ff0000) >> 16;
-    lower_digits >> 32
+    (chunk & 0x00ff000000ff0000) >> 48
 }
 
 fn parse_1(b: &[u8]) -> i64 {
@@ -84,64 +85,74 @@ fn parse_1(b: &[u8]) -> i64 {
 
 pub fn parse_16(b: &[u8]) -> i64 {
     match b.len() {
-        1 => return parse_1(b),
-        2 => return parse_2(b),
-        3 => return parse_3(b),
+        // b can't be shorter than 4
         4 => return parse_4(b),
         5 => {
-            let (left, right) = b.split_at(1);
-            return parse_1(left) * 1_0000 + parse_4(right);
+            let (left, right) = b.split_at(4);
+            return parse_4(left) * 10 + parse_1(right);
         }
         6 => {
-            let (left, right) = b.split_at(2);
-            return parse_2(left) * 1_0000 + parse_4(right);
+            let (left, right) = b.split_at(4);
+            return parse_4(left) * 100 + parse_2(right);
         }
         7 => {
-            let (left, right) = b.split_at(3);
-            return parse_3(left) * 1_0000 + parse_4(right);
+            let (left, right) = b.split_at(4);
+            return parse_4(left) * 1_000 + parse_3(right);
         }
         8 => return parse_8(b),
         9 => {
-            let (left, right) = b.split_at(1);
-            return parse_1(left) * 1_0000_0000 + parse_8(right);
+            let (left, right) = b.split_at(8);
+            return parse_8(left) * 10 + parse_1(right);
         }
         10 => {
-            let (left, right) = b.split_at(2);
-            return parse_2(left) * 1_0000_0000 + parse_8(right);
+            let (left, right) = b.split_at(8);
+            return parse_8(left) * 100 + parse_2(right);
         }
         11 => {
-            let (left, right) = b.split_at(3);
-            return parse_3(left) * 1_0000_0000 + parse_8(right);
+            let (left, right) = b.split_at(8);
+            return parse_8(left) * 1_000 + parse_3(right);
         }
         12 => {
-            let (left, right) = b.split_at(4);
-            return parse_4(left) * 1_0000_0000 + parse_8(right);
+            let (left, right) = b.split_at(8);
+            return parse_8(left) * 10_000 + parse_4(right);
         }
         13 => {
-            let (left, right) = b.split_at(5);
-            let (left_left, left_right) = left.split_at(1);
-            return parse_1(left_left) * 1_0000_0000_0000 + parse_4(left_right) * 1_0000_0000 + parse_8(right);
+            let (left, right) = b.split_at(8);
+            let (right_left, right_right) = right.split_at(4);
+            return parse_8(left) * 100_000 + parse_4(right_left) * 10 + parse_1(right_right);
         }
         14 => {
-            let (left, right) = b.split_at(6);
-            let (left_left, left_right) = left.split_at(2);
-            return parse_2(left_left) * 1_0000_0000_0000 + parse_4(left_right) * 1_0000_0000 + parse_8(right);
+            let (left, right) = b.split_at(8);
+            let (right_left, right_right) = right.split_at(4);
+            return parse_8(left) * 1_000_000 + parse_4(right_left) * 100 + parse_2(right_right);
         }
         15 => {
-            let (left, right) = b.split_at(7);
-            let (left_left, left_right) = left.split_at(3);
-            return parse_3(left_left) * 1_0000_0000_0000 + parse_4(left_right) * 1_0000_0000 + parse_8(right);
+            let (left, right) = b.split_at(8);
+            let (right_left, right_right) = right.split_at(4);
+            return parse_8(left) * 10_000_000 + parse_4(right_left) * 1_000 + parse_3(right_right);
         }
         16 => {
             let (left, right) = b.split_at(8);
-            return parse_8(left) * 1_0000_0000 + parse_8(right);
+            return parse_8(left) * 100_000_000 + parse_8(right);
         }
         _ => panic!("too long"),
     }
 }
 
 fn parse_fast(b: &[u8]) -> i64 {
-    let mut index: usize = 0;
+    let mut value: i64 = match b.get(0) {
+        Some(next) if (b'0'..=b'9').contains(next) => (next & 0x0f) as i64,
+        _ => panic!("not a digit"),
+    };
+    for index in 1..4 {
+        match b.get(index) {
+            Some(next) if (b'0'..=b'9').contains(next) => {
+                value = value * 10 + (next & 0x0f) as i64;
+            }
+            _ => return value,
+        }
+    }
+    let mut index = 4;
     while let Some(next) = b.get(index) {
         match next {
             b'0'..=b'9' => (),
@@ -236,6 +247,20 @@ fn one_to_16_simple(bench: &mut Bencher) {
         v += simple(black_box(b"123456789012345"));
         v += simple(black_box(b"1234567890123456"));
         black_box(v)
+    })
+}
+
+#[bench]
+fn size_3_fast(bench: &mut Bencher) {
+    bench.iter(|| {
+        black_box(parse_fast(black_box(b"123")));
+    })
+}
+
+#[bench]
+fn size_3_simple(bench: &mut Bencher) {
+    bench.iter(|| {
+        black_box(simple(black_box(b"123")));
     })
 }
 
