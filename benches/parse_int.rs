@@ -15,43 +15,43 @@ fn parse_8(b: &[u8]) -> i64 {
     // the bytes are reversed as we look at them (because we're on LE), so we have `87654321`
     // 8 the less significant digit is first
     // dbg!(format!("{eight_numbers:#018x}"));
-    // eight_numbers:0<#18x = 0x38|37|36|35|34|33|32|31
+    // eight_numbers = 0x38|37|36|35|34|33|32|31
 
     // take 8, 6, 4, 2, apply mask to get their numeric values and shift them to the right by 1 byte
     let lower: i64 = (eight_numbers & 0x0f000f000f000f00) >> 8;
     // dbg!(format!("{lower:#018x}"));
-    // lower:#018x = 0x00|08|00|06|00|04|00|02
+    // lower = 0x00|08|00|06|00|04|00|02
 
     // take 7, 5, 3, 1, apply mask to get their numeric values and multiply them by 10
     let upper = (eight_numbers & 0x000f000f000f000f) * 10;
     // dbg!(format!("{upper:#018x}"));
-    // upper:#018x = 0x46|00|32|00|1e|00|0a|00 = 0x46 is 70 - 7 * 10 ... 0x0a is 10 - 1 * 10
+    // upper = 0x46|00|32|00|1e|00|0a|00 = 0x46 is 70 - 7 * 10 ... 0x0a is 10 - 1 * 10
     let four_numbers = lower + upper;
     // dbg!(format!("{four_numbers:#018x}"), four_numbers.to_be_bytes());
-    // four_numbers:#018x = 0x00|4e|00|38|00|22|00|0c = 0x4e is 78 - 70 + 8 ... we're turned 8 numbers into 8
+    // four_numbers = 0x00|4e|00|38|00|22|00|0c = 0x4e is 78 - 70 + 8 ... we're turned 8 numbers into 8
 
     // take 78 and 34, apply mask to get their numeric values and shift them to the right by 2 bytes
     let lower = (four_numbers & 0x00ff000000ff0000) >> 16;
     // dbg!(format!("{lower:#018x}"), lower.to_be_bytes());
-    // lower:#018x = 0x00|00|00|4e|00|00|00|22 - 0x4e is 78, 0x22 is 34
+    // lower = 0x00|00|00|4e|00|00|00|22 - 0x4e is 78, 0x22 is 34
 
     // take 56 and 12, apply mask to get their numeric values and multiply them by 100
     let upper = (four_numbers & 0x000000ff000000ff) * 100;
     // dbg!(format!("{upper:#018x}"));
-    // upper:#018x = 0x000015e0|000004b0 - 0x000015e0 is 5600, 0x000004b0 is 1200
+    // upper = 0x000015e0|000004b0 - 0x000015e0 is 5600, 0x000004b0 is 1200
 
     let two_numbers = lower + upper;
     // dbg!(format!("{two_numbers:#018x}"));
-    // two_numbers:#018x = 0x0000162e|000004d2 - 0x0000162e is 5678, 0x000004d2 is 1234
+    // two_numbers = 0x0000162e|000004d2 - 0x0000162e is 5678, 0x000004d2 is 1234
 
     // take 5678, apply mask to get it's numeric values and shift it to the right by 4 bytes
     let lower = (two_numbers & 0x0000ffff00000000) >> 32;
     // dbg!(format!("{lower:#018x}"));
-    // lower:#018x = 0x000000000000162e - 0x000000000000162e is 5678
+    // lower = 0x000000000000162e - in base 10 is 5678
 
     let upper = (two_numbers & 0x000000000000ffff) * 10000;
     // dbg!(format!("{upper:#018x}"));
-    // upper:#018x = 0x0000000000bc4b20 - 0x0000000000bc4b20 is 1234_0000
+    // upper = 0x0000000000bc4b20 - in base 10 is 1234_0000
 
     // combine to get the result!
     lower + upper
@@ -77,31 +77,31 @@ fn parse_4(b: &[u8]) -> i64 {
     let four_numbers = i32::from_le_bytes(a);
 
     // assuming the number is `1234`
-    // dbg!(format!("{four_numbers:#018x}"));
-    // four_numbers:0<#18x = 0x|34|33|32|31
+    // dbg!(format!("{four_numbers:#010x}"));
+    // four_numbers = 0x34|33|32|31
 
     // take 4, 2, apply mask to get their numeric values and shift them to the right by 1 byte
     let lower = (four_numbers & 0x0f000f00) >> 8;
-    // dbg!(format!("{lower:#018x}"), lower.to_be_bytes());
-    // lower:#018x = 0x|00|04|00|02
+    // dbg!(format!("{lower:#010x}"), lower.to_be_bytes());
+    // lower = 0x00|04|00|02
 
     // take 3, 1, apply mask to get their numeric values and multiply them by 10
     let upper = (four_numbers & 0x000f000f) * 10;
-    // dbg!(format!("{upper:#018x}"), lower.to_be_bytes());
-    // upper:#018x = 0x|00|1e|00|0a = 0x1e is 30 - 3 * 10, 0x0a is 10 - 1 * 10
+    // dbg!(format!("{upper:#010x}"), lower.to_be_bytes());
+    // upper = 0x00|1e|00|0a = 0x1e is 30 - 3 * 10, 0x0a is 10 - 1 * 10
 
     let two_numbers = lower + upper;
-    // dbg!(format!("{two_numbers:#018x}"), lower.to_be_bytes());
-    // two_numbers:#018x = 0x|00|22|00|0c = 0x22 is 34 - 30 + 4, 0x0c is 12 - 10 + 2
+    // dbg!(format!("{two_numbers:#010x}"), lower.to_be_bytes());
+    // two_numbers = 0x00|22|00|0c = 0x22 is 34 - 30 + 4, 0x0c is 12 - 10 + 2
 
     // take 34, apply mask to get it's numeric values and shift it to the right by 2 bytes
     let lower = (two_numbers & 0x00ff0000) >> 16;
-    // dbg!(format!("{lower:#018x}"));
-    // lower:#018x = 0x|00|00|00|22 - 0x22 is 34
+    // dbg!(format!("{lower:#010x}"));
+    // lower = 0x00|00|00|22 - in base 10 is 34
 
     let upper = (two_numbers & 0x000000ff) * 100;
-    // dbg!(format!("{upper:#018x}"));
-    // upper:#018x = 0x000004b0 - 0x4b0 is 1200
+    // dbg!(format!("{upper:#010x}"));
+    // upper = 0x000004b0 - in base 10 is 1200
     (lower + upper) as i64
 }
 
