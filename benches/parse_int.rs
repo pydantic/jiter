@@ -6,13 +6,10 @@ use test::{black_box, Bencher};
 
 /// See https://rust-malaysia.github.io/code/2020/07/11/faster-integer-parsing.html#the-divide-and-conquer-insight
 /// for explanation of the technique.
-/// FIXME! This all assumes little-endianness, I'm worried this will all be wrong on a big-endian machine.
+/// TODO confirm this works on big endian machines
 fn parse_8(b: &[u8]) -> i64 {
-    let p = b.as_ptr() as *const _;
-    let mut eight_numbers = 0;
-    unsafe {
-        std::ptr::copy_nonoverlapping(p, &mut eight_numbers, 8);
-    }
+    let a: [u8; 8] = b.try_into().unwrap();
+    let eight_numbers = i64::from_le_bytes(a);
 
     // assuming the number is `12345678`
     // the bytes are reversed as we look at them (because we're on LE), so we have `87654321`
@@ -76,39 +73,36 @@ fn parse_5(b: &[u8]) -> i64 {
 }
 
 fn parse_4(b: &[u8]) -> i64 {
-    let p = b.as_ptr() as *const _;
-    let mut four_numbers = 0;
-    unsafe {
-        std::ptr::copy_nonoverlapping(p, &mut four_numbers, 4);
-    }
+    let a: [u8; 4] = b.try_into().unwrap();
+    let four_numbers = i32::from_le_bytes(a);
 
     // assuming the number is `1234`
     // dbg!(format!("{four_numbers:#018x}"));
-    // four_numbers:0<#18x = 0x00|00|00|00|34|33|32|31
+    // four_numbers:0<#18x = 0x|34|33|32|31
 
     // take 4, 2, apply mask to get their numeric values and shift them to the right by 1 byte
-    let lower: i64 = (four_numbers & 0x000000000f000f00) >> 8;
+    let lower = (four_numbers & 0x0f000f00) >> 8;
     // dbg!(format!("{lower:#018x}"), lower.to_be_bytes());
-    // lower:#018x = 0x00|00|00|00|00|04|00|02
+    // lower:#018x = 0x|00|04|00|02
 
     // take 3, 1, apply mask to get their numeric values and multiply them by 10
-    let upper = (four_numbers & 0x00000000000f000f) * 10;
+    let upper = (four_numbers & 0x000f000f) * 10;
     // dbg!(format!("{upper:#018x}"), lower.to_be_bytes());
-    // upper:#018x = 0x00|00|00|00|00|1e|00|0a = 0x1e is 30 - 3 * 10, 0x0a is 10 - 1 * 10
+    // upper:#018x = 0x|00|1e|00|0a = 0x1e is 30 - 3 * 10, 0x0a is 10 - 1 * 10
 
     let two_numbers = lower + upper;
     // dbg!(format!("{two_numbers:#018x}"), lower.to_be_bytes());
-    // two_numbers:#018x = 0x00|00|00|00|00|22|00|0c = 0x22 is 34 - 30 + 4, 0x0c is 12 - 10 + 2
+    // two_numbers:#018x = 0x|00|22|00|0c = 0x22 is 34 - 30 + 4, 0x0c is 12 - 10 + 2
 
     // take 34, apply mask to get it's numeric values and shift it to the right by 2 bytes
-    let lower = (two_numbers & 0x00ff000000ff0000) >> 16;
+    let lower = (two_numbers & 0x00ff0000) >> 16;
     // dbg!(format!("{lower:#018x}"));
-    // lower:#018x = 0x00|00|00|00|00|00|00|22 - 0x22 is 34
+    // lower:#018x = 0x|00|00|00|22 - 0x22 is 34
 
-    let upper = (two_numbers & 0x000000ff000000ff) * 100;
+    let upper = (two_numbers & 0x000000ff) * 100;
     // dbg!(format!("{upper:#018x}"));
-    // upper:#018x = 0x00000000000004b0 - 0x4b0 is 1200
-    lower + upper
+    // upper:#018x = 0x000004b0 - 0x4b0 is 1200
+    (lower + upper) as i64
 }
 
 fn parse_3(b: &[u8]) -> i64 {
@@ -117,20 +111,16 @@ fn parse_3(b: &[u8]) -> i64 {
 }
 
 fn parse_2(b: &[u8]) -> i64 {
-    let p = b.as_ptr() as *const _;
-    let mut two_numbers = 0;
-    unsafe {
-        std::ptr::copy_nonoverlapping(p, &mut two_numbers, 2);
-    }
+    let a: [u8; 2] = b.try_into().unwrap();
+    let two_numbers = i16::from_le_bytes(a);
 
     // assuming the number is `12`
-
     // take 2, apply mask to get it's numeric values and shift it to the right by 1 byte
-    let lower = (two_numbers & 0x0000000000000f00) >> 8;
+    let lower = (two_numbers & 0x0f00) >> 8;
 
     // take 1, apply mask to get it's numeric values and multiply it by 10
-    let upper = (two_numbers & 0x000000000000000f) * 10;
-    lower + upper
+    let upper = (two_numbers & 0x000f) * 10;
+    (lower + upper) as i64
 }
 
 fn parse_1(b: &[u8]) -> i64 {
