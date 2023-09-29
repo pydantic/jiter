@@ -4,29 +4,60 @@ extern crate test;
 
 use test::{black_box, Bencher};
 
+/// See https://rust-malaysia.github.io/code/2020/07/11/faster-integer-parsing.html#the-divide-and-conquer-insight
+/// for explanation of the technique.
+/// FIXME! This all assumes little-endianness, I'm worried this will all be wrong on a big-endian machine.
 fn parse_8(b: &[u8]) -> i64 {
     let p = b.as_ptr() as *const _;
-    let mut chunk = 0;
+    let mut eight_numbers = 0;
     unsafe {
-        std::ptr::copy_nonoverlapping(p, &mut chunk, 8);
+        std::ptr::copy_nonoverlapping(p, &mut eight_numbers, 8);
     }
 
-    // 1-byte mask trick (works on 4 pairs of single digits)
-    let lower_digits = (chunk & 0x0f000f000f000f00) >> 8;
-    let upper_digits = (chunk & 0x000f000f000f000f) * 10;
-    let chunk = lower_digits + upper_digits;
+    // assuming the number is `12345678`
+    // the bytes are reversed as we look at them (because we're on LE), so we have `87654321`
+    // 8 the less significant digit is first
+    // dbg!(format!("{eight_numbers:#018x}"));
+    // eight_numbers:0<#18x = 0x38|37|36|35|34|33|32|31
 
-    // 2-byte mask trick (works on 2 pairs of two digits)
-    let lower_digits = (chunk & 0x00ff000000ff0000) >> 16;
-    let upper_digits = (chunk & 0x000000ff000000ff) * 100;
-    let chunk = lower_digits + upper_digits;
+    // take 8, 6, 4, 2, apply mask to get their numeric values and shift them to the right by 1 byte
+    let lower: i64 = (eight_numbers & 0x0f000f000f000f00) >> 8;
+    // dbg!(format!("{lower:#018x}"));
+    // lower:#018x = 0x00|08|00|06|00|04|00|02
 
-    // 4-byte mask trick (works on a pair of four digits)
-    let lower_digits = (chunk & 0x0000ffff00000000) >> 32;
-    let upper_digits = (chunk & 0x000000000000ffff) * 10000;
-    let chunk = lower_digits + upper_digits;
+    // take 7, 5, 3, 1, apply mask to get their numeric values and multiply them by 10
+    let upper = (eight_numbers & 0x000f000f000f000f) * 10;
+    // dbg!(format!("{upper:#018x}"));
+    // upper:#018x = 0x46|00|32|00|1e|00|0a|00 = 0x46 is 70 - 7 * 10 ... 0x0a is 10 - 1 * 10
+    let four_numbers = lower + upper;
+    // dbg!(format!("{four_numbers:#018x}"), four_numbers.to_be_bytes());
+    // four_numbers:#018x = 0x00|4e|00|38|00|22|00|0c = 0x4e is 78 - 70 + 8 ... we're turned 8 numbers into 8
 
-    chunk
+    // take 78 and 34, apply mask to get their numeric values and shift them to the right by 2 bytes
+    let lower = (four_numbers & 0x00ff000000ff0000) >> 16;
+    // dbg!(format!("{lower:#018x}"), lower.to_be_bytes());
+    // lower:#018x = 0x00|00|00|4e|00|00|00|22 - 0x4e is 78, 0x22 is 34
+
+    // take 56 and 12, apply mask to get their numeric values and multiply them by 100
+    let upper = (four_numbers & 0x000000ff000000ff) * 100;
+    // dbg!(format!("{upper:#018x}"));
+    // upper:#018x = 0x000015e0|000004b0 - 0x000015e0 is 5600, 0x000004b0 is 1200
+
+    let two_numbers = lower + upper;
+    // dbg!(format!("{two_numbers:#018x}"));
+    // two_numbers:#018x = 0x0000162e|000004d2 - 0x0000162e is 5678, 0x000004d2 is 1234
+
+    // take 5678, apply mask to get it's numeric values and shift it to the right by 4 bytes
+    let lower = (two_numbers & 0x0000ffff00000000) >> 32;
+    // dbg!(format!("{lower:#018x}"));
+    // lower:#018x = 0x000000000000162e - 0x000000000000162e is 5678
+
+    let upper = (two_numbers & 0x000000000000ffff) * 10000;
+    // dbg!(format!("{upper:#018x}"));
+    // upper:#018x = 0x0000000000bc4b20 - 0x0000000000bc4b20 is 1234_0000
+
+    // combine to get the result!
+    lower + upper
 }
 
 fn parse_7(b: &[u8]) -> i64 {
@@ -46,24 +77,38 @@ fn parse_5(b: &[u8]) -> i64 {
 
 fn parse_4(b: &[u8]) -> i64 {
     let p = b.as_ptr() as *const _;
-    let mut chunk = 0;
+    let mut four_numbers = 0;
     unsafe {
-        std::ptr::copy_nonoverlapping(p, &mut chunk, 4);
+        std::ptr::copy_nonoverlapping(p, &mut four_numbers, 4);
     }
 
-    chunk <<= 4 * 8;
+    // assuming the number is `1234`
+    // dbg!(format!("{four_numbers:#018x}"));
+    // four_numbers:0<#18x = 0x00|00|00|00|34|33|32|31
 
-    // 1-byte mask trick (works on 4 pairs of single digits)
-    let lower_digits = (chunk & 0x0f000f000f000f00) >> 8;
-    let upper_digits = (chunk & 0x000f000f000f000f) * 10;
-    let chunk = lower_digits + upper_digits;
+    // take 4, 2, apply mask to get their numeric values and shift them to the right by 1 byte
+    let lower: i64 = (four_numbers & 0x000000000f000f00) >> 8;
+    // dbg!(format!("{lower:#018x}"), lower.to_be_bytes());
+    // lower:#018x = 0x00|00|00|00|00|04|00|02
 
-    // 2-byte mask trick (works on 2 pairs of two digits)
-    let lower_digits = (chunk & 0x00ff000000ff0000) >> 16;
-    let upper_digits = (chunk & 0x000000ff000000ff) * 100;
-    let chunk = lower_digits + upper_digits;
+    // take 3, 1, apply mask to get their numeric values and multiply them by 10
+    let upper = (four_numbers & 0x00000000000f000f) * 10;
+    // dbg!(format!("{upper:#018x}"), lower.to_be_bytes());
+    // upper:#018x = 0x00|00|00|00|00|1e|00|0a = 0x1e is 30 - 3 * 10, 0x0a is 10 - 1 * 10
 
-    (chunk & 0x0000ffff00000000) >> 32
+    let two_numbers = lower + upper;
+    // dbg!(format!("{two_numbers:#018x}"), lower.to_be_bytes());
+    // two_numbers:#018x = 0x00|00|00|00|00|22|00|0c = 0x22 is 34 - 30 + 4, 0x0c is 12 - 10 + 2
+
+    // take 34, apply mask to get it's numeric values and shift it to the right by 2 bytes
+    let lower = (two_numbers & 0x00ff000000ff0000) >> 16;
+    // dbg!(format!("{lower:#018x}"));
+    // lower:#018x = 0x00|00|00|00|00|00|00|22 - 0x22 is 34
+
+    let upper = (two_numbers & 0x000000ff000000ff) * 100;
+    // dbg!(format!("{upper:#018x}"));
+    // upper:#018x = 0x00000000000004b0 - 0x4b0 is 1200
+    lower + upper
 }
 
 fn parse_3(b: &[u8]) -> i64 {
@@ -73,22 +118,19 @@ fn parse_3(b: &[u8]) -> i64 {
 
 fn parse_2(b: &[u8]) -> i64 {
     let p = b.as_ptr() as *const _;
-    let mut chunk = 0;
+    let mut two_numbers = 0;
     unsafe {
-        std::ptr::copy_nonoverlapping(p, &mut chunk, 2);
+        std::ptr::copy_nonoverlapping(p, &mut two_numbers, 2);
     }
 
-    // shift the chunk to the left by 6 bytes
-    chunk <<= (8 - 2) * 8;
+    // assuming the number is `12`
 
-    // 1-byte mask trick (works on 4 pairs of single digits)
-    let lower_digits = (chunk & 0x0f000f000f000f00) >> 8;
-    let upper_digits = (chunk & 0x000f000f000f000f) * 10;
-    let chunk = lower_digits + upper_digits;
+    // take 2, apply mask to get it's numeric values and shift it to the right by 1 byte
+    let lower = (two_numbers & 0x0000000000000f00) >> 8;
 
-    // 2-byte mask trick (works on 2 pairs of two digits)
-    let chunk = (chunk & 0x00ff000000ff0000) >> 16;
-    (chunk & 0x0000ffff00000000) >> 32
+    // take 1, apply mask to get it's numeric values and multiply it by 10
+    let upper = (two_numbers & 0x000000000000000f) * 10;
+    lower + upper
 }
 
 fn parse_1(b: &[u8]) -> i64 {
@@ -187,6 +229,17 @@ fn simple(b: &[u8]) -> i64 {
         index += 1;
     }
     value
+}
+
+#[test]
+fn test_8() {
+    assert_eq!(parse_fast(b"12345678"), 12345678);
+}
+
+#[test]
+fn test_4() {
+    assert_eq!(parse_fast(b"1234"), 1234);
+    assert_eq!(parse_fast(b"12345"), 12345);
 }
 
 #[bench]
