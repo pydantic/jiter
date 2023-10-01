@@ -57,6 +57,23 @@ impl AbstractNumberDecoder for NumberInt {
     }
 }
 
+pub struct NumberFloat;
+
+impl AbstractNumberDecoder for NumberFloat {
+    type Output = f64;
+
+    fn decode(data: &[u8], index: usize, _first: u8) -> JsonResult<(Self::Output, usize)> {
+        let start = index;
+        const JSON: u128 = lexical_format::JSON;
+        let options = ParseFloatOptions::new();
+        match parse_partial_with_options::<f64, JSON>(&data[start..], &options) {
+            Ok((float, index)) => Ok((float, index + start)),
+            Err(_) => json_err!(InvalidNumber, index),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum NumberAny {
     Int(NumberInt),
     Float(f64),
@@ -85,18 +102,12 @@ impl AbstractNumberDecoder for NumberAny {
                     Ok((Self::Int(int.negate()), index))
                 }
             }
-            _ => {
-                const JSON: u128 = lexical_format::JSON;
-                let options = ParseFloatOptions::new();
-                match parse_partial_with_options::<f64, JSON>(&data[start..], &options) {
-                    Ok((float, index)) => Ok((Self::Float(float), index + start)),
-                    Err(_) => json_err!(InvalidNumber, index),
-                }
-            }
+            _ => NumberFloat::decode(data, start, first).map(|(f, index)| (Self::Float(f), index)),
         }
     }
 }
 
+#[derive(Debug)]
 enum IntParse {
     Int(bool, NumberInt),
     Float,

@@ -477,6 +477,22 @@ fn jiter_bytes() {
     assert_eq!(jiter.next_key_bytes().unwrap(), None);
     jiter.finish().unwrap();
 }
+#[test]
+fn jiter_number() {
+    let mut jiter = Jiter::new(br#"  [1, 2.2, 3, 4.1, 5.67]"#);
+    assert_eq!(jiter.next_array().unwrap(), Some(Peak::Num(b'1')));
+    assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(1));
+    assert_eq!(jiter.array_step().unwrap(), true);
+    assert_eq!(jiter.next_float().unwrap(), 2.2);
+    assert_eq!(jiter.array_step().unwrap(), true);
+    assert_eq!(jiter.next_number().unwrap(), NumberAny::Int(NumberInt::Int(3)));
+    assert_eq!(jiter.array_step().unwrap(), true);
+    assert_eq!(jiter.next_number().unwrap(), NumberAny::Float(4.1));
+    assert_eq!(jiter.array_step().unwrap(), true);
+    assert_eq!(jiter.next_number_bytes().unwrap(), b"5.67");
+    assert_eq!(jiter.array_step().unwrap(), false);
+    jiter.finish().unwrap();
+}
 
 #[test]
 fn jiter_bytes_u_escape() {

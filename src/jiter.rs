@@ -1,9 +1,8 @@
 use crate::errors::{FilePosition, JiterError, JsonType, DEFAULT_RECURSION_LIMIT};
-use crate::number_decoder::{NumberAny, NumberInt};
+use crate::number_decoder::{NumberAny, NumberFloat, NumberInt, NumberRange};
 use crate::parse::{Parser, Peak};
 use crate::string_decoder::{StringDecoder, StringDecoderRange, Tape};
 use crate::value::{take_value, JsonValue};
-use crate::NumberRange;
 
 pub type JiterResult<T> = Result<T, JiterError>;
 
@@ -56,6 +55,14 @@ impl<'a> Jiter<'a> {
         }
     }
 
+    pub fn next_number(&mut self) -> JiterResult<NumberAny> {
+        let peak = self.peak()?;
+        match peak {
+            Peak::Num(first) => self.known_number(first),
+            _ => Err(self.wrong_type(JsonType::Int, peak)),
+        }
+    }
+
     pub fn next_int(&mut self) -> JiterResult<NumberInt> {
         let peak = self.peak()?;
         match peak {
@@ -67,7 +74,7 @@ impl<'a> Jiter<'a> {
     pub fn next_float(&mut self) -> JiterResult<f64> {
         let peak = self.peak()?;
         match peak {
-            Peak::Num(first) => self.known_float(first).map(|n| n.into()),
+            Peak::Num(first) => self.parser.consume_number::<NumberFloat>(first).map_err(Into::into),
             _ => Err(self.wrong_type(JsonType::Int, peak)),
         }
     }
@@ -170,7 +177,7 @@ impl<'a> Jiter<'a> {
         self.parser.consume_number::<NumberInt>(first).map_err(Into::into)
     }
 
-    pub fn known_float(&mut self, first: u8) -> JiterResult<NumberAny> {
+    pub fn known_number(&mut self, first: u8) -> JiterResult<NumberAny> {
         self.parser.consume_number::<NumberAny>(first).map_err(Into::into)
     }
 
