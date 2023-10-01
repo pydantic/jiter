@@ -1,29 +1,15 @@
 use num_bigint::BigInt;
 use num_traits::cast::ToPrimitive;
-use std::fmt;
 use std::ops::Range;
 
 use lexical_core::{format as lexical_format, parse_partial_with_options, ParseFloatOptions};
 
-use crate::errors::{json_err, JsonErrorType, JsonResult};
+use crate::errors::{json_err, JsonResult};
 
 pub trait AbstractNumberDecoder {
     type Output;
 
     fn decode(data: &[u8], index: usize, first: u8) -> JsonResult<(Self::Output, usize)>;
-}
-
-pub trait AbstractNumber: fmt::Debug + PartialEq + Sized {
-    fn new(digit: u8) -> Self;
-    fn take_one(first: u8) -> Result<Self, JsonErrorType>;
-
-    fn add_digit(&mut self, digit: &u8) -> Result<(), JsonErrorType>;
-
-    fn apply_decimal(self, data: &[u8], index: usize, positive: bool) -> JsonResult<(Self, usize)>;
-
-    fn apply_exponential(self, exponent: i32, positive: bool) -> Result<Self, JsonErrorType>;
-
-    fn negate(&mut self);
 }
 
 #[derive(Debug, Clone, PartialEq)]
