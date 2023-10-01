@@ -6,7 +6,7 @@ use smallvec::SmallVec;
 
 use crate::errors::{json_error, DEFAULT_RECURSION_LIMIT};
 use crate::string_decoder::Tape;
-use crate::{FilePosition, JsonError, NumberAny, NumberDecoder, NumberInt, Parser, Peak, StringDecoder};
+use crate::{FilePosition, JsonError, NumberAny, NumberInt, Parser, Peak, StringDecoder};
 
 pub fn python_parse(py: Python, data: &[u8]) -> PyResult<PyObject> {
     let mut python_parser = PythonParser {
@@ -55,14 +55,10 @@ impl<'j> PythonParser<'j> {
                 Ok(PyString::new(py, s).to_object(py))
             }
             Peak::Num(first) => {
-                let n = self
-                    .parser
-                    .consume_number::<NumberDecoder<NumberAny>>(first)
-                    .map_err(mje)?;
+                let n = self.parser.consume_number::<NumberAny>(first).map_err(mje)?;
                 match n {
                     NumberAny::Int(NumberInt::Int(int)) => Ok(int.to_object(py)),
                     NumberAny::Int(NumberInt::BigInt(big_int)) => Ok(big_int.to_object(py)),
-                    NumberAny::Int(NumberInt::Zero) => Ok(0.to_object(py)),
                     NumberAny::Float(float) => Ok(float.to_object(py)),
                 }
             }

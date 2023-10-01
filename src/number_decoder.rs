@@ -1,10 +1,11 @@
 use num_bigint::BigInt;
 use num_traits::cast::ToPrimitive;
 use std::fmt;
-use std::marker::PhantomData;
 use std::ops::Range;
 
-use crate::errors::{json_err, json_error, JsonError, JsonErrorType, JsonResult};
+use lexical_core::{format as lexical_format, parse_partial_with_options, ParseFloatOptions};
+
+use crate::errors::{json_err, JsonErrorType, JsonResult};
 
 pub trait AbstractNumberDecoder {
     type Output;
@@ -29,8 +30,15 @@ pub trait AbstractNumber: fmt::Debug + PartialEq + Sized {
 pub enum NumberInt {
     Int(i64),
     BigInt(BigInt),
-    // zero is special since a leading zero is only allowed on it's own or before "." or "e/E"
-    Zero,
+}
+
+impl NumberInt {
+    fn negate(self) -> Self {
+        match self {
+            Self::Int(int) => Self::Int(-int),
+            Self::BigInt(big_int) => Self::BigInt(-big_int),
+        }
+    }
 }
 
 impl From<NumberInt> for f64 {
@@ -41,72 +49,28 @@ impl From<NumberInt> for f64 {
                 Some(f) => f,
                 None => f64::NAN,
             },
-            NumberInt::Zero => 0.0,
         }
     }
 }
 
-impl AbstractNumber for NumberInt {
-    fn new(digit: u8) -> Self {
-        Self::Int((digit & 0x0f) as i64)
-    }
+impl AbstractNumberDecoder for NumberInt {
+    type Output = NumberInt;
 
-    fn take_one(first: u8) -> Result<Self, JsonErrorType> {
-        match first {
-            b'0' => Ok(Self::Zero),
-            b'1'..=b'9' => Ok(Self::new(first)),
-            _ => Err(JsonErrorType::InvalidNumber),
-        }
-    }
-
-    fn add_digit(&mut self, digit: &u8) -> Result<(), JsonErrorType> {
-        let digit_int = digit & 0x0f;
-        match self {
-            Self::Int(int_64) => {
-                if let Some(mult_10) = int_64.checked_mul(10) {
-                    if let Some(add_digit) = mult_10.checked_add((digit_int) as i64) {
-                        *int_64 = add_digit;
-                    } else {
-                        let mut big_int: BigInt = mult_10.into();
-                        big_int += digit_int;
-                        *self = Self::BigInt(big_int);
-                    }
+    fn decode(data: &[u8], index: usize, first: u8) -> JsonResult<(Self::Output, usize)> {
+        let (int_parse, index) = IntParse::parse(data, index, first)?;
+        match int_parse {
+            IntParse::Int(positive, int) => {
+                if positive {
+                    Ok((int, index))
                 } else {
-                    let mut big_int: BigInt = (*int_64).into();
-                    big_int *= 10;
-                    big_int += digit_int;
-                    *self = Self::BigInt(big_int);
+                    Ok((int.negate(), index))
                 }
             }
-            Self::BigInt(ref mut big_int) => {
-                *big_int *= 10;
-                *big_int += digit_int;
-            }
-            Self::Zero => return Err(JsonErrorType::InvalidNumber),
-        }
-        Ok(())
-    }
-
-    fn apply_decimal(self, _data: &[u8], index: usize, _positive: bool) -> JsonResult<(Self, usize)> {
-        json_err!(FloatExpectingInt, index)
-    }
-
-    fn apply_exponential(self, _exponent: i32, _positive: bool) -> Result<Self, JsonErrorType> {
-        Err(JsonErrorType::FloatExpectingInt)
-    }
-
-    fn negate(&mut self) {
-        match self {
-            Self::Int(int) => *int = -*int,
-            Self::BigInt(big_int) => {
-                *big_int *= -1;
-            }
-            Self::Zero => *self = Self::Int(-0),
+            _ => json_err!(FloatExpectingInt, index),
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
 pub enum NumberAny {
     Int(NumberInt),
     Float(f64),
@@ -116,227 +80,107 @@ impl From<NumberAny> for f64 {
     fn from(num: NumberAny) -> Self {
         match num {
             NumberAny::Int(int) => int.into(),
-            NumberAny::Float(float) => float,
+            NumberAny::Float(f) => f,
         }
     }
 }
 
-impl AbstractNumber for NumberAny {
-    fn new(digit: u8) -> Self {
-        Self::Int(NumberInt::new(digit))
-    }
+impl AbstractNumberDecoder for NumberAny {
+    type Output = NumberAny;
 
-    fn take_one(first: u8) -> Result<Self, JsonErrorType> {
-        NumberInt::take_one(first).map(Self::Int)
-    }
-
-    fn add_digit(&mut self, digit: &u8) -> Result<(), JsonErrorType> {
-        match self {
-            Self::Int(int) => int.add_digit(digit),
-            Self::Float(_) => Err(JsonErrorType::InvalidNumber),
-        }
-    }
-
-    fn apply_decimal(self, data: &[u8], mut index: usize, positive: bool) -> JsonResult<(Self, usize)> {
-        let mut result: f64 = match self {
-            Self::Int(int) => int.into(),
-            Self::Float(_) => return json_err!(InvalidNumber, index),
-        };
-
-        index += 1;
-        let first = match data.get(index) {
-            Some(v) if v.is_ascii_digit() => v,
-            Some(_) => return json_err!(InvalidNumber, index),
-            None => return json_err!(UnexpectedEnd, index),
-        };
-        result += (first & 0x0f) as f64 / 10.0;
-        let mut div = 100.0;
-
-        index += 1;
-        while let Some(next) = data.get(index) {
-            match next {
-                b'0'..=b'9' => {
-                    result += (next & 0x0f) as f64 / div;
-                    div *= 10_f64;
+    fn decode(data: &[u8], index: usize, first: u8) -> JsonResult<(Self::Output, usize)> {
+        let start = index;
+        let (int_parse, index) = IntParse::parse(data, index, first)?;
+        match int_parse {
+            IntParse::Int(positive, int) => {
+                if positive {
+                    Ok((Self::Int(int), index))
+                } else {
+                    Ok((Self::Int(int.negate()), index))
                 }
-                b'e' | b'E' => {
-                    let e = Exponent::decode(data, index)?;
-                    return match Self::Float(result).apply_exponential(e.0.value, positive) {
-                        Ok(n) => Ok((n, e.1)),
-                        Err(t) => return Err(JsonError::new(t, index)),
-                    };
+            }
+            _ => {
+                const JSON: u128 = lexical_format::JSON;
+                let options = ParseFloatOptions::new();
+                match parse_partial_with_options::<f64, JSON>(&data[start..], &options) {
+                    Ok((float, index)) => Ok((Self::Float(float), index + start)),
+                    Err(_) => json_err!(InvalidNumber, index),
                 }
-                _ => break,
-            }
-            index += 1;
-        }
-
-        let v = if positive { result } else { -result };
-        Ok((Self::Float(v), index))
-    }
-
-    fn apply_exponential(self, exponent: i32, positive: bool) -> Result<Self, JsonErrorType> {
-        match self {
-            Self::Int(NumberInt::Zero) => return Ok(Self::Float(0.0)),
-            Self::Float(f) if f == 0.0 => return Ok(Self::Float(0.0)),
-            _ => (),
-        }
-
-        if exponent == i32::MAX {
-            if positive {
-                Ok(Self::Float(f64::INFINITY))
-            } else {
-                Ok(Self::Float(f64::NEG_INFINITY))
-            }
-        } else if exponent == i32::MIN {
-            Ok(Self::Float(0.0))
-        } else {
-            let mut f: f64 = match self {
-                Self::Int(int) => int.into(),
-                Self::Float(float) => float,
-            };
-            f *= 10_f64.powi(exponent);
-            if !positive {
-                f = -f;
-            }
-            Ok(Self::Float(f))
-        }
-    }
-
-    fn negate(&mut self) {
-        match self {
-            Self::Int(int) => int.negate(),
-            Self::Float(f) => {
-                *f = -*f;
             }
         }
     }
 }
 
-pub struct NumberDecoder<Num: AbstractNumber> {
-    phantom: PhantomData<Num>,
+enum IntParse {
+    Int(bool, NumberInt),
+    // zero is special since a leading zero is only allowed on it's own or before "." or "e/E"
+    FloatZero(bool),
+    FloatExponential(bool, NumberInt),
+    FloatDot(bool, NumberInt),
 }
 
-impl<Num: AbstractNumber> AbstractNumberDecoder for NumberDecoder<Num> {
-    type Output = Num;
-
-    fn decode(data: &[u8], mut index: usize, first: u8) -> JsonResult<(Self::Output, usize)> {
+impl IntParse {
+    /// Turns out this is faster than fancy bit manipulation, see
+    /// https://github.com/Alexhuszagh/rust-lexical/blob/main/lexical-parse-integer/docs/Algorithm.md
+    /// for some context
+    fn parse(data: &[u8], mut index: usize, first: u8) -> JsonResult<(Self, usize)> {
         let positive = first != b'-';
-        let first_num: u8 = if positive {
-            first
-        } else {
+        if !positive {
             // we started with a minus sign, so the first digit is at index + 1
             index += 1;
-            *data.get(index).ok_or_else(|| json_error!(UnexpectedEnd, index))?
         };
-        let mut num = Num::take_one(first_num).map_err(|t| JsonError::new(t, index))?;
-        index += 1;
-        while let Some(next) = data.get(index) {
-            match next {
-                b'0'..=b'9' => num.add_digit(next).map_err(|t| JsonError::new(t, index))?,
-                b'.' => return num.apply_decimal(data, index, positive),
-                b'e' | b'E' => {
-                    let e = Exponent::decode(data, index)?;
-                    return match num.apply_exponential(e.0.value, positive) {
-                        Ok(n) => Ok((n, e.1)),
-                        Err(t) => Err(JsonError::new(t, index)),
-                    };
-                }
-                _ => break,
-            }
-            index += 1;
-        }
-        if positive {
-            Ok((num, index))
-        } else {
-            num.negate();
-            Ok((num, index))
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct Exponent {
-    value: i32,
-}
-
-impl Exponent {
-    fn new(digit: u8) -> Self {
-        Self {
-            value: (digit & 0x0f) as i32,
-        }
-    }
-
-    fn take_one(data: &[u8], index: usize) -> JsonResult<Self> {
-        match data.get(index) {
-            Some(digit) if digit.is_ascii_digit() => Ok(Self::new(*digit)),
-            Some(_) => json_err!(InvalidNumber, index),
-            None => json_err!(UnexpectedEnd, index),
-        }
-    }
-
-    fn decode(data: &[u8], mut index: usize) -> JsonResult<(Self, usize)> {
-        index += 1;
-        let mut positive = true;
-
-        let mut exp = match data.get(index) {
-            Some(b'-') => {
-                index += 1;
-                positive = false;
-                Self::take_one(data, index)?
-            }
-            Some(b'+') => {
-                index += 1;
-                Self::take_one(data, index)?
-            }
-            Some(digit) if digit.is_ascii_digit() => Self::new(*digit),
+        let mut value = match data.get(index) {
+            Some(b'0') => return Ok((Self::FloatZero(positive), index)),
+            Some(digit) if (b'1'..=b'9').contains(digit) => (digit & 0x0f) as i64,
             Some(_) => return json_err!(InvalidNumber, index),
             None => return json_err!(UnexpectedEnd, index),
         };
-
-        index += 1;
-        while let Some(next) = data.get(index) {
-            match next {
-                b'0'..=b'9' => {
-                    exp.value = match exp.value.checked_mul(10) {
-                        Some(i) => i,
-                        None => return Self::consume_rest(data, index, positive),
-                    };
-                    exp.value = match exp.value.checked_add((next & 0x0f) as i32) {
-                        Some(i) => i,
-                        None => return Self::consume_rest(data, index, positive),
-                    };
-                }
-                _ => break,
-            }
+        // i64::MAX = 9223372036854775807 - 18 chars
+        for _ in 1..18 {
             index += 1;
-        }
-
-        if positive {
-            Ok((exp, index))
-        } else {
-            exp.value = -exp.value;
-            Ok((exp, index))
-        }
-    }
-
-    fn consume_rest(data: &[u8], mut index: usize, positive: bool) -> JsonResult<(Self, usize)> {
-        index += 1;
-        while let Some(next) = data.get(index) {
-            match next {
-                b'0'..=b'9' => {
-                    index += 1;
+            match data.get(index) {
+                Some(digit) if digit.is_ascii_digit() => {
+                    // we use wrapping add to avoid branching - we know the value cannot wrap
+                    value = value.wrapping_mul(10).wrapping_add((digit & 0x0f) as i64);
                 }
-                _ => break,
+                Some(b'.') => return Ok((Self::FloatDot(positive, NumberInt::Int(value)), index)),
+                Some(b'e') | Some(b'E') => return Ok((Self::FloatExponential(positive, NumberInt::Int(value)), index)),
+                _ => return Ok((Self::Int(positive, NumberInt::Int(value)), index)),
             }
         }
-
-        let value = if positive { i32::MAX } else { i32::MIN };
-        Ok((Self { value }, index))
+        let mut big_value: BigInt = value.into();
+        loop {
+            value = 0;
+            for pow in 0..18 {
+                index += 1;
+                match data.get(index) {
+                    Some(digit) if digit.is_ascii_digit() => {
+                        // we use wrapping add to avoid branching - we know the value cannot wrap
+                        value = value.wrapping_mul(10).wrapping_add((digit & 0x0f) as i64);
+                    }
+                    Some(b'.') => {
+                        big_value *= 10u64.pow(pow as u32);
+                        let big_int = NumberInt::BigInt(big_value + value);
+                        return Ok((Self::FloatDot(positive, big_int), index));
+                    }
+                    Some(b'e') | Some(b'E') => {
+                        big_value *= 10u64.pow(pow as u32);
+                        let big_int = NumberInt::BigInt(big_value + value);
+                        return Ok((Self::FloatExponential(positive, big_int), index));
+                    }
+                    _ => {
+                        big_value *= 10u64.pow(pow as u32);
+                        let big_int = NumberInt::BigInt(big_value + value);
+                        return Ok((Self::Int(positive, big_int), index));
+                    }
+                }
+            }
+            big_value *= 10u64.pow(18);
+            big_value += value;
+        }
     }
 }
 
-// TODO do we really need this, could we make it an impl of Number instead?
 pub struct NumberDecoderRange;
 
 impl AbstractNumberDecoder for NumberDecoderRange {

@@ -15,7 +15,7 @@ pub use errors::{
 };
 pub use jiter::{Jiter, JiterResult};
 pub use lazy_index_map::LazyIndexMap;
-pub use number_decoder::{NumberAny, NumberDecoder, NumberDecoderRange, NumberInt};
+pub use number_decoder::{NumberAny, NumberDecoderRange, NumberInt};
 pub use parse::{Parser, Peak};
 pub use string_decoder::{StringDecoder, StringDecoderRange};
 pub use value::{JsonArray, JsonObject, JsonValue};

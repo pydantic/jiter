@@ -5,7 +5,7 @@ use smallvec::smallvec;
 
 use jiter::{
     FilePosition, Jiter, JiterErrorType, JsonErrorType, JsonResult, JsonType, JsonValue, LazyIndexMap, NumberAny,
-    NumberDecoder, NumberInt, Parser, Peak, StringDecoder, StringDecoderRange,
+    NumberInt, Parser, Peak, StringDecoder, StringDecoderRange,
 };
 
 fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
@@ -67,16 +67,13 @@ fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
 
 fn display_number(first: u8, parser: &mut Parser) -> JsonResult<String> {
     let position = parser.current_position();
-    let number = parser.consume_number::<NumberDecoder<NumberAny>>(first)?;
+    let number = parser.consume_number::<NumberAny>(first)?;
     let s = match number {
         NumberAny::Int(NumberInt::Int(int)) => {
             format!("Int({int}) @ {position}")
         }
         NumberAny::Int(NumberInt::BigInt(big_int)) => {
             format!("BigInt({big_int}) @ {position}")
-        }
-        NumberAny::Int(NumberInt::Zero) => {
-            format!("BigInt(0) @ {position}")
         }
         NumberAny::Float(float) => {
             format!("Float({float}) @ {position}")
@@ -135,13 +132,15 @@ single_tests! {
     string: ok => r#""foobar""#, "String(1..7) @ 1:1";
     int_pos: ok => "1234", "Int(1234) @ 1:1";
     int_neg: ok => "-1234", "Int(-1234) @ 1:1";
+    big_int: ok => "92233720368547758070", "BigInt(92233720368547758070) @ 1:1";
+    big_int_neg: ok => "-92233720368547758070", "BigInt(-92233720368547758070) @ 1:1";
+    big_int2: ok => "99999999999999999999999999999999999999999999999999", "BigInt(99999999999999999999999999999999999999999999999999) @ 1:1";
     float_pos: ok => "12.34", "Float(12.34) @ 1:1";
     float_neg: ok => "-12.34", "Float(-12.34) @ 1:1";
     float_exp: ok => "2.2e10", "Float(22000000000) @ 1:1";
     float_simple_exp: ok => "20e10", "Float(200000000000) @ 1:1";
     float_exp_pos: ok => "2.2e+10", "Float(22000000000) @ 1:1";
-    // NOTICE - this might be brittle, if so move to to a separate test
-    float_exp_neg: ok => "2.2e-2", "Float(0.022000000000000002) @ 1:1";
+    float_exp_neg: ok => "2.2e-2", "Float(0.022) @ 1:1";
     float_exp_zero: ok => "0.000e123", "Float(0) @ 1:1";
     float_exp_massive1: ok => "2e2147483647", "Float(inf) @ 1:1";
     float_exp_massive2: ok => "2e2147483648", "Float(inf) @ 1:1";
@@ -547,7 +546,7 @@ fn test_crazy_massive_int() {
     s.push_str(&"0".repeat(500));
     s.push_str("E-6666");
     let mut jiter = Jiter::new(s.as_bytes());
-    assert!(jiter.next_float().unwrap().is_nan());
+    assert_eq!(jiter.next_float().unwrap(), 0.0);
     jiter.finish().unwrap();
 }
 
