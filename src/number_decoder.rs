@@ -168,23 +168,43 @@ impl AbstractNumberDecoder for NumberDecoderRange {
             // we started with a minus sign, so the first digit is at index + 1
             index += 1;
         };
-        // TODO special logic on zero
+
         match data.get(index) {
-            Some(digit) if digit.is_ascii_digit() => (),
+            Some(b'0') => {
+                // numbers start with zero must be floats, next char must be a dot
+                index += 1;
+                return match data.get(index) {
+                    Some(b'.') => {
+                        index += 1;
+                        let end = consume_decimal(data, index)?;
+                        Ok((start..end, end))
+                    }
+                    Some(b'e') | Some(b'E') => {
+                        index += 1;
+                        let end = consume_exponential(data, index)?;
+                        Ok((start..end, end))
+                    }
+                    _ => return Ok((start..index, index)),
+                };
+            }
+            Some(digit) if (b'1'..=b'9').contains(digit) => (),
             Some(_) => return json_err!(InvalidNumber, index),
             None => return json_err!(UnexpectedEnd, index),
         };
+
         index += 1;
         while let Some(next) = data.get(index) {
             match next {
                 // TODO proper logic related to leading zeros
                 b'0'..=b'9' => (),
                 b'.' => {
-                    let end = numeric_range(data, index)?;
+                    index += 1;
+                    let end = consume_decimal(data, index)?;
                     return Ok((start..end, end));
                 }
                 b'e' | b'E' => {
-                    let end = exponent_range(data, index)?;
+                    index += 1;
+                    let end = consume_exponential(data, index)?;
                     return Ok((start..end, end));
                 }
                 _ => break,
@@ -196,9 +216,7 @@ impl AbstractNumberDecoder for NumberDecoderRange {
     }
 }
 
-fn exponent_range(data: &[u8], mut index: usize) -> JsonResult<usize> {
-    index += 1;
-
+fn consume_exponential(data: &[u8], mut index: usize) -> JsonResult<usize> {
     match data.get(index) {
         Some(b'-') | Some(b'+') => {
             index += 1;
@@ -207,11 +225,6 @@ fn exponent_range(data: &[u8], mut index: usize) -> JsonResult<usize> {
         Some(_) => return json_err!(InvalidNumber, index),
         None => return json_err!(UnexpectedEnd, index),
     };
-    numeric_range(data, index)
-}
-
-fn numeric_range(data: &[u8], mut index: usize) -> JsonResult<usize> {
-    index += 1;
 
     match data.get(index) {
         Some(v) if v.is_ascii_digit() => (),
@@ -223,6 +236,29 @@ fn numeric_range(data: &[u8], mut index: usize) -> JsonResult<usize> {
     while let Some(next) = data.get(index) {
         match next {
             b'0'..=b'9' => (),
+            _ => break,
+        }
+        index += 1;
+    }
+
+    Ok(index)
+}
+
+fn consume_decimal(data: &[u8], mut index: usize) -> JsonResult<usize> {
+    match data.get(index) {
+        Some(v) if v.is_ascii_digit() => (),
+        Some(_) => return json_err!(InvalidNumber, index),
+        None => return json_err!(UnexpectedEnd, index),
+    };
+    index += 1;
+
+    while let Some(next) = data.get(index) {
+        match next {
+            b'0'..=b'9' => (),
+            b'e' | b'E' => {
+                index += 1;
+                return consume_exponential(data, index);
+            }
             _ => break,
         }
         index += 1;
