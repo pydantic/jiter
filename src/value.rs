@@ -3,7 +3,7 @@ use smallvec::SmallVec;
 
 use crate::errors::{FilePosition, JsonResult, JsonValueError, DEFAULT_RECURSION_LIMIT};
 use crate::lazy_index_map::LazyIndexMap;
-use crate::number_decoder::{NumberAny, NumberDecoder, NumberInt};
+use crate::number_decoder::{NumberAny, NumberInt};
 use crate::parse::{Parser, Peak};
 use crate::string_decoder::{StringDecoder, Tape};
 use crate::JsonError;
@@ -102,11 +102,10 @@ pub(crate) fn take_value(
             Ok(JsonValue::String(s.to_string()))
         }
         Peak::Num(first) => {
-            let n = parser.consume_number::<NumberDecoder<NumberAny>>(first)?;
+            let n = parser.consume_number::<NumberAny>(first)?;
             match n {
                 NumberAny::Int(NumberInt::Int(int)) => Ok(JsonValue::Int(int)),
                 NumberAny::Int(NumberInt::BigInt(big_int)) => Ok(JsonValue::BigInt(big_int)),
-                NumberAny::Int(NumberInt::Zero) => Ok(JsonValue::Int(0)),
                 NumberAny::Float(float) => Ok(JsonValue::Float(float)),
             }
         }

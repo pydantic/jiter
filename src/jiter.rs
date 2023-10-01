@@ -1,5 +1,5 @@
 use crate::errors::{FilePosition, JiterError, JsonType, DEFAULT_RECURSION_LIMIT};
-use crate::number_decoder::{NumberAny, NumberDecoder, NumberInt};
+use crate::number_decoder::{NumberAny, NumberFloat, NumberInt, NumberRange};
 use crate::parse::{Parser, Peak};
 use crate::string_decoder::{StringDecoder, StringDecoderRange, Tape};
 use crate::value::{take_value, JsonValue};
@@ -55,6 +55,14 @@ impl<'a> Jiter<'a> {
         }
     }
 
+    pub fn next_number(&mut self) -> JiterResult<NumberAny> {
+        let peak = self.peak()?;
+        match peak {
+            Peak::Num(first) => self.known_number(first),
+            _ => Err(self.wrong_type(JsonType::Int, peak)),
+        }
+    }
+
     pub fn next_int(&mut self) -> JiterResult<NumberInt> {
         let peak = self.peak()?;
         match peak {
@@ -66,8 +74,19 @@ impl<'a> Jiter<'a> {
     pub fn next_float(&mut self) -> JiterResult<f64> {
         let peak = self.peak()?;
         match peak {
-            Peak::Num(positive) => self.known_float(positive).map(|n| n.into()),
+            Peak::Num(first) => self.parser.consume_number::<NumberFloat>(first).map_err(Into::into),
             _ => Err(self.wrong_type(JsonType::Int, peak)),
+        }
+    }
+
+    pub fn next_number_bytes(&mut self) -> JiterResult<&[u8]> {
+        let peak = self.peak()?;
+        match peak {
+            Peak::Num(first) => {
+                let range = self.parser.consume_number::<NumberRange>(first)?;
+                Ok(&self.data[range])
+            }
+            _ => Err(self.wrong_type(JsonType::Float, peak)),
         }
     }
 
@@ -155,15 +174,11 @@ impl<'a> Jiter<'a> {
     }
 
     pub fn known_int(&mut self, first: u8) -> JiterResult<NumberInt> {
-        self.parser
-            .consume_number::<NumberDecoder<NumberInt>>(first)
-            .map_err(Into::into)
+        self.parser.consume_number::<NumberInt>(first).map_err(Into::into)
     }
 
-    pub fn known_float(&mut self, first: u8) -> JiterResult<NumberAny> {
-        self.parser
-            .consume_number::<NumberDecoder<NumberAny>>(first)
-            .map_err(Into::into)
+    pub fn known_number(&mut self, first: u8) -> JiterResult<NumberAny> {
+        self.parser.consume_number::<NumberAny>(first).map_err(Into::into)
     }
 
     fn wrong_type(&self, expected: JsonType, peak: Peak) -> JiterError {
@@ -179,7 +194,7 @@ impl<'a> Jiter<'a> {
 
     fn wrong_num(&self, first: u8, expected: JsonType) -> JiterError {
         let mut parser2 = self.parser.clone();
-        let actual = match parser2.consume_number::<NumberDecoder<NumberAny>>(first) {
+        let actual = match parser2.consume_number::<NumberAny>(first) {
             Ok(NumberAny::Int { .. }) => JsonType::Int,
             Ok(NumberAny::Float { .. }) => JsonType::Float,
             Err(e) => return e.into(),

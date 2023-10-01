@@ -132,7 +132,7 @@ fn jiter_iter_true_object(path: &str, bench: &mut Bencher) {
     })
 }
 
-fn jiter_iter_bigints_array(path: &str, bench: &mut Bencher) {
+fn jiter_iter_ints_array(path: &str, bench: &mut Bencher) {
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
     bench.iter(|| {
@@ -143,6 +143,23 @@ fn jiter_iter_bigints_array(path: &str, bench: &mut Bencher) {
         v.push(i);
         while jiter.array_step().unwrap() {
             let i = jiter.next_int().unwrap();
+            v.push(i);
+        }
+        black_box(v)
+    })
+}
+
+fn jiter_iter_floats_array(path: &str, bench: &mut Bencher) {
+    let json = read_file(path);
+    let json_data = black_box(json.as_bytes());
+    bench.iter(|| {
+        let mut jiter = Jiter::new(json_data);
+        let mut v = Vec::new();
+        jiter.array_first().unwrap();
+        let i = jiter.next_float().unwrap();
+        v.push(i);
+        while jiter.array_step().unwrap() {
+            let i = jiter.next_float().unwrap();
             v.push(i);
         }
         black_box(v)
@@ -182,7 +199,11 @@ macro_rules! test_cases {
                 } else if file_name == "true_object" {
                     jiter_iter_true_object(&file_path, bench);
                 } else if file_name == "bigints_array" {
-                    jiter_iter_bigints_array(&file_path, bench);
+                    jiter_iter_ints_array(&file_path, bench);
+                } else if file_name == "massive_ints_array" {
+                    jiter_iter_ints_array(&file_path, bench);
+                } else if file_name == "floats_array" {
+                    jiter_iter_floats_array(&file_path, bench);
                 }
             }
 
@@ -206,7 +227,7 @@ test_cases!(string_array);
 test_cases!(true_array);
 test_cases!(true_object);
 test_cases!(bigints_array);
-test_cases!(massive_array);
+test_cases!(massive_ints_array);
 test_cases!(floats_array);
 // from https://github.com/json-iterator/go-benchmark/blob/179abe5e3f72acce34fb5a16f3473b901fbdd6b9/
 // src/github.com/json-iterator/go-benchmark/benchmark.go#L30C17-L30C29
