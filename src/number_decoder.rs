@@ -66,7 +66,7 @@ impl AbstractNumberDecoder for NumberInt {
                     Ok((int.negate(), index))
                 }
             }
-            _ => json_err!(FloatExpectingInt, index),
+            IntParse::Float => json_err!(FloatExpectingInt, index),
         }
     }
 }
@@ -113,10 +113,7 @@ impl AbstractNumberDecoder for NumberAny {
 
 enum IntParse {
     Int(bool, NumberInt),
-    // zero is special since a leading zero is only allowed on it's own or before "." or "e/E"
-    FloatZero(bool),
-    FloatExponential(bool, NumberInt),
-    FloatDot(bool, NumberInt),
+    Float,
 }
 
 impl IntParse {
@@ -130,7 +127,7 @@ impl IntParse {
             index += 1;
         };
         let mut value = match data.get(index) {
-            Some(b'0') => return Ok((Self::FloatZero(positive), index)),
+            Some(b'0') => return Ok((Self::Float, index)),
             Some(digit) if (b'1'..=b'9').contains(digit) => (digit & 0x0f) as i64,
             Some(_) => return json_err!(InvalidNumber, index),
             None => return json_err!(UnexpectedEnd, index),
@@ -143,8 +140,8 @@ impl IntParse {
                     // we use wrapping add to avoid branching - we know the value cannot wrap
                     value = value.wrapping_mul(10).wrapping_add((digit & 0x0f) as i64);
                 }
-                Some(b'.') => return Ok((Self::FloatDot(positive, NumberInt::Int(value)), index)),
-                Some(b'e') | Some(b'E') => return Ok((Self::FloatExponential(positive, NumberInt::Int(value)), index)),
+                Some(b'.') => return Ok((Self::Float, index)),
+                Some(b'e') | Some(b'E') => return Ok((Self::Float, index)),
                 _ => return Ok((Self::Int(positive, NumberInt::Int(value)), index)),
             }
         }
@@ -158,16 +155,8 @@ impl IntParse {
                         // we use wrapping add to avoid branching - we know the value cannot wrap
                         value = value.wrapping_mul(10).wrapping_add((digit & 0x0f) as i64);
                     }
-                    Some(b'.') => {
-                        big_value *= 10u64.pow(pow as u32);
-                        let big_int = NumberInt::BigInt(big_value + value);
-                        return Ok((Self::FloatDot(positive, big_int), index));
-                    }
-                    Some(b'e') | Some(b'E') => {
-                        big_value *= 10u64.pow(pow as u32);
-                        let big_int = NumberInt::BigInt(big_value + value);
-                        return Ok((Self::FloatExponential(positive, big_int), index));
-                    }
+                    Some(b'.') => return Ok((Self::Float, index)),
+                    Some(b'e') | Some(b'E') => return Ok((Self::Float, index)),
                     _ => {
                         big_value *= 10u64.pow(pow as u32);
                         let big_int = NumberInt::BigInt(big_value + value);
