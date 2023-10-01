@@ -206,6 +206,8 @@ test_cases!(string_array);
 test_cases!(true_array);
 test_cases!(true_object);
 test_cases!(bigints_array);
+test_cases!(massive_array);
+test_cases!(floats_array);
 // from https://github.com/json-iterator/go-benchmark/blob/179abe5e3f72acce34fb5a16f3473b901fbdd6b9/
 // src/github.com/json-iterator/go-benchmark/benchmark.go#L30C17-L30C29
 test_cases!(medium_response);
