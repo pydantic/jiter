@@ -606,3 +606,29 @@ fn test_recursion_limit_incr() {
         _ => panic!("expected array"),
     }
 }
+
+macro_rules! number_bytes {
+    ($($name:ident: $json:literal => $expected:expr;)*) => {
+        $(
+            paste::item! {
+                #[test]
+                fn [< $name >]() {
+                    let mut jiter = Jiter::new($json);
+                    let bytes = jiter.next_number_bytes().unwrap();
+                    assert_eq!(bytes, $expected);
+                }
+            }
+        )*
+    }
+}
+
+number_bytes! {
+    number_bytes_int: b" 123 " => b"123";
+    number_bytes_float: b" 123.456 " => b"123.456";
+    number_bytes_zero_float: b" 0.456 " => b"0.456";
+    number_bytes_zero: b" 0" => b"0";
+    number_bytes_exp: b" 123e4 " => b"123e4";
+    number_bytes_exp_neg: b" 123e-4 " => b"123e-4";
+    number_bytes_exp_pos: b" 123e+4 " => b"123e+4";
+    number_bytes_exp_decimal: b" 123.456e4 " => b"123.456e4";
+}

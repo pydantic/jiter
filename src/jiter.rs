@@ -3,6 +3,7 @@ use crate::number_decoder::{NumberAny, NumberInt};
 use crate::parse::{Parser, Peak};
 use crate::string_decoder::{StringDecoder, StringDecoderRange, Tape};
 use crate::value::{take_value, JsonValue};
+use crate::NumberRange;
 
 pub type JiterResult<T> = Result<T, JiterError>;
 
@@ -66,8 +67,19 @@ impl<'a> Jiter<'a> {
     pub fn next_float(&mut self) -> JiterResult<f64> {
         let peak = self.peak()?;
         match peak {
-            Peak::Num(positive) => self.known_float(positive).map(|n| n.into()),
+            Peak::Num(first) => self.known_float(first).map(|n| n.into()),
             _ => Err(self.wrong_type(JsonType::Int, peak)),
+        }
+    }
+
+    pub fn next_number_bytes(&mut self) -> JiterResult<&[u8]> {
+        let peak = self.peak()?;
+        match peak {
+            Peak::Num(first) => {
+                let range = self.parser.consume_number::<NumberRange>(first)?;
+                Ok(&self.data[range])
+            }
+            _ => Err(self.wrong_type(JsonType::Float, peak)),
         }
     }
 

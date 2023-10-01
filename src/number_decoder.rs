@@ -156,9 +156,9 @@ impl IntParse {
     }
 }
 
-pub struct NumberDecoderRange;
+pub struct NumberRange;
 
-impl AbstractNumberDecoder for NumberDecoderRange {
+impl AbstractNumberDecoder for NumberRange {
     type Output = Range<usize>;
 
     fn decode(data: &[u8], mut index: usize, first: u8) -> JsonResult<(Self::Output, usize)> {
