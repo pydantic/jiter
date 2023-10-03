@@ -36,6 +36,10 @@ lto = true
 opt-level = 3
 codegen-units = 1
 
+[[test]]
+name = "python"
+required-features = ["python"]
+
 [[bench]]
-name = "python_parse"
+name = "python"
 required-features = ["python"]

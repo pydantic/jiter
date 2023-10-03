@@ -206,7 +206,6 @@ impl AbstractNumberDecoder for NumberRange {
         index += 1;
         while let Some(next) = data.get(index) {
             match next {
-                // TODO proper logic related to leading zeros
                 b'0'..=b'9' => (),
                 b'.' => {
                     index += 1;

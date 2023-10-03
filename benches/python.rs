@@ -50,3 +50,19 @@ fn test_python_parse_medium_response(bench: &mut Bencher) {
         });
     })
 }
+
+#[bench]
+fn bench_python_parse_true_object(bench: &mut Bencher) {
+    let mut file = File::open("./benches/true_object.json").unwrap();
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+    let json_data = contents.as_bytes();
+
+    Python::with_gil(|py| {
+        bench.iter(|| {
+            // Clear PyO3 memory on each loop iteration to avoid long GC traversal overheads.
+            let _pool = unsafe { py.new_pool() };
+            black_box(python_parse(py, black_box(json_data)).unwrap())
+        });
+    })
+}
