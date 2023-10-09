@@ -19,10 +19,6 @@ pub fn python_parse(py: Python, data: &[u8]) -> PyResult<PyObject> {
     let protected_cache = KEYS_CACHE.get_or_init(py, || GILProtected::new(RefCell::new(AHashMap::new())));
     let mut cache: RefMut<AHashMap<String, PyObject>> = protected_cache.get(py).borrow_mut();
 
-    if cache.len() > 100_000 {
-        cache.clear();
-    }
-
     let mut python_parser = PythonParser {
         parser: Parser::new(data),
         tape: Tape::default(),
@@ -115,6 +111,9 @@ impl<'j> PythonParser<'j> {
                             match keys_hashmap.get($key) {
                                 Some(key) => key.clone_ref(py),
                                 None => {
+                                    if keys_hashmap.len() > 100_000 {
+                                        keys_hashmap.clear();
+                                    }
                                     let key_object = PyString::new(py, $key).to_object(py);
                                     // shame we have to cache the key again here, is there way to use `entry()`
                                     // without calling `.to_string()` in the case where the key is already cached?
