@@ -33,6 +33,7 @@ fn test_python_parse_numeric() {
         let obj = python_parse(
             py,
             br#"  { "int": 1, "bigint": 123456789012345678901234567890, "float": 1.2}  "#,
+            true,
         )
         .unwrap();
         assert_eq!(
@@ -43,16 +44,24 @@ fn test_python_parse_numeric() {
 }
 
 #[test]
-fn test_python_parse_other() {
+fn test_python_parse_other_cached() {
     Python::with_gil(|py| {
-        let obj = python_parse(py, br#"["string", true, false, null]"#).unwrap();
+        let obj = python_parse(py, br#"["string", true, false, null]"#, true).unwrap();
+        assert_eq!(obj.as_ref(py).to_string(), "['string', True, False, None]");
+    })
+}
+
+#[test]
+fn test_python_parse_other_no_cach() {
+    Python::with_gil(|py| {
+        let obj = python_parse(py, br#"["string", true, false, null]"#, false).unwrap();
         assert_eq!(obj.as_ref(py).to_string(), "['string', True, False, None]");
     })
 }
 
 #[test]
 fn test_error() {
-    Python::with_gil(|py| match python_parse(py, br#"["string""#) {
+    Python::with_gil(|py| match python_parse(py, br#"["string""#, true) {
         Ok(v) => panic!("unexpectedly valid: {:?}", v),
         Err(e) => {
             assert_eq!(e.to_string(), "ValueError: EOF while parsing a list at line 1 column 9");
@@ -65,7 +74,7 @@ fn test_recursion_limit() {
     let json = (0..10_000).map(|_| "[").collect::<String>();
     let bytes = json.as_bytes();
 
-    Python::with_gil(|py| match python_parse(py, bytes) {
+    Python::with_gil(|py| match python_parse(py, bytes, true) {
         Ok(v) => panic!("unexpectedly valid: {:?}", v),
         Err(e) => {
             assert_eq!(
@@ -83,7 +92,12 @@ fn test_recursion_limit_incr() {
     let bytes = json.as_bytes();
 
     Python::with_gil(|py| {
-        let v = python_parse(py, bytes).unwrap();
+        let v = python_parse(py, bytes, true).unwrap();
         assert_eq!(v.as_ref(py).len().unwrap(), 2000);
-    })
+    });
+
+    Python::with_gil(|py| {
+        let v = python_parse(py, bytes, false).unwrap();
+        assert_eq!(v.as_ref(py).len().unwrap(), 2000);
+    });
 }
