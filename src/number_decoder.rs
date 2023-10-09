@@ -143,6 +143,7 @@ impl IntParse {
             }
         }
         let mut big_value: BigInt = value.into();
+        let mut length = 18;
         loop {
             value = 0;
             for pow in 0..18 {
@@ -160,6 +161,10 @@ impl IntParse {
                         return Ok((Self::Int(positive, big_int), index));
                     }
                 }
+            }
+            length += 18;
+            if length > 4300 {
+                return json_err!(NumberTooLarge, index);
             }
             big_value *= 10u64.pow(18);
             big_value += value;

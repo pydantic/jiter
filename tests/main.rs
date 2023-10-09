@@ -1,5 +1,7 @@
+use num_bigint::BigInt;
 use std::fs::File;
 use std::io::Read;
+use std::str::FromStr;
 
 use smallvec::smallvec;
 
@@ -647,4 +649,31 @@ number_bytes! {
     number_bytes_exp_neg: b" 123e-4 " => b"123e-4";
     number_bytes_exp_pos: b" 123e+4 " => b"123e+4";
     number_bytes_exp_decimal: b" 123.456e4 " => b"123.456e4";
+}
+
+#[test]
+fn test_4300_int() {
+    let json = (0..4300).map(|_| "9".to_string()).collect::<Vec<_>>().join("");
+    let bytes = json.as_bytes();
+    let value = JsonValue::parse(bytes).unwrap();
+    let expected_big_int = BigInt::from_str(&json).unwrap();
+    match value {
+        JsonValue::BigInt(v) => {
+            assert_eq!(v, expected_big_int);
+        }
+        _ => panic!("expected array, got {:?}", value),
+    }
+}
+
+#[test]
+fn test_4302_int_err() {
+    let json = (0..4302).map(|_| "9".to_string()).collect::<Vec<_>>().join("");
+    let bytes = json.as_bytes();
+    match JsonValue::parse(bytes) {
+        Ok(v) => panic!("unexpectedly valid: {:?}", v),
+        Err(e) => {
+            assert_eq!(e.error_type, JsonErrorType::NumberTooLarge);
+            assert_eq!(e.index, 4301);
+        }
+    }
 }

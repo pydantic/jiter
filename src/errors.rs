@@ -17,6 +17,7 @@ pub enum JsonErrorType {
     // same
     StringEscapeNotSupported(usize),
     InvalidNumber,
+    NumberTooLarge,
     FloatExpectingInt,
     RecursionLimitExceeded,
 }
