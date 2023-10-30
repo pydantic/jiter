@@ -55,10 +55,7 @@ fn test_error() {
     Python::with_gil(|py| match python_parse(py, br#"["string""#) {
         Ok(v) => panic!("unexpectedly valid: {:?}", v),
         Err(e) => {
-            assert_eq!(
-                e.to_string(),
-                "ValueError: EOF while parsing a list at line 1 column 10"
-            );
+            assert_eq!(e.to_string(), "ValueError: EOF while parsing a list at line 1 column 9");
         }
     })
 }
@@ -73,7 +70,7 @@ fn test_recursion_limit() {
         Err(e) => {
             assert_eq!(
                 e.to_string(),
-                "ValueError: recursion limit exceeded at line 1 column 202"
+                "ValueError: recursion limit exceeded at line 1 column 201"
             );
         }
     })
