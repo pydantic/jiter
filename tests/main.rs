@@ -184,6 +184,9 @@ single_tests! {
     bad_null2: err => "nul", EofWhileParsingValue;
     object_trailing_comma: err => r#"{"foo": "bar",}"#, TrailingComma;
     array_trailing_comma: err => r#"[1, 2,]"#, TrailingComma;
+    array_wrong_char_after_comma: err => r#"[1, 2,;"#, ExpectedSomeValue;
+    object_wrong_char: err => r#"{"foo":42;"#, ExpectedObjectCommaOrEnd;
+    object_wrong_char_after_comma: err => r#"{"foo":42,;"#, KeyMustBeAString;
     array_bool: ok => "[true, false]", "[ @ 1:1, true @ 1:2, false @ 1:8, ]";
     object_string: ok => r#"{"foo": "ba"}"#, "{ @ 1:1, Key(2..5), String(9..11) @ 1:9, }";
     object_null: ok => r#"{"foo": null}"#, "{ @ 1:1, Key(2..5), null @ 1:9, }";

@@ -67,7 +67,8 @@ impl<'j> PythonParser<'j> {
                     let mut vec: SmallVec<[PyObject; 8]> = SmallVec::with_capacity(8);
                     let v = self._check_take_value(py, peak_first)?;
                     vec.push(v);
-                    while let Some(peak) = self.parser.array_step().map_err(mje)? {
+                    while self.parser.array_step().map_err(mje)? {
+                        let peak = self.parser.peak_array_step().map_err(mje)?;
                         let v = self._check_take_value(py, peak)?;
                         vec.push(v);
                     }
@@ -81,12 +82,12 @@ impl<'j> PythonParser<'j> {
                 let dict = PyDict::new(py);
                 if let Some(first_key) = self.parser.object_first::<StringDecoder>(&mut self.tape).map_err(mje)? {
                     let first_key = PyString::new(py, first_key);
-                    let peak = self.parser.peak().map_err(mje)?;
+                    let peak = self.parser.peak_object_value().map_err(mje)?;
                     let first_value = self._check_take_value(py, peak)?;
                     dict.set_item(first_key, first_value)?;
                     while let Some(key) = self.parser.object_step::<StringDecoder>(&mut self.tape).map_err(mje)? {
                         let key = PyString::new(py, key);
-                        let peak = self.parser.peak().map_err(mje)?;
+                        let peak = self.parser.peak_object_value().map_err(mje)?;
                         let value = self._check_take_value(py, peak)?;
                         dict.set_item(key, value)?;
                     }

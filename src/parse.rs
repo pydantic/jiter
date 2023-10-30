@@ -87,7 +87,7 @@ impl<'a> Parser<'a> {
                     if next == b']' {
                         json_err!(TrailingComma, self.index)
                     } else {
-                        json_err!(ExpectedListCommaOrEnd, self.index)
+                        json_err!(ExpectedSomeValue, self.index)
                     }
                 }
             }
@@ -183,7 +183,7 @@ impl<'a> Parser<'a> {
                     self.index += 1;
                     Ok(None)
                 }
-                _ => json_err!(Todo, self.index),
+                _ => json_err!(ExpectedObjectCommaOrEnd, self.index),
             }
         } else {
             json_err!(EofWhileParsingObject, self.index)
