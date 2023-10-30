@@ -71,7 +71,7 @@ impl<'a> Parser<'a> {
         if let Some(next) = self.eat_whitespace() {
             match Peak::new(next) {
                 Some(p) => Ok(p),
-                None => json_err!(ExpectedSomeValue, self.index),
+                None => json_err!(ExpectedSomeValue, self.index + 1),
             }
         } else {
             json_err!(EofWhileParsingValue, self.index)
@@ -85,9 +85,9 @@ impl<'a> Parser<'a> {
                 None => {
                     // if next is a `]`, we have a "trailing comma" error
                     if next == b']' {
-                        json_err!(TrailingComma, self.index)
+                        json_err!(TrailingComma, self.index + 1)
                     } else {
-                        json_err!(ExpectedSomeValue, self.index)
+                        json_err!(ExpectedSomeValue, self.index + 2)
                     }
                 }
             }
@@ -100,10 +100,10 @@ impl<'a> Parser<'a> {
         if let Some(next) = self.eat_whitespace() {
             match Peak::new(next) {
                 Some(p) => Ok(p),
-                None => json_err!(ExpectedSomeValue, self.index),
+                None => json_err!(ExpectedSomeValue, self.index + 1),
             }
         } else {
-            json_err!(EofWhileParsingObject, self.index)
+            json_err!(EofWhileParsingObject, self.index + 1)
         }
     }
 
@@ -117,7 +117,7 @@ impl<'a> Parser<'a> {
                 self.peak_array_step().map(Some)
             }
         } else {
-            json_err!(EofWhileParsingList, self.index)
+            json_err!(EofWhileParsingList, self.index + 1)
         }
     }
 
@@ -132,7 +132,7 @@ impl<'a> Parser<'a> {
                     self.index += 1;
                     Ok(false)
                 }
-                _ => json_err!(ExpectedListCommaOrEnd, self.index),
+                _ => json_err!(ExpectedListCommaOrEnd, self.index + 1),
             }
         } else {
             json_err!(EofWhileParsingList, self.index)
@@ -154,7 +154,7 @@ impl<'a> Parser<'a> {
                     self.index += 1;
                     Ok(None)
                 }
-                _ => json_err!(KeyMustBeAString, self.index),
+                _ => json_err!(KeyMustBeAString, self.index + 1),
             }
         } else {
             json_err!(EofWhileParsingObject, self.index)
@@ -174,8 +174,8 @@ impl<'a> Parser<'a> {
                     self.index += 1;
                     match self.eat_whitespace() {
                         Some(b'"') => self.object_key::<D>(tape).map(Some),
-                        Some(b'}') => json_err!(TrailingComma, self.index),
-                        Some(_) => json_err!(KeyMustBeAString, self.index),
+                        Some(b'}') => json_err!(TrailingComma, self.index + 1),
+                        Some(_) => json_err!(KeyMustBeAString, self.index + 1),
                         None => json_err!(EofWhileParsingObject, self.index),
                     }
                 }
@@ -183,7 +183,7 @@ impl<'a> Parser<'a> {
                     self.index += 1;
                     Ok(None)
                 }
-                _ => json_err!(ExpectedObjectCommaOrEnd, self.index),
+                _ => json_err!(ExpectedObjectCommaOrEnd, self.index + 1),
             }
         } else {
             json_err!(EofWhileParsingObject, self.index)

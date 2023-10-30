@@ -1,7 +1,7 @@
 #![no_main]
 
-use jiter::{JsonValue as JiterValue};
-use serde_json::{Value as SerdeValue, Number as SerdeNumber};
+use jiter::{JsonValue as JiterValue, JsonValueError as JiterError};
+use serde_json::{Value as SerdeValue, Number as SerdeNumber, Error as SerdeError};
 
 use libfuzzer_sys::fuzz_target;
 use num_traits::ToPrimitive;
@@ -72,19 +72,38 @@ fn ints_equal(i1: &i64, n2: &SerdeNumber) -> bool {
     return floats_approx(i1.to_f64(), n2.as_f64())
 }
 
+fn remove_suffix(s: &str) -> &str {
+    match s.find("line ") {
+        Some(line_index) => {
+            &s[..line_index]
+        },
+        None => s,
+    }
+}
 
-// fuzz_target!(|json: String| {
-//     let json_data = json.as_bytes();
-fuzz_target!(|json_data: &[u8]| {
+fn errors_equal(jiter_error: &JiterError, serde_error: &SerdeError) -> bool {
+    remove_suffix(&jiter_error.to_string()) == remove_suffix(&serde_error.to_string())
+}
+
+fuzz_target!(|json: String| {
+    let json_data = json.as_bytes();
+// fuzz_target!(|json_data: &[u8]| {
     let jiter_value = match JiterValue::parse(json_data) {
         Ok(v) => v,
-        Err(error) => {
+        Err(jiter_error) => {
             match serde_json::from_slice::<SerdeValue>(json_data) {
                 Ok(serde_value) => {
-                    dbg!(json_data, serde_value, error);
+                    dbg!(json_data, serde_value, jiter_error);
                     panic!("jiter failed to parse when serde passed");
                 },
-                Err(_) => return,
+                Err(serde_error) => {
+                    if errors_equal(&jiter_error, &serde_error) {
+                        return
+                    } else {
+                        dbg!(&jiter_error, jiter_error.to_string(), &serde_error, serde_error.to_string());
+                        panic!("errors not not equal");
+                    }
+                }
             }
         },
     };

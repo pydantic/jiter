@@ -80,7 +80,7 @@ impl<'t> AbstractStringDecoder<'t> for StringDecoder<'t> {
             }
             index += 1;
         }
-        json_err!(EofWhileParsingString, index - 1) // -1 to help match serde's error locations
+        json_err!(EofWhileParsingString, index) // -1 to help match serde's error locations
     }
 }
 
@@ -109,14 +109,14 @@ fn parse_escape(data: &[u8], index: usize, start: usize) -> JsonResult<(char, us
 
                 match char::from_u32(n2) {
                     Some(c) => Ok((c, index)),
-                    None => json_err!(EofWhileParsingString, start - 1),
+                    None => json_err!(EofWhileParsingString, index),
                 }
             }
             _ => json_err!(InvalidEscape, index - start, start - 1),
         },
         _ => match char::from_u32(n as u32) {
             Some(c) => Ok((c, index)),
-            None => json_err!(EofWhileParsingString, start - 1),
+            None => json_err!(EofWhileParsingString, index),
         },
     }
 }
@@ -127,7 +127,7 @@ fn parse_u4(data: &[u8], mut index: usize, start: usize) -> JsonResult<(u16, usi
         index += 1;
         let c = match data.get(index) {
             Some(c) => *c,
-            None => return json_err!(EofWhileParsingString, start - 1),
+            None => return json_err!(EofWhileParsingString, index),
         };
         let hex = match c {
             b'0'..=b'9' => (c & 0x0f) as u16,
@@ -169,7 +169,7 @@ impl<'t> AbstractStringDecoder<'t> for StringDecoderRange {
                             _ => return json_err!(InvalidEscape, index - start, start - 1),
                         }
                     } else {
-                        return json_err!(EofWhileParsingString, start - 1);
+                        return json_err!(EofWhileParsingString, index);
                     }
                     index += 1;
                 }
@@ -178,6 +178,6 @@ impl<'t> AbstractStringDecoder<'t> for StringDecoderRange {
                 }
             }
         }
-        json_err!(EofWhileParsingString, start - 1)
+        json_err!(EofWhileParsingString, index)
     }
 }

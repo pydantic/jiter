@@ -2,7 +2,7 @@ use num_bigint::BigInt;
 use num_traits::cast::ToPrimitive;
 use std::ops::Range;
 
-use lexical_core::{format as lexical_format, parse_partial_with_options, ParseFloatOptions};
+use lexical_core::{format as lexical_format, parse_partial_with_options, Error as LexicalError, ParseFloatOptions};
 
 use crate::errors::{json_err, JsonResult};
 
@@ -68,7 +68,13 @@ impl AbstractNumberDecoder for NumberFloat {
         let options = ParseFloatOptions::new();
         match parse_partial_with_options::<f64, JSON>(&data[start..], &options) {
             Ok((float, index)) => Ok((float, index + start)),
-            Err(_) => json_err!(InvalidNumber, index),
+            Err(e) => {
+                // dbg!(e);
+                match e {
+                    LexicalError::EmptyExponent(_) => json_err!(EofWhileParsingValue, index),
+                    _ => json_err!(InvalidNumber, index),
+                }
+            }
         }
     }
 }

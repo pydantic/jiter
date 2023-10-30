@@ -109,7 +109,8 @@ macro_rules! single_expect_ok_or_error {
             }
         }
     };
-    ($name:ident, err, $json:literal, $error:expr) => {
+
+    ($name:ident, err, $json:literal, $expected_error:literal) => {
         paste::item! {
             #[allow(non_snake_case)]
             #[test]
@@ -119,7 +120,23 @@ macro_rules! single_expect_ok_or_error {
                 let first_value = match result {
                     Ok(v) => v,
                     Err(e) => {
-                        assert_eq!(e.error_type, JsonErrorType::$error);
+                        let position = parser.error_position(e.index);
+                        let actual_error = format!("{:?} @ {}", e.error_type, position.short());
+                        assert_eq!(actual_error, $expected_error);
+
+                        // let r = serde_json::from_str::<serde_json::Value>($json);
+                        // let serde_position = match r {
+                        //     Ok(v) => panic!("serde unexpectedly valid: {:?} -> {:?}", $json, v),
+                        //     Err(e) => (e.line(), e.column()),
+                        // };
+                        // let jiter_position = (position.line, position.column);
+                        // assert_eq!(
+                        //     jiter_position,
+                        //     serde_position,
+                        //     "jiter position {:?} doesn't match serde position {:?}",
+                        //     jiter_position,
+                        //     serde_position
+                        // );
                         return
                     },
                 };
@@ -127,7 +144,9 @@ macro_rules! single_expect_ok_or_error {
                 match result {
                     Ok(_) => panic!("unexpectedly valid at finish: {:?} -> {:?}", $json, first_value),
                     Err(e) => {
-                        assert_eq!(e.error_type, JsonErrorType::$error);
+                        let position = parser.error_position(e.index);
+                        let actual_error = format!("{:?} @ {}", e.error_type, position.short());
+                        assert_eq!(actual_error, $expected_error);
                         return
                     },
                 }
@@ -137,7 +156,7 @@ macro_rules! single_expect_ok_or_error {
 }
 
 macro_rules! single_tests {
-    ($($name:ident: $ok_or_err:ident => $input:literal, $expected:expr;)*) => {
+    ($($name:ident: $ok_or_err:ident => $input:literal, $expected:literal;)*) => {
         $(
             single_expect_ok_or_error!($name, $ok_or_err, $input, $expected);
         )*
@@ -145,57 +164,59 @@ macro_rules! single_tests {
 }
 
 single_tests! {
-    string: ok => r#""foobar""#, "String(1..7) @ 1:1";
-    int_pos: ok => "1234", "Int(1234) @ 1:1";
-    int_neg: ok => "-1234", "Int(-1234) @ 1:1";
-    big_int: ok => "92233720368547758070", "BigInt(92233720368547758070) @ 1:1";
-    big_int_neg: ok => "-92233720368547758070", "BigInt(-92233720368547758070) @ 1:1";
-    big_int2: ok => "99999999999999999999999999999999999999999999999999", "BigInt(99999999999999999999999999999999999999999999999999) @ 1:1";
-    float_pos: ok => "12.34", "Float(12.34) @ 1:1";
-    float_neg: ok => "-12.34", "Float(-12.34) @ 1:1";
-    float_exp: ok => "2.2e10", "Float(22000000000) @ 1:1";
-    float_simple_exp: ok => "20e10", "Float(200000000000) @ 1:1";
-    float_exp_pos: ok => "2.2e+10", "Float(22000000000) @ 1:1";
-    float_exp_neg: ok => "2.2e-2", "Float(0.022) @ 1:1";
-    float_exp_zero: ok => "0.000e123", "Float(0) @ 1:1";
-    float_exp_massive1: ok => "2e2147483647", "Float(inf) @ 1:1";
-    float_exp_massive2: ok => "2e2147483648", "Float(inf) @ 1:1";
-    float_exp_massive3: ok => "2e2147483646", "Float(inf) @ 1:1";
-    float_exp_massive4: ok => "2e2147483646", "Float(inf) @ 1:1";
-    float_exp_massive5: ok => "18446744073709551615000.0", "Float(18446744073709552000000) @ 1:1";
-    float_exp_massive6: ok => "0.0E667", "Float(0) @ 1:1";
-    float_exp_tiny0: ok => "2e-2147483647", "Float(0) @ 1:1";
-    float_exp_tiny1: ok => "2e-2147483648", "Float(0) @ 1:1";
-    float_exp_tiny2: ok => "2e-2147483646", "Float(0) @ 1:1";
-    float_exp_tiny3: ok => "8e-7766666666", "Float(0) @ 1:1";
-    float_exp_tiny4: ok => "200.08e-76200000102", "Float(0) @ 1:1";
-    float_exp_tiny5: ok => "0e459", "Float(0) @ 1:1";
-    null: ok => "null", "null @ 1:1";
-    v_true: ok => "true", "true @ 1:1";
-    v_false: ok => "false", "false @ 1:1";
-    offset_true: ok => "  true", "true @ 1:3";
-    string_unclosed: err => r#""foobar"#, EofWhileParsingString;
-    bad_int: err => "-", EofWhileParsingValue;
-    bad_true1: err => "truX", ExpectedSomeIdent;
-    bad_true2: err => "tru", EofWhileParsingValue;
-    bad_false1: err => "falsX", ExpectedSomeIdent;
-    bad_false2: err => "fals", EofWhileParsingValue;
-    bad_null1: err => "nulX", ExpectedSomeIdent;
-    bad_null2: err => "nul", EofWhileParsingValue;
-    object_trailing_comma: err => r#"{"foo": "bar",}"#, TrailingComma;
-    array_trailing_comma: err => r#"[1, 2,]"#, TrailingComma;
-    array_wrong_char_after_comma: err => r#"[1, 2,;"#, ExpectedSomeValue;
-    object_wrong_char: err => r#"{"foo":42;"#, ExpectedObjectCommaOrEnd;
-    object_wrong_char_after_comma: err => r#"{"foo":42,;"#, KeyMustBeAString;
-    array_bool: ok => "[true, false]", "[ @ 1:1, true @ 1:2, false @ 1:8, ]";
-    object_string: ok => r#"{"foo": "ba"}"#, "{ @ 1:1, Key(2..5), String(9..11) @ 1:9, }";
-    object_null: ok => r#"{"foo": null}"#, "{ @ 1:1, Key(2..5), null @ 1:9, }";
-    object_bool_compact: ok => r#"{"foo":true}"#, "{ @ 1:1, Key(2..5), true @ 1:8, }";
-    deep_array: ok => r#"[["Not too deep"]]"#, "[ @ 1:1, [ @ 1:2, String(3..15) @ 1:3, ], ]";
-    object_key_int: err => r#"{4: 4}"#, KeyMustBeAString;
-    array_no_close: err => r#"["#, EofWhileParsingList;
-    array_double_close: err => "[1]]", TrailingCharacters;
-    double_zero: err => "001", InvalidNumber;
+    string: ok => r#""foobar""#, "String(1..7) @ 1:0";
+    int_pos: ok => "1234", "Int(1234) @ 1:0";
+    int_neg: ok => "-1234", "Int(-1234) @ 1:0";
+    big_int: ok => "92233720368547758070", "BigInt(92233720368547758070) @ 1:0";
+    big_int_neg: ok => "-92233720368547758070", "BigInt(-92233720368547758070) @ 1:0";
+    big_int2: ok => "99999999999999999999999999999999999999999999999999", "BigInt(99999999999999999999999999999999999999999999999999) @ 1:0";
+    float_pos: ok => "12.34", "Float(12.34) @ 1:0";
+    float_neg: ok => "-12.34", "Float(-12.34) @ 1:0";
+    float_exp: ok => "2.2e10", "Float(22000000000) @ 1:0";
+    float_simple_exp: ok => "20e10", "Float(200000000000) @ 1:0";
+    float_exp_pos: ok => "2.2e+10", "Float(22000000000) @ 1:0";
+    float_exp_neg: ok => "2.2e-2", "Float(0.022) @ 1:0";
+    float_exp_zero: ok => "0.000e123", "Float(0) @ 1:0";
+    float_exp_massive1: ok => "2e2147483647", "Float(inf) @ 1:0";
+    float_exp_massive2: ok => "2e2147483648", "Float(inf) @ 1:0";
+    float_exp_massive3: ok => "2e2147483646", "Float(inf) @ 1:0";
+    float_exp_massive4: ok => "2e2147483646", "Float(inf) @ 1:0";
+    float_exp_massive5: ok => "18446744073709551615000.0", "Float(18446744073709552000000) @ 1:0";
+    float_exp_massive6: ok => "0.0E667", "Float(0) @ 1:0";
+    float_exp_tiny0: ok => "2e-2147483647", "Float(0) @ 1:0";
+    float_exp_tiny1: ok => "2e-2147483648", "Float(0) @ 1:0";
+    float_exp_tiny2: ok => "2e-2147483646", "Float(0) @ 1:0";
+    float_exp_tiny3: ok => "8e-7766666666", "Float(0) @ 1:0";
+    float_exp_tiny4: ok => "200.08e-76200000102", "Float(0) @ 1:0";
+    float_exp_tiny5: ok => "0e459", "Float(0) @ 1:0";
+    null: ok => "null", "null @ 1:0";
+    v_true: ok => "true", "true @ 1:0";
+    v_false: ok => "false", "false @ 1:0";
+    offset_true: ok => "  true", "true @ 1:2";
+    empty: err => "", "EofWhileParsingValue @ 1:0";
+    string_unclosed: err => r#""foobar"#, "EofWhileParsingString @ 1:7";
+    bad_int: err => "-", "EofWhileParsingValue @ 1:1";
+    bad_true1: err => "truX", "ExpectedSomeIdent @ 1:0";
+    bad_true2: err => "tru", "EofWhileParsingValue @ 1:3";
+    bad_false1: err => "falsX", "ExpectedSomeIdent @ 1:0";
+    bad_false2: err => "fals", "EofWhileParsingValue @ 1:4";
+    bad_null1: err => "nulX", "ExpectedSomeIdent @ 1:0";
+    bad_null2: err => "nul", "EofWhileParsingValue @ 1:3";
+    object_trailing_comma: err => r#"{"foo": "bar",}"#, "TrailingComma @ 1:15";
+    array_trailing_comma: err => r#"[1, 2,]"#, "TrailingComma @ 1:7";
+    array_wrong_char_after_comma: err => r#"[1, 2,;"#, "ExpectedSomeValue @ 1:7";
+    object_wrong_char: err => r#"{"foo":42;"#, "ExpectedObjectCommaOrEnd @ 1:10";
+    object_wrong_char_after_comma: err => r#"{"foo":42,;"#, "KeyMustBeAString @ 1:11";
+    array_bool: ok => "[true, false]", "[ @ 1:0, true @ 1:1, false @ 1:7, ]";
+    object_string: ok => r#"{"foo": "ba"}"#, "{ @ 1:0, Key(2..5), String(9..11) @ 1:8, }";
+    object_null: ok => r#"{"foo": null}"#, "{ @ 1:0, Key(2..5), null @ 1:8, }";
+    object_bool_compact: ok => r#"{"foo":true}"#, "{ @ 1:0, Key(2..5), true @ 1:7, }";
+    deep_array: ok => r#"[["Not too deep"]]"#, "[ @ 1:0, [ @ 1:1, String(3..15) @ 1:2, ], ]";
+    object_key_int: err => r#"{4: 4}"#, "KeyMustBeAString @ 1:2";
+    array_no_close: err => r#"["#, "EofWhileParsingList @ 1:1";
+    array_double_close: err => "[1]]", "TrailingCharacters @ 1:3";
+    double_zero: err => "001", "InvalidNumber @ 1:0";
+    invalid_float: err => "0E", "EofWhileParsingValue @ 1:0";
 }
 
 #[test]
@@ -224,7 +245,7 @@ fn json_parse_str() {
     let mut parser = Parser::new(data);
     let peak = parser.peak().unwrap();
     assert!(matches!(peak, Peak::String));
-    assert_eq!(parser.current_position(), FilePosition::new(1, 2));
+    assert_eq!(parser.current_position(), FilePosition::new(1, 1));
 
     let result_string = parser.consume_string::<StringDecoder>(&mut tape).unwrap();
     assert_eq!(result_string, "foobar");
@@ -311,13 +332,13 @@ macro_rules! test_position {
 }
 
 test_position! {
-    first_line_zero: b"123456", 0, FilePosition::new(1, 1);
-    first_line_first: b"123456", 1, FilePosition::new(1, 2);
-    first_line_3rd: b"123456", 3, FilePosition::new(1, 4);
-    first_line_last: b"123456", 6, FilePosition::new(1, 7);
-    first_line_after: b"123456", 7, FilePosition::new(1, 7);
-    first_line_last2: b"123456\n789", 6, FilePosition::new(1, 7);
-    second_line: b"123456\n789", 7, FilePosition::new(2, 1);
+    first_line_zero: b"123456", 0, FilePosition::new(1, 0);
+    first_line_first: b"123456", 1, FilePosition::new(1, 1);
+    first_line_3rd: b"123456", 3, FilePosition::new(1, 3);
+    first_line_last: b"123456", 6, FilePosition::new(1, 6);
+    first_line_after: b"123456", 7, FilePosition::new(1, 6);
+    first_line_last2: b"123456\n789", 6, FilePosition::new(1, 6);
+    second_line: b"123456\n789", 7, FilePosition::new(2, 0);
 }
 
 #[test]
@@ -366,7 +387,7 @@ fn bad_high_order_string() {
         Err(e) => {
             assert_eq!(e.error_type, JsonErrorType::InvalidUnicodeCodePoint(2));
             assert_eq!(e.index, 0);
-            assert_eq!(e.position, FilePosition::new(1, 1));
+            assert_eq!(e.position, FilePosition::new(1, 0));
         }
     };
 }
@@ -538,7 +559,7 @@ fn jiter_bytes_u_escape() {
                 e.error_type,
                 JiterErrorType::JsonError(JsonErrorType::StringEscapeNotSupported(4))
             );
-            assert_eq!(jiter.error_position(&e), FilePosition::new(1, 9));
+            assert_eq!(jiter.error_position(&e), FilePosition::new(1, 8));
         }
     }
 }
@@ -564,7 +585,7 @@ fn jiter_trailing_bracket() {
                 e.error_type,
                 JiterErrorType::JsonError(JsonErrorType::TrailingCharacters)
             );
-            assert_eq!(jiter.error_position(&e), FilePosition::new(1, 4));
+            assert_eq!(jiter.error_position(&e), FilePosition::new(1, 3));
         }
     }
 }
@@ -584,7 +605,7 @@ fn jiter_wrong_type() {
                 }
             );
             assert_eq!(e.index, 1);
-            assert_eq!(jiter.error_position(&e), FilePosition::new(1, 2));
+            assert_eq!(jiter.error_position(&e), FilePosition::new(1, 1));
         }
     }
 }

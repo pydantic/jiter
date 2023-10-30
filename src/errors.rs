@@ -249,7 +249,7 @@ impl FilePosition {
         }
         Self {
             line,
-            column: index - last_line_start + 1,
+            column: index - last_line_start,
         }
     }
 
