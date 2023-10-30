@@ -42,6 +42,7 @@ impl std::fmt::Display for JsonErrorType {
                 write!(f, "string_escape_not_supported")
             }
             JsonErrorType::InvalidNumber => write!(f, "invalid_number"),
+            JsonErrorType::NumberTooLarge => write!(f, "number_too_large"),
             JsonErrorType::FloatExpectingInt => write!(f, "float_expecting_int"),
             JsonErrorType::RecursionLimitExceeded => write!(f, "recursion_limit_exceeded"),
             // These are designed to match serde
