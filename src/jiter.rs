@@ -42,6 +42,10 @@ impl<'a> Jiter<'a> {
 
     pub fn next_bool(&mut self) -> JiterResult<bool> {
         let peak = self.peak()?;
+        self.known_bool(peak)
+    }
+
+    pub fn known_bool(&mut self, peak: Peak) -> JiterResult<bool> {
         match peak {
             Peak::True => {
                 self.parser.consume_true()?;
@@ -63,12 +67,20 @@ impl<'a> Jiter<'a> {
         }
     }
 
+    pub fn known_number(&mut self, first: u8) -> JiterResult<NumberAny> {
+        self.parser.consume_number::<NumberAny>(first).map_err(Into::into)
+    }
+
     pub fn next_int(&mut self) -> JiterResult<NumberInt> {
         let peak = self.peak()?;
         match peak {
             Peak::Num(first) => self.known_int(first),
             _ => Err(self.wrong_type(JsonType::Int, peak)),
         }
+    }
+
+    pub fn known_int(&mut self, first: u8) -> JiterResult<NumberInt> {
+        self.parser.consume_number::<NumberInt>(first).map_err(Into::into)
     }
 
     pub fn next_float(&mut self) -> JiterResult<f64> {
@@ -93,9 +105,15 @@ impl<'a> Jiter<'a> {
     pub fn next_str(&mut self) -> JiterResult<&str> {
         let peak = self.peak()?;
         match peak {
-            Peak::String => self.known_string(),
+            Peak::String => self.known_str(),
             _ => Err(self.wrong_type(JsonType::String, peak)),
         }
+    }
+
+    pub fn known_str(&mut self) -> JiterResult<&str> {
+        self.parser
+            .consume_string::<StringDecoder>(&mut self.tape)
+            .map_err(Into::into)
     }
 
     pub fn next_bytes(&mut self) -> JiterResult<&[u8]> {
@@ -126,7 +144,7 @@ impl<'a> Jiter<'a> {
         self.parser.array_first().map_err(Into::into)
     }
 
-    pub fn array_step(&mut self) -> JiterResult<Option<Peak>> {
+    pub fn array_step(&mut self) -> JiterResult<bool> {
         self.parser.array_step().map_err(Into::into)
     }
 
@@ -165,20 +183,6 @@ impl<'a> Jiter<'a> {
 
     pub fn finish(&mut self) -> JiterResult<()> {
         self.parser.finish().map_err(Into::into)
-    }
-
-    pub fn known_string(&mut self) -> JiterResult<&str> {
-        self.parser
-            .consume_string::<StringDecoder>(&mut self.tape)
-            .map_err(Into::into)
-    }
-
-    pub fn known_int(&mut self, first: u8) -> JiterResult<NumberInt> {
-        self.parser.consume_number::<NumberInt>(first).map_err(Into::into)
-    }
-
-    pub fn known_number(&mut self, first: u8) -> JiterResult<NumberAny> {
-        self.parser.consume_number::<NumberAny>(first).map_err(Into::into)
     }
 
     fn wrong_type(&self, expected: JsonType, peak: Peak) -> JiterError {

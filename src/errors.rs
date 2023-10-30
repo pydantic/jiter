@@ -2,55 +2,122 @@ use std::fmt;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum JsonErrorType {
-    UnexpectedCharacter,
-    UnexpectedEnd,
-    InvalidTrue,
-    InvalidFalse,
-    InvalidNull,
-    // the usize here is the position within the string that is invalid
-    InvalidString(usize),
-    // same
-    InvalidStringEscapeSequence(usize),
-    // same
+    // any other error, placeholder until we can remove
+    Todo,
+
+    /// string escape sequences are not supported in this method, usize here is the position within the string
+    /// that is invalid
     StringEscapeNotSupported(usize),
-    InvalidNumber,
-    NumberTooLarge,
+
+    /// float value was found where an int was expected
     FloatExpectingInt,
-    RecursionLimitExceeded,
-    // These are designed to match serde
-    NonStringKey,
-    ExpectedIdent,
-    ExpectedValue,
+
+    /// NOTE: all errors from here on are copied from serde_json
+    /// [src/error.rs](https://github.com/serde-rs/json/blob/v1.0.107/src/error.rs#L236)
+    /// with `Io` and `Message` removed
+    ///
+    /// EOF while parsing a list.
+    EofWhileParsingList,
+
+    /// EOF while parsing an object.
+    EofWhileParsingObject,
+
+    /// EOF while parsing a string.
     EofWhileParsingString,
+
+    /// EOF while parsing a JSON value.
+    EofWhileParsingValue,
+
+    /// Expected this character to be a `':'`.
+    ExpectedColon,
+
+    /// Expected this character to be either a `','` or a `']'`.
+    ExpectedListCommaOrEnd,
+
+    /// Expected this character to be either a `','` or a `'}'`.
+    ExpectedObjectCommaOrEnd,
+
+    /// Expected to parse either a `true`, `false`, or a `null`.
+    ExpectedSomeIdent,
+
+    /// Expected this character to start a JSON value.
+    ExpectedSomeValue,
+
+    /// Expected this character to be a `"`.
+    ExpectedDoubleQuote,
+
+    /// Invalid hex escape code.
+    InvalidEscape(usize),
+
+    /// Invalid number.
+    InvalidNumber,
+
+    /// Number is bigger than the maximum value of its type.
+    NumberOutOfRange,
+
+    /// Invalid unicode code point.
+    InvalidUnicodeCodePoint(usize),
+
+    /// Control character found while parsing a string.
+    ControlCharacterWhileParsingString(usize),
+
+    /// Object key is not a string.
+    KeyMustBeAString,
+
+    /// Contents of key were supposed to be a number.
+    ExpectedNumericKey,
+
+    /// Object key is a non-finite float value.
+    FloatKeyMustBeFinite,
+
+    /// Lone leading surrogate in hex escape.
+    LoneLeadingSurrogateInHexEscape,
+
+    /// JSON has a comma after the last value in an array or map.
     TrailingComma,
+
+    /// JSON has non-whitespace trailing characters after the value.
+    TrailingCharacters,
+
+    /// Unexpected end of hex escape.
+    UnexpectedEndOfHexEscape,
+
+    /// Encountered nesting of JSON maps and arrays more than 128 layers deep.
+    RecursionLimitExceeded,
 }
 
 impl std::fmt::Display for JsonErrorType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // the outputs here are chosen to match serde
+        // Messages for enum members copied from serde_json are unchanged
         match self {
-            JsonErrorType::UnexpectedCharacter => write!(f, "unexpected_character"),
-            JsonErrorType::UnexpectedEnd => write!(f, "unexpected_end"),
-            JsonErrorType::InvalidTrue => write!(f, "invalid_true"),
-            JsonErrorType::InvalidFalse => write!(f, "invalid_false"),
-            JsonErrorType::InvalidNull => write!(f, "invalid_null"),
-            JsonErrorType::InvalidString(_) => write!(f, "invalid_string"),
-            JsonErrorType::InvalidStringEscapeSequence(_) => {
-                write!(f, "invalid_string_escape_sequence")
+            Self::Todo => f.write_str("todo"),
+            Self::StringEscapeNotSupported(_) => f.write_str("string escape sequences are not supported"),
+            Self::FloatExpectingInt => f.write_str("float value was found where an int was expected"),
+            Self::EofWhileParsingList => f.write_str("EOF while parsing a list"),
+            Self::EofWhileParsingObject => f.write_str("EOF while parsing an object"),
+            Self::EofWhileParsingString => f.write_str("EOF while parsing a string"),
+            Self::EofWhileParsingValue => f.write_str("EOF while parsing a value"),
+            Self::ExpectedColon => f.write_str("expected `:`"),
+            Self::ExpectedListCommaOrEnd => f.write_str("expected `,` or `]`"),
+            Self::ExpectedObjectCommaOrEnd => f.write_str("expected `,` or `}`"),
+            Self::ExpectedSomeIdent => f.write_str("expected ident"),
+            Self::ExpectedSomeValue => f.write_str("expected value"),
+            Self::ExpectedDoubleQuote => f.write_str("expected `\"`"),
+            Self::InvalidEscape(_) => f.write_str("invalid escape"),
+            Self::InvalidNumber => f.write_str("invalid number"),
+            Self::NumberOutOfRange => f.write_str("number out of range"),
+            Self::InvalidUnicodeCodePoint(_) => f.write_str("invalid unicode code point"),
+            Self::ControlCharacterWhileParsingString(_) => {
+                f.write_str("control character (\\u0000-\\u001F) found while parsing a string")
             }
-            JsonErrorType::StringEscapeNotSupported(_) => {
-                write!(f, "string_escape_not_supported")
-            }
-            JsonErrorType::InvalidNumber => write!(f, "invalid_number"),
-            JsonErrorType::NumberTooLarge => write!(f, "number_too_large"),
-            JsonErrorType::FloatExpectingInt => write!(f, "float_expecting_int"),
-            JsonErrorType::RecursionLimitExceeded => write!(f, "recursion_limit_exceeded"),
-            // These are designed to match serde
-            JsonErrorType::NonStringKey => write!(f, "key must be a string"),
-            JsonErrorType::ExpectedIdent => write!(f, "expected ident"),
-            JsonErrorType::ExpectedValue => write!(f, "expected value"),
-            JsonErrorType::EofWhileParsingString => write!(f, "EOF while parsing a string"),
-            JsonErrorType::TrailingComma => write!(f, "trailing comma"),
+            Self::KeyMustBeAString => f.write_str("key must be a string"),
+            Self::ExpectedNumericKey => f.write_str("invalid value: expected key to be a number in quotes"),
+            Self::FloatKeyMustBeFinite => f.write_str("float key must be finite (got NaN or +/-inf)"),
+            Self::LoneLeadingSurrogateInHexEscape => f.write_str("lone leading surrogate in hex escape"),
+            Self::TrailingComma => f.write_str("trailing comma"),
+            Self::TrailingCharacters => f.write_str("trailing characters"),
+            Self::UnexpectedEndOfHexEscape => f.write_str("unexpected end of hex escape"),
+            Self::RecursionLimitExceeded => f.write_str("recursion limit exceeded"),
         }
     }
 }
@@ -64,7 +131,7 @@ pub struct JsonError {
 }
 
 impl JsonError {
-    pub fn new(error_type: JsonErrorType, index: usize) -> Self {
+    pub(crate) fn new(error_type: JsonErrorType, index: usize) -> Self {
         Self { error_type, index }
     }
 }
@@ -188,5 +255,9 @@ impl FilePosition {
             line,
             column: index - last_line_start + 1,
         }
+    }
+
+    pub fn short(&self) -> String {
+        format!("{}:{}", self.line, self.column)
     }
 }

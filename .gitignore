@@ -3,5 +3,6 @@
 /benches/big.json
 /profiling/
 /scratch/
+/scratch-project/
 /*.bm
 /env*/

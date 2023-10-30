@@ -2,6 +2,7 @@ use num_bigint::BigInt;
 use std::fs::File;
 use std::io::Read;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use smallvec::smallvec;
 
@@ -10,11 +11,22 @@ use jiter::{
     NumberInt, Parser, Peak, StringDecoder, StringDecoderRange,
 };
 
-fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
+enum PeakMode {
+    Start,
+    Array,
+    Object,
+}
+
+fn json_vec(parser: &mut Parser, peak_mode: PeakMode) -> JsonResult<Vec<String>> {
     let mut v = Vec::new();
     let mut tape: Vec<u8> = Vec::new();
-    let peak = parser.peak()?;
-    let position = parser.current_position();
+    let peak = match peak_mode {
+        PeakMode::Start => parser.peak()?,
+        PeakMode::Array => parser.peak_array_step()?,
+        PeakMode::Object => parser.peak_object_value()?,
+    };
+
+    let position = parser.current_position().short();
     match peak {
         Peak::True => {
             parser.consume_true()?;
@@ -40,9 +52,9 @@ fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
             v.push(format!("[ @ {position}"));
             if parser.array_first()?.is_some() {
                 loop {
-                    let el_vec = json_vec(parser)?;
+                    let el_vec = json_vec(parser, PeakMode::Array)?;
                     v.extend(el_vec);
-                    if parser.array_step()?.is_none() {
+                    if !parser.array_step()? {
                         break;
                     }
                 }
@@ -53,11 +65,11 @@ fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
             v.push(format!("{{ @ {position}"));
             if let Some(key) = parser.object_first::<StringDecoderRange>(&mut tape)? {
                 v.push(format!("Key({key:?})"));
-                let value_vec = json_vec(parser)?;
+                let value_vec = json_vec(parser, PeakMode::Object)?;
                 v.extend(value_vec);
                 while let Some(key) = parser.object_step::<StringDecoderRange>(&mut tape)? {
                     v.push(format!("Key({key:?}"));
-                    let value_vec = json_vec(parser)?;
+                    let value_vec = json_vec(parser, PeakMode::Object)?;
                     v.extend(value_vec);
                 }
             }
@@ -68,7 +80,7 @@ fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
 }
 
 fn display_number(first: u8, parser: &mut Parser) -> JsonResult<String> {
-    let position = parser.current_position();
+    let position = parser.current_position().short();
     let number = parser.consume_number::<NumberAny>(first)?;
     let s = match number {
         NumberAny::Int(NumberInt::Int(int)) => {
@@ -87,10 +99,11 @@ fn display_number(first: u8, parser: &mut Parser) -> JsonResult<String> {
 macro_rules! single_expect_ok_or_error {
     ($name:ident, ok, $json:literal, $expected:expr) => {
         paste::item! {
+            #[allow(non_snake_case)]
             #[test]
-            fn [< single_element_ok_ $name >]() {
+            fn [< single_element_ok__ $name >]() {
                 let mut parser = Parser::new($json.as_bytes());
-                let elements = json_vec(&mut parser).unwrap().join(", ");
+                let elements = json_vec(&mut parser, PeakMode::Start).unwrap().join(", ");
                 assert_eq!(elements, $expected);
                 parser.finish().unwrap();
             }
@@ -98,10 +111,11 @@ macro_rules! single_expect_ok_or_error {
     };
     ($name:ident, err, $json:literal, $error:expr) => {
         paste::item! {
+            #[allow(non_snake_case)]
             #[test]
-            fn [< single_element_xerror_ $name _ $error:snake _error >]() {
+            fn [< single_element_xerror__ $name >]() {
                 let mut parser = Parser::new($json.as_bytes());
-                let result = json_vec(&mut parser);
+                let result = json_vec(&mut parser, PeakMode::Start);
                 let first_value = match result {
                     Ok(v) => v,
                     Err(e) => {
@@ -160,24 +174,24 @@ single_tests! {
     v_true: ok => "true", "true @ 1:1";
     v_false: ok => "false", "false @ 1:1";
     offset_true: ok => "  true", "true @ 1:3";
-    string_unclosed: err => r#""foobar"#, UnexpectedEnd;
-    bad_int: err => "-", UnexpectedEnd;
-    bad_true: err => "truX", InvalidTrue;
-    bad_true: err => "tru", UnexpectedEnd;
-    bad_false: err => "falsX", InvalidFalse;
-    bad_false: err => "fals", UnexpectedEnd;
-    bad_null: err => "nulX", InvalidNull;
-    bad_null: err => "nul", UnexpectedEnd;
-    object_trailing_comma: err => r#"{"foo": "bar",}"#, UnexpectedCharacter;
-    array_trailing_comma: err => r#"[1, 2,]"#, UnexpectedCharacter;
+    string_unclosed: err => r#""foobar"#, EofWhileParsingString;
+    bad_int: err => "-", EofWhileParsingValue;
+    bad_true1: err => "truX", ExpectedSomeIdent;
+    bad_true2: err => "tru", EofWhileParsingValue;
+    bad_false1: err => "falsX", ExpectedSomeIdent;
+    bad_false2: err => "fals", EofWhileParsingValue;
+    bad_null1: err => "nulX", ExpectedSomeIdent;
+    bad_null2: err => "nul", EofWhileParsingValue;
+    object_trailing_comma: err => r#"{"foo": "bar",}"#, TrailingComma;
+    array_trailing_comma: err => r#"[1, 2,]"#, TrailingComma;
     array_bool: ok => "[true, false]", "[ @ 1:1, true @ 1:2, false @ 1:8, ]";
     object_string: ok => r#"{"foo": "ba"}"#, "{ @ 1:1, Key(2..5), String(9..11) @ 1:9, }";
     object_null: ok => r#"{"foo": null}"#, "{ @ 1:1, Key(2..5), null @ 1:9, }";
     object_bool_compact: ok => r#"{"foo":true}"#, "{ @ 1:1, Key(2..5), true @ 1:8, }";
     deep_array: ok => r#"[["Not too deep"]]"#, "[ @ 1:1, [ @ 1:2, String(3..15) @ 1:3, ], ]";
-    object_key_int: err => r#"{4: 4}"#, UnexpectedCharacter;
-    array_no_close: err => r#"["#, UnexpectedEnd;
-    array_double_close: err => "[1]]", UnexpectedCharacter;
+    object_key_int: err => r#"{4: 4}"#, KeyMustBeAString;
+    array_no_close: err => r#"["#, EofWhileParsingList;
+    array_double_close: err => "[1]]", TrailingCharacters;
     double_zero: err => "001", InvalidNumber;
 }
 
@@ -194,7 +208,7 @@ fn invalid_string_controls() {
         Ok(t) => panic!("unexpectedly valid: {:?} -> {:?}", json, t),
         Err(e) => {
             assert_eq!(e.index, 0);
-            assert_eq!(e.error_type, JsonErrorType::InvalidString(3))
+            assert_eq!(e.error_type, JsonErrorType::ControlCharacterWhileParsingString(3))
         }
     }
 }
@@ -328,26 +342,26 @@ fn parse_zero_exp_float() {
 }
 
 #[test]
-fn bad_string() {
+fn bad_lower_value_in_string() {
     let bytes: Vec<u8> = vec![34, 27, 32, 34];
     let r = JsonValue::parse(&bytes);
     match r {
         Ok(v) => panic!("unexpected valid {v:?}"),
         Err(e) => {
             assert_eq!(e.index, 0);
-            assert_eq!(e.error_type, JsonErrorType::InvalidString(0))
+            assert_eq!(e.error_type, JsonErrorType::ControlCharacterWhileParsingString(0))
         }
     };
 }
 
 #[test]
-fn good_high_order_string() {
+fn bad_high_order_string() {
     let bytes: Vec<u8> = vec![34, 32, 32, 210, 34];
     let r = JsonValue::parse(&bytes);
     match r {
         Ok(v) => panic!("unexpected valid {v:?}"),
         Err(e) => {
-            assert_eq!(e.error_type, JsonErrorType::InvalidString(2));
+            assert_eq!(e.error_type, JsonErrorType::InvalidUnicodeCodePoint(2));
             assert_eq!(e.index, 0);
             assert_eq!(e.position, FilePosition::new(1, 1));
         }
@@ -373,13 +387,13 @@ fn parse_object() {
     expected.insert("foo".to_string(), JsonValue::String("bar".to_string()));
     expected.insert(
         "spam".to_string(),
-        JsonValue::Array(Box::new(smallvec![
+        JsonValue::Array(Arc::new(smallvec![
             JsonValue::Int(1),
             JsonValue::Null,
             JsonValue::Bool(true)
         ])),
     );
-    assert_eq!(v, JsonValue::Object(Box::new(expected)));
+    assert_eq!(v, JsonValue::Object(Arc::new(expected)));
 }
 
 #[test]
@@ -388,7 +402,7 @@ fn parse_array_3() {
     let v = JsonValue::parse(json.as_bytes()).unwrap();
     assert_eq!(
         v,
-        JsonValue::Array(Box::new(smallvec![
+        JsonValue::Array(Arc::new(smallvec![
             JsonValue::Int(1),
             JsonValue::Null,
             JsonValue::Bool(true)
@@ -400,7 +414,7 @@ fn parse_array_3() {
 fn parse_array_empty() {
     let json = r#"[   ]"#;
     let v = JsonValue::parse(json.as_bytes()).unwrap();
-    assert_eq!(v, JsonValue::Array(Box::new(smallvec![])));
+    assert_eq!(v, JsonValue::Array(Arc::new(smallvec![])));
 }
 
 #[test]
@@ -410,7 +424,7 @@ fn repeat_trailing_array() {
     match result {
         Ok(t) => panic!("unexpectedly valid: {:?} -> {:?}", json, t),
         Err(e) => {
-            assert_eq!(e.error_type, JsonErrorType::UnexpectedCharacter);
+            assert_eq!(e.error_type, JsonErrorType::TrailingCharacters);
             // assert_eq!(e.position, FilePosition::new(1, 4));
         }
     }
@@ -422,14 +436,28 @@ fn parse_value_nested() {
     let v = JsonValue::parse(json.as_bytes()).unwrap();
     assert_eq!(
         v,
-        JsonValue::Array(Box::new(smallvec![
+        JsonValue::Array(Arc::new(smallvec![
             JsonValue::Int(1),
             JsonValue::Int(2),
-            JsonValue::Array(Box::new(smallvec![JsonValue::Int(3), JsonValue::Int(4)])),
+            JsonValue::Array(Arc::new(smallvec![JsonValue::Int(3), JsonValue::Int(4)])),
             JsonValue::Int(5),
             JsonValue::Int(6),
         ]),)
     )
+}
+
+#[test]
+fn test_array_trailing() {
+    let json = r#"[1, 2,]"#;
+    let result = JsonValue::parse(json.as_bytes());
+    match result {
+        Ok(t) => panic!("unexpectedly valid: {:?} -> {:?}", json, t),
+        Err(e) => {
+            // assert_eq!(e.to_string(), "");
+            assert_eq!(e.error_type, JsonErrorType::TrailingComma);
+            assert_eq!(e.position, FilePosition::new(1, 7));
+        }
+    }
 }
 
 fn read_file(path: &str) -> String {
@@ -460,11 +488,11 @@ fn jiter_object() {
     assert_eq!(jiter.next_key().unwrap(), Some("spam"));
     assert_eq!(jiter.next_array().unwrap(), Some(Peak::Num(b'1')));
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(1));
-    assert!(jiter.array_step().unwrap().is_some());
+    assert!(jiter.array_step().unwrap());
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(2));
-    assert!(jiter.array_step().unwrap().is_some());
+    assert!(jiter.array_step().unwrap());
     assert_eq!(jiter.next_bytes().unwrap(), b"x");
-    assert!(!jiter.array_step().unwrap().is_some());
+    assert!(!jiter.array_step().unwrap());
     assert_eq!(jiter.next_key().unwrap(), None);
     jiter.finish().unwrap();
 }
@@ -524,14 +552,14 @@ fn jiter_trailing_bracket() {
     let mut jiter = Jiter::new(b"[1]]");
     assert_eq!(jiter.next_array().unwrap(), Some(Peak::Num(b'1')));
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(1));
-    assert!(jiter.array_step().unwrap().is_none());
+    assert!(!jiter.array_step().unwrap());
     let result = jiter.finish();
     match result {
         Ok(t) => panic!("unexpectedly valid: {:?}", t),
         Err(e) => {
             assert_eq!(
                 e.error_type,
-                JiterErrorType::JsonError(JsonErrorType::UnexpectedCharacter)
+                JiterErrorType::JsonError(JsonErrorType::TrailingCharacters)
             );
             assert_eq!(jiter.error_position(&e), FilePosition::new(1, 4));
         }
@@ -672,7 +700,7 @@ fn test_4302_int_err() {
     match JsonValue::parse(bytes) {
         Ok(v) => panic!("unexpectedly valid: {:?}", v),
         Err(e) => {
-            assert_eq!(e.error_type, JsonErrorType::NumberTooLarge);
+            assert_eq!(e.error_type, JsonErrorType::NumberOutOfRange);
             assert_eq!(e.index, 4301);
         }
     }

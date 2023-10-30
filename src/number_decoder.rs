@@ -127,7 +127,7 @@ impl IntParse {
             Some(b'0') => return Ok((Self::Float, index)),
             Some(digit) if (b'1'..=b'9').contains(digit) => (digit & 0x0f) as i64,
             Some(_) => return json_err!(InvalidNumber, index),
-            None => return json_err!(UnexpectedEnd, index),
+            None => return json_err!(EofWhileParsingValue, index),
         };
         // i64::MAX = 9223372036854775807 - 18 chars
         for _ in 1..18 {
@@ -164,7 +164,7 @@ impl IntParse {
             }
             length += 18;
             if length > 4300 {
-                return json_err!(NumberTooLarge, index);
+                return json_err!(NumberOutOfRange, index);
             }
             big_value *= 10u64.pow(18);
             big_value += value;
@@ -205,7 +205,7 @@ impl AbstractNumberDecoder for NumberRange {
             }
             Some(digit) if (b'1'..=b'9').contains(digit) => (),
             Some(_) => return json_err!(InvalidNumber, index),
-            None => return json_err!(UnexpectedEnd, index),
+            None => return json_err!(EofWhileParsingValue, index),
         };
 
         index += 1;
@@ -238,13 +238,13 @@ fn consume_exponential(data: &[u8], mut index: usize) -> JsonResult<usize> {
         }
         Some(v) if v.is_ascii_digit() => (),
         Some(_) => return json_err!(InvalidNumber, index),
-        None => return json_err!(UnexpectedEnd, index),
+        None => return json_err!(EofWhileParsingValue, index),
     };
 
     match data.get(index) {
         Some(v) if v.is_ascii_digit() => (),
         Some(_) => return json_err!(InvalidNumber, index),
-        None => return json_err!(UnexpectedEnd, index),
+        None => return json_err!(EofWhileParsingValue, index),
     };
     index += 1;
 
@@ -263,7 +263,7 @@ fn consume_decimal(data: &[u8], mut index: usize) -> JsonResult<usize> {
     match data.get(index) {
         Some(v) if v.is_ascii_digit() => (),
         Some(_) => return json_err!(InvalidNumber, index),
-        None => return json_err!(UnexpectedEnd, index),
+        None => return json_err!(EofWhileParsingValue, index),
     };
     index += 1;
 
