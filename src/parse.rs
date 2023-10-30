@@ -199,36 +199,15 @@ impl<'a> Parser<'a> {
     }
 
     pub fn consume_true(&mut self) -> JsonResult<()> {
-        match self.data.get(self.index + 1..self.index + 4) {
-            Some(s) if s == TRUE_REST => {
-                self.index += 4;
-                Ok(())
-            }
-            Some(_) => json_err!(ExpectedSomeIdent, self.index),
-            None => json_err!(EofWhileParsingValue, self.data.len()),
-        }
+        self.consume_ident(TRUE_REST)
     }
 
     pub fn consume_false(&mut self) -> JsonResult<()> {
-        match self.data.get(self.index + 1..self.index + 5) {
-            Some(s) if s == FALSE_REST => {
-                self.index += 5;
-                Ok(())
-            }
-            Some(_) => json_err!(ExpectedSomeIdent, self.index),
-            None => json_err!(EofWhileParsingValue, self.data.len()),
-        }
+        self.consume_ident(FALSE_REST)
     }
 
     pub fn consume_null(&mut self) -> JsonResult<()> {
-        match self.data.get(self.index + 1..self.index + 4) {
-            Some(s) if s == NULL_REST => {
-                self.index += 4;
-                Ok(())
-            }
-            Some(_) => json_err!(ExpectedSomeIdent, self.index),
-            None => json_err!(EofWhileParsingValue, self.data.len()),
-        }
+        self.consume_ident(NULL_REST)
     }
 
     pub fn consume_string<'s, 't, D: AbstractStringDecoder<'t>>(
@@ -265,6 +244,26 @@ impl<'a> Parser<'a> {
             }
         } else {
             json_err!(EofWhileParsingObject, self.index)
+        }
+    }
+
+    fn consume_ident<const SIZE: usize>(&mut self, expected: [u8; SIZE]) -> JsonResult<()> {
+        match self.data.get(self.index + 1..self.index + SIZE + 1) {
+            Some(s) if s == expected => {
+                self.index += SIZE + 1;
+                Ok(())
+            }
+            _ => {
+                self.index += 1;
+                for c in expected.iter() {
+                    match self.data.get(self.index) {
+                        Some(v) if v == c => self.index += 1,
+                        Some(_) => return json_err!(ExpectedSomeIdent, self.index),
+                        _ => break,
+                    }
+                }
+                json_err!(EofWhileParsingValue, self.data.len())
+            }
         }
     }
 

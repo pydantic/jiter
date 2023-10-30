@@ -2,7 +2,7 @@ use num_bigint::BigInt;
 use num_traits::cast::ToPrimitive;
 use std::ops::Range;
 
-use lexical_core::{format as lexical_format, parse_partial_with_options, Error as LexicalError, ParseFloatOptions};
+use lexical_core::{format as lexical_format, parse_partial_with_options, ParseFloatOptions};
 
 use crate::errors::{json_err, JsonResult};
 
@@ -62,17 +62,19 @@ pub struct NumberFloat;
 impl AbstractNumberDecoder for NumberFloat {
     type Output = f64;
 
-    fn decode(data: &[u8], index: usize, _first: u8) -> JsonResult<(Self::Output, usize)> {
+    fn decode(data: &[u8], index: usize, first: u8) -> JsonResult<(Self::Output, usize)> {
         let start = index;
         const JSON: u128 = lexical_format::JSON;
         let options = ParseFloatOptions::new();
         match parse_partial_with_options::<f64, JSON>(&data[start..], &options) {
             Ok((float, index)) => Ok((float, index + start)),
-            Err(e) => {
-                // dbg!(e);
-                match e {
-                    LexicalError::EmptyExponent(_) => json_err!(EofWhileParsingValue, index),
-                    _ => json_err!(InvalidNumber, index),
+            Err(_) => {
+                // it's impossible to work out the right error from LexicalError here, so we parse again
+                // with NumberRange and use that error
+                match NumberRange::decode(data, start, first) {
+                    Err(e) => Err(e),
+                    // shouldn't happen
+                    Ok(_) => json_err!(InvalidNumber, index),
                 }
             }
         }

@@ -196,11 +196,12 @@ single_tests! {
     empty: err => "", "EofWhileParsingValue @ 1:0";
     string_unclosed: err => r#""foobar"#, "EofWhileParsingString @ 1:7";
     bad_int: err => "-", "EofWhileParsingValue @ 1:1";
-    bad_true1: err => "truX", "ExpectedSomeIdent @ 1:0";
+    bad_true1: err => "truX", "ExpectedSomeIdent @ 1:3";
     bad_true2: err => "tru", "EofWhileParsingValue @ 1:3";
-    bad_false1: err => "falsX", "ExpectedSomeIdent @ 1:0";
+    bad_true3: err => "trX", "ExpectedSomeIdent @ 1:2";
+    bad_false1: err => "falsX", "ExpectedSomeIdent @ 1:4";
     bad_false2: err => "fals", "EofWhileParsingValue @ 1:4";
-    bad_null1: err => "nulX", "ExpectedSomeIdent @ 1:0";
+    bad_null1: err => "nulX", "ExpectedSomeIdent @ 1:3";
     bad_null2: err => "nul", "EofWhileParsingValue @ 1:3";
     object_trailing_comma: err => r#"{"foo": "bar",}"#, "TrailingComma @ 1:15";
     array_trailing_comma: err => r#"[1, 2,]"#, "TrailingComma @ 1:7";
@@ -216,7 +217,9 @@ single_tests! {
     array_no_close: err => r#"["#, "EofWhileParsingList @ 1:1";
     array_double_close: err => "[1]]", "TrailingCharacters @ 1:3";
     double_zero: err => "001", "InvalidNumber @ 1:0";
-    invalid_float: err => "0E", "EofWhileParsingValue @ 1:0";
+    invalid_float_e_end: err => "0E", "EofWhileParsingValue @ 1:2";
+    invalid_float_dot_end: err => "0.", "EofWhileParsingValue @ 1:2";
+    invalid_float_bracket: err => "2E[", "InvalidNumber @ 1:2";
 }
 
 #[test]
