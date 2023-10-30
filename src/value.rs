@@ -134,14 +134,14 @@ pub(crate) fn take_value(
             let mut object = LazyIndexMap::new();
             if let Some(first_key) = parser.object_first::<StringDecoder>(tape)? {
                 let first_key = first_key.to_string();
-                let peak = parser.peak_object_value()?;
+                let peak = parser.peak()?;
                 check_recursion!(recursion_limit, parser.index,
                     let first_value = take_value(peak, parser, tape, recursion_limit)?;
                 );
                 object.insert(first_key, first_value);
                 while let Some(key) = parser.object_step::<StringDecoder>(tape)? {
                     let key = key.to_string();
-                    let peak = parser.peak_object_value()?;
+                    let peak = parser.peak()?;
                     check_recursion!(recursion_limit, parser.index,
                         let value = take_value(peak, parser, tape, recursion_limit)?;
                     );

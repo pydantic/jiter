@@ -92,18 +92,7 @@ impl<'a> Parser<'a> {
                 }
             }
         } else {
-            json_err!(EofWhileParsingList, self.index)
-        }
-    }
-
-    pub fn peak_object_value(&mut self) -> JsonResult<Peak> {
-        if let Some(next) = self.eat_whitespace() {
-            match Peak::new(next) {
-                Some(p) => Ok(p),
-                None => json_err!(ExpectedSomeValue, self.index + 1),
-            }
-        } else {
-            json_err!(EofWhileParsingObject, self.index + 1)
+            json_err!(EofWhileParsingValue, self.index)
         }
     }
 
@@ -176,7 +165,7 @@ impl<'a> Parser<'a> {
                         Some(b'"') => self.object_key::<D>(tape).map(Some),
                         Some(b'}') => json_err!(TrailingComma, self.index + 1),
                         Some(_) => json_err!(KeyMustBeAString, self.index + 1),
-                        None => json_err!(EofWhileParsingObject, self.index),
+                        None => json_err!(EofWhileParsingValue, self.index),
                     }
                 }
                 b'}' => {

@@ -11,19 +11,12 @@ use jiter::{
     NumberInt, Parser, Peak, StringDecoder, StringDecoderRange,
 };
 
-enum PeakMode {
-    Start,
-    Array,
-    Object,
-}
-
-fn json_vec(parser: &mut Parser, peak_mode: PeakMode) -> JsonResult<Vec<String>> {
+fn json_vec(parser: &mut Parser, in_array: bool) -> JsonResult<Vec<String>> {
     let mut v = Vec::new();
     let mut tape: Vec<u8> = Vec::new();
-    let peak = match peak_mode {
-        PeakMode::Start => parser.peak()?,
-        PeakMode::Array => parser.peak_array_step()?,
-        PeakMode::Object => parser.peak_object_value()?,
+    let peak = match in_array {
+        true => parser.peak_array_step()?,
+        false => parser.peak()?,
     };
 
     let position = parser.current_position().short();
@@ -52,7 +45,7 @@ fn json_vec(parser: &mut Parser, peak_mode: PeakMode) -> JsonResult<Vec<String>>
             v.push(format!("[ @ {position}"));
             if parser.array_first()?.is_some() {
                 loop {
-                    let el_vec = json_vec(parser, PeakMode::Array)?;
+                    let el_vec = json_vec(parser, true)?;
                     v.extend(el_vec);
                     if !parser.array_step()? {
                         break;
@@ -65,11 +58,11 @@ fn json_vec(parser: &mut Parser, peak_mode: PeakMode) -> JsonResult<Vec<String>>
             v.push(format!("{{ @ {position}"));
             if let Some(key) = parser.object_first::<StringDecoderRange>(&mut tape)? {
                 v.push(format!("Key({key:?})"));
-                let value_vec = json_vec(parser, PeakMode::Object)?;
+                let value_vec = json_vec(parser, false)?;
                 v.extend(value_vec);
                 while let Some(key) = parser.object_step::<StringDecoderRange>(&mut tape)? {
                     v.push(format!("Key({key:?}"));
-                    let value_vec = json_vec(parser, PeakMode::Object)?;
+                    let value_vec = json_vec(parser, false)?;
                     v.extend(value_vec);
                 }
             }
@@ -103,7 +96,7 @@ macro_rules! single_expect_ok_or_error {
             #[test]
             fn [< single_element_ok__ $name >]() {
                 let mut parser = Parser::new($json.as_bytes());
-                let elements = json_vec(&mut parser, PeakMode::Start).unwrap().join(", ");
+                let elements = json_vec(&mut parser, false).unwrap().join(", ");
                 assert_eq!(elements, $expected);
                 parser.finish().unwrap();
             }
@@ -116,7 +109,7 @@ macro_rules! single_expect_ok_or_error {
             #[test]
             fn [< single_element_xerror__ $name >]() {
                 let mut parser = Parser::new($json.as_bytes());
-                let result = json_vec(&mut parser, PeakMode::Start);
+                let result = json_vec(&mut parser, false);
                 let first_value = match result {
                     Ok(v) => v,
                     Err(e) => {
@@ -206,8 +199,11 @@ single_tests! {
     object_trailing_comma: err => r#"{"foo": "bar",}"#, "TrailingComma @ 1:15";
     array_trailing_comma: err => r#"[1, 2,]"#, "TrailingComma @ 1:7";
     array_wrong_char_after_comma: err => r#"[1, 2,;"#, "ExpectedSomeValue @ 1:7";
+    array_end_after_comma: err => "[9,", "EofWhileParsingValue @ 1:3";
     object_wrong_char: err => r#"{"foo":42;"#, "ExpectedObjectCommaOrEnd @ 1:10";
     object_wrong_char_after_comma: err => r#"{"foo":42,;"#, "KeyMustBeAString @ 1:11";
+    object_end_after_comma: err => r#"{"x": 9,"#, "EofWhileParsingValue @ 1:8";
+    object_end_after_colon: err => r#"{"":"#, "EofWhileParsingValue @ 1:4";
     array_bool: ok => "[true, false]", "[ @ 1:0, true @ 1:1, false @ 1:7, ]";
     object_string: ok => r#"{"foo": "ba"}"#, "{ @ 1:0, Key(2..5), String(9..11) @ 1:8, }";
     object_null: ok => r#"{"foo": null}"#, "{ @ 1:0, Key(2..5), null @ 1:8, }";
