@@ -74,7 +74,7 @@ impl AbstractNumberDecoder for NumberFloat {
                 match NumberRange::decode(data, start, first) {
                     Err(e) => Err(e),
                     // shouldn't happen
-                    Ok(_) => json_err!(InvalidNumber, index),
+                    Ok(_) => unreachable!("NumberRange should always return an error"),
                 }
             }
         }
@@ -208,6 +208,7 @@ impl AbstractNumberDecoder for NumberRange {
                         let end = consume_exponential(data, index)?;
                         Ok((start..end, end))
                     }
+                    Some(b'0') => return json_err!(InvalidNumber, index),
                     _ => return Ok((start..index, index)),
                 };
             }

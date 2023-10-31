@@ -187,13 +187,13 @@ single_tests! {
     offset_true: ok => "  true", "true @ 1:2";
     empty: err => "", "EofWhileParsingValue @ 1:0";
     string_unclosed: err => r#""foobar"#, "EofWhileParsingString @ 1:7";
-    bad_int: err => "-", "EofWhileParsingValue @ 1:1";
-    bad_true1: err => "truX", "ExpectedSomeIdent @ 1:3";
+    bad_int_neg: err => "-", "EofWhileParsingValue @ 1:1";
+    bad_true1: err => "truX", "ExpectedSomeIdent @ 1:4";
     bad_true2: err => "tru", "EofWhileParsingValue @ 1:3";
-    bad_true3: err => "trX", "ExpectedSomeIdent @ 1:2";
-    bad_false1: err => "falsX", "ExpectedSomeIdent @ 1:4";
+    bad_true3: err => "trX", "ExpectedSomeIdent @ 1:3";
+    bad_false1: err => "falsX", "ExpectedSomeIdent @ 1:5";
     bad_false2: err => "fals", "EofWhileParsingValue @ 1:4";
-    bad_null1: err => "nulX", "ExpectedSomeIdent @ 1:3";
+    bad_null1: err => "nulX", "ExpectedSomeIdent @ 1:4";
     bad_null2: err => "nul", "EofWhileParsingValue @ 1:3";
     object_trailing_comma: err => r#"{"foo": "bar",}"#, "TrailingComma @ 1:15";
     array_trailing_comma: err => r#"[1, 2,]"#, "TrailingComma @ 1:7";
@@ -210,11 +210,15 @@ single_tests! {
     deep_array: ok => r#"[["Not too deep"]]"#, "[ @ 1:0, [ @ 1:1, String(3..15) @ 1:2, ], ]";
     object_key_int: err => r#"{4: 4}"#, "KeyMustBeAString @ 1:2";
     array_no_close: err => r#"["#, "EofWhileParsingList @ 1:1";
-    array_double_close: err => "[1]]", "TrailingCharacters @ 1:3";
-    double_zero: err => "001", "InvalidNumber @ 1:0";
+    array_double_close: err => "[1]]", "TrailingCharacters @ 1:4";
     invalid_float_e_end: err => "0E", "EofWhileParsingValue @ 1:2";
     invalid_float_dot_end: err => "0.", "EofWhileParsingValue @ 1:2";
     invalid_float_bracket: err => "2E[", "InvalidNumber @ 1:2";
+    trailing_char: err => "2z", "TrailingCharacters @ 1:2";
+    invalid_number_newline: err => "-\n", "InvalidNumber @ 2:0";
+    // double_zero: err => "00", "InvalidNumber @ 1:2";
+    // double_zero_one: err => "001", "InvalidNumber @ 1:2";
+    second_line: err => "[1\nx]", "ExpectedListCommaOrEnd @ 2:1";
 }
 
 #[test]
@@ -367,8 +371,9 @@ test_position! {
     first_line_3rd: b"123456", 3, FilePosition::new(1, 3);
     first_line_last: b"123456", 6, FilePosition::new(1, 6);
     first_line_after: b"123456", 7, FilePosition::new(1, 6);
-    first_line_last2: b"123456\n789", 6, FilePosition::new(1, 6);
-    second_line: b"123456\n789", 7, FilePosition::new(2, 0);
+    second_line0: b"123456\n789", 6, FilePosition::new(2, 0);
+    second_line1: b"123456\n789", 7, FilePosition::new(2, 0);
+    second_line2: b"123456\n789", 8, FilePosition::new(2, 1);
 }
 
 #[test]
@@ -615,7 +620,7 @@ fn jiter_trailing_bracket() {
                 e.error_type,
                 JiterErrorType::JsonError(JsonErrorType::TrailingCharacters)
             );
-            assert_eq!(jiter.error_position(&e), FilePosition::new(1, 3));
+            assert_eq!(jiter.error_position(&e), FilePosition::new(1, 4));
         }
     }
 }

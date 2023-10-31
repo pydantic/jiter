@@ -84,10 +84,6 @@ fn remove_suffix(s: &str) -> &str {
 fn errors_equal(jiter_error: &JiterError, serde_error: &SerdeError) -> bool {
     let jiter_error_str = jiter_error.to_string();
     let serde_error_str = serde_error.to_string();
-    // if jiter_error_str.starts_with("invalid escape at") {
-    //     // strings like `"\"\\u\\"` give a EOF error for serde and invalid escape for jiter
-    //     true
-    // } else if serde_error_str.starts_with("number out of range") {
     if serde_error_str.starts_with("number out of range") {
         // ignore this case as serde is stricter so fails on this before jiter does
         true
@@ -95,7 +91,8 @@ fn errors_equal(jiter_error: &JiterError, serde_error: &SerdeError) -> bool {
         // serde has a different recursion limit to jiter
         true
     } else {
-        remove_suffix(&jiter_error_str) == remove_suffix(&serde_error_str)
+        return jiter_error_str == serde_error_str
+        // remove_suffix(&jiter_error_str) == remove_suffix(&serde_error_str)
     }
 }
 
@@ -115,7 +112,7 @@ fuzz_target!(|json: String| {
                         return
                     } else {
                         dbg!(json, &jiter_error, jiter_error.to_string(), &serde_error, serde_error.to_string());
-                        panic!("errors not not equal");
+                        panic!("errors not equal");
                         // return
                     }
                 }

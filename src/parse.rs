@@ -165,7 +165,7 @@ impl<'a> Parser<'a> {
         if self.eat_whitespace().is_none() {
             Ok(())
         } else {
-            json_err!(TrailingCharacters, self.index)
+            json_err!(TrailingCharacters, self.index + 1)
         }
     }
 
@@ -231,11 +231,11 @@ impl<'a> Parser<'a> {
                 for c in expected.iter() {
                     match self.data.get(self.index) {
                         Some(v) if v == c => self.index += 1,
-                        Some(_) => return json_err!(ExpectedSomeIdent, self.index),
+                        Some(_) => return json_err!(ExpectedSomeIdent, self.index + 1),
                         _ => break,
                     }
                 }
-                json_err!(EofWhileParsingValue, self.data.len())
+                json_err!(EofWhileParsingValue, self.index)
             }
         }
     }

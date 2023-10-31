@@ -239,17 +239,18 @@ impl FilePosition {
         let mut last_line_start = 0;
         let mut index = 0;
         while let Some(next) = data.get(index) {
-            if index == find {
-                break;
-            } else if *next == b'\n' {
+            if *next == b'\n' {
                 line += 1;
                 last_line_start = index + 1;
+            }
+            if index == find {
+                break;
             }
             index += 1;
         }
         Self {
             line,
-            column: index - last_line_start,
+            column: index.saturating_sub(last_line_start),
         }
     }
 
