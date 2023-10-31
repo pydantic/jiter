@@ -73,18 +73,22 @@ impl<'a> Jiter<'a> {
 
     pub fn next_int(&mut self) -> JiterResult<NumberInt> {
         let peak = self.peak()?;
+        self.known_int(peak)
+    }
+
+    pub fn known_int(&mut self, peak: Peak) -> JiterResult<NumberInt> {
         match peak {
-            Peak::Num(first) => self.known_int(first),
+            Peak::Num(first) => self.parser.consume_number::<NumberInt>(first).map_err(Into::into),
             _ => Err(self.wrong_type(JsonType::Int, peak)),
         }
     }
 
-    pub fn known_int(&mut self, first: u8) -> JiterResult<NumberInt> {
-        self.parser.consume_number::<NumberInt>(first).map_err(Into::into)
-    }
-
     pub fn next_float(&mut self) -> JiterResult<f64> {
         let peak = self.peak()?;
+        self.known_float(peak)
+    }
+
+    pub fn known_float(&mut self, peak: Peak) -> JiterResult<f64> {
         match peak {
             Peak::Num(first) => self.parser.consume_number::<NumberFloat>(first).map_err(Into::into),
             _ => Err(self.wrong_type(JsonType::Int, peak)),
@@ -129,6 +133,10 @@ impl<'a> Jiter<'a> {
 
     pub fn next_value(&mut self) -> JiterResult<JsonValue> {
         let peak = self.peak()?;
+        self.known_value(peak)
+    }
+
+    pub fn known_value(&mut self, peak: Peak) -> JiterResult<JsonValue> {
         take_value(peak, &mut self.parser, &mut self.tape, DEFAULT_RECURSION_LIMIT).map_err(Into::into)
     }
 
@@ -144,7 +152,7 @@ impl<'a> Jiter<'a> {
         self.parser.array_first().map_err(Into::into)
     }
 
-    pub fn array_step(&mut self) -> JiterResult<bool> {
+    pub fn array_step(&mut self) -> JiterResult<Option<Peak>> {
         self.parser.array_step().map_err(Into::into)
     }
 

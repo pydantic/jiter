@@ -34,16 +34,16 @@ fn jiter_iter_big(path: &str, bench: &mut Bencher) {
 
         loop {
             let mut v_inner = Vec::new();
-            if jiter.array_first().unwrap().is_some() {
-                let i = jiter.next_float().unwrap();
+            if let Some(peak) = jiter.array_first().unwrap() {
+                let i = jiter.known_float(peak).unwrap();
                 v_inner.push(i);
-                while jiter.array_step().unwrap() {
-                    let i = jiter.next_float().unwrap();
+                while let Some(peak) = jiter.array_step().unwrap() {
+                    let i = jiter.known_float(peak).unwrap();
                     v_inner.push(i);
                 }
             }
             v_outer.push(v_inner);
-            if !jiter.array_step().unwrap() {
+            if jiter.array_step().unwrap().is_none() {
                 break;
             }
         }
@@ -58,7 +58,7 @@ fn find_string(jiter: &mut Jiter) -> String {
         Peak::Array => {
             assert!(jiter.array_first().unwrap().is_some());
             let s = find_string(jiter).to_string();
-            assert!(!jiter.array_step().unwrap());
+            assert!(jiter.array_step().unwrap().is_none());
             s
         }
         _ => panic!("Expected string or array"),
@@ -86,8 +86,8 @@ fn jiter_iter_string_array(path: &str, bench: &mut Bencher) {
         let i = jiter.next_str().unwrap();
         // record len instead of allocating the string to simulate something like constructing a PyString
         v.push(i.len());
-        while jiter.array_step().unwrap() {
-            let i = jiter.next_str().unwrap();
+        while jiter.array_step().unwrap().is_some() {
+            let i = jiter.known_str().unwrap();
             v.push(i.len());
         }
         jiter.finish().unwrap();
@@ -101,11 +101,11 @@ fn jiter_iter_true_array(path: &str, bench: &mut Bencher) {
     bench.iter(|| {
         let mut jiter = Jiter::new(json_data);
         let mut v = Vec::new();
-        jiter.array_first().unwrap();
-        let i = jiter.next_bool().unwrap();
+        let first_peak = jiter.array_first().unwrap().unwrap();
+        let i = jiter.known_bool(first_peak).unwrap();
         v.push(i);
-        while jiter.array_step().unwrap() {
-            let i = jiter.next_bool().unwrap();
+        while let Some(peak) = jiter.array_step().unwrap() {
+            let i = jiter.known_bool(peak).unwrap();
             v.push(i);
         }
         black_box(v)
@@ -138,11 +138,11 @@ fn jiter_iter_ints_array(path: &str, bench: &mut Bencher) {
     bench.iter(|| {
         let mut jiter = Jiter::new(json_data);
         let mut v = Vec::new();
-        jiter.array_first().unwrap();
-        let i = jiter.next_int().unwrap();
+        let first_peak = jiter.array_first().unwrap().unwrap();
+        let i = jiter.known_int(first_peak).unwrap();
         v.push(i);
-        while jiter.array_step().unwrap() {
-            let i = jiter.next_int().unwrap();
+        while let Some(peak) = jiter.array_step().unwrap() {
+            let i = jiter.known_int(peak).unwrap();
             v.push(i);
         }
         black_box(v)
@@ -155,11 +155,11 @@ fn jiter_iter_floats_array(path: &str, bench: &mut Bencher) {
     bench.iter(|| {
         let mut jiter = Jiter::new(json_data);
         let mut v = Vec::new();
-        jiter.array_first().unwrap();
-        let i = jiter.next_float().unwrap();
+        let first_peak = jiter.array_first().unwrap().unwrap();
+        let i = jiter.known_float(first_peak).unwrap();
         v.push(i);
-        while jiter.array_step().unwrap() {
-            let i = jiter.next_float().unwrap();
+        while let Some(peak) = jiter.array_step().unwrap() {
+            let i = jiter.known_float(peak).unwrap();
             v.push(i);
         }
         black_box(v)

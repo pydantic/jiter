@@ -78,24 +78,6 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn peak_array_step(&mut self) -> JsonResult<Peak> {
-        if let Some(next) = self.eat_whitespace() {
-            match Peak::new(next) {
-                Some(p) => Ok(p),
-                None => {
-                    // if next is a `]`, we have a "trailing comma" error
-                    if next == b']' {
-                        json_err!(TrailingComma, self.index + 1)
-                    } else {
-                        json_err!(ExpectedSomeValue, self.index + 2)
-                    }
-                }
-            }
-        } else {
-            json_err!(EofWhileParsingValue, self.index)
-        }
-    }
-
     pub fn array_first(&mut self) -> JsonResult<Option<Peak>> {
         self.index += 1;
         if let Some(next) = self.eat_whitespace() {
@@ -103,23 +85,23 @@ impl<'a> Parser<'a> {
                 self.index += 1;
                 Ok(None)
             } else {
-                self.peak_array_step().map(Some)
+                self.array_peak()
             }
         } else {
             json_err!(EofWhileParsingList, self.index + 1)
         }
     }
 
-    pub fn array_step(&mut self) -> JsonResult<bool> {
+    pub fn array_step(&mut self) -> JsonResult<Option<Peak>> {
         if let Some(next) = self.eat_whitespace() {
             match next {
                 b',' => {
                     self.index += 1;
-                    Ok(true)
+                    self.array_peak()
                 }
                 b']' => {
                     self.index += 1;
-                    Ok(false)
+                    Ok(None)
                 }
                 _ => json_err!(ExpectedListCommaOrEnd, self.index + 1),
             }
@@ -255,6 +237,24 @@ impl<'a> Parser<'a> {
                 }
                 json_err!(EofWhileParsingValue, self.data.len())
             }
+        }
+    }
+
+    fn array_peak(&mut self) -> JsonResult<Option<Peak>> {
+        if let Some(next) = self.eat_whitespace() {
+            match Peak::new(next) {
+                Some(p) => Ok(Some(p)),
+                None => {
+                    // if next is a `]`, we have a "trailing comma" error
+                    if next == b']' {
+                        json_err!(TrailingComma, self.index + 1)
+                    } else {
+                        json_err!(ExpectedSomeValue, self.index + 2)
+                    }
+                }
+            }
+        } else {
+            json_err!(EofWhileParsingValue, self.index)
         }
     }
 

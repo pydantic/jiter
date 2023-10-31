@@ -67,8 +67,7 @@ impl<'j> PythonParser<'j> {
                     let mut vec: SmallVec<[PyObject; 8]> = SmallVec::with_capacity(8);
                     let v = self._check_take_value(py, peak_first)?;
                     vec.push(v);
-                    while self.parser.array_step().map_err(mje)? {
-                        let peak = self.parser.peak_array_step().map_err(mje)?;
+                    while let Some(peak) = self.parser.array_step().map_err(mje)? {
                         let v = self._check_take_value(py, peak)?;
                         vec.push(v);
                     }
