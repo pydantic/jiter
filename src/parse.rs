@@ -242,6 +242,8 @@ impl<'a> Parser<'a> {
                 self.index += SIZE + 1;
                 Ok(())
             }
+            // TODO very sadly iterating over expected cause extra branches in the generated assembly
+            //   and is significantly slower than just returning an error
             _ => {
                 self.index += 1;
                 for c in expected.iter() {
