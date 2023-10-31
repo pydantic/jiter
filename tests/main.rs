@@ -280,6 +280,38 @@ string_tests! {
     controls_python: "\"\\b\\f\\n\\r\\t\"" => "\x08\x0c\n\r\t";  // python notation for the same thing
 }
 
+macro_rules! string_test_errors {
+    ($($name:ident: $json:literal => $expected_error:literal;)*) => {
+        $(
+            paste::item! {
+                #[test]
+                fn [< string_parsing_errors_ $name >]() {
+                    let data = $json.as_bytes();
+                    let mut tape: Vec<u8> = Vec::new();
+                    let mut parser = Parser::new(data);
+                    let peak = parser.peak().unwrap();
+                    assert_eq!(peak, Peak::String);
+                    match parser.consume_string::<StringDecoder>(&mut tape) {
+                        Ok(t) => panic!("unexpectedly valid: {:?} -> {:?}", $json, t),
+                        Err(e) => {
+                            let actual_error = format!("{:?} @ {}", e.error_type, e.index);
+                            assert_eq!(actual_error, $expected_error);
+                        }
+                    }
+                }
+            }
+        )*
+    }
+}
+
+string_test_errors! {
+    u4_unclosed: r#""\uxx"# => "EofWhileParsingString @ 5";
+    u4_unclosed2: r#""\udBdd"# => "EofWhileParsingString @ 7";
+    line_leading_surrogate: r#""\uddBd""# => "LoneLeadingSurrogateInHexEscape(5) @ 0";
+    unexpected_hex_escape1: r#""\udBd8x"# => "UnexpectedEndOfHexEscape(5) @ 0";
+    unexpected_hex_escape2: r#""\udBd8xx"# => "UnexpectedEndOfHexEscape(5) @ 0";
+}
+
 #[test]
 fn test_key_str() {
     let json = r#"{"foo": "bar"}"#;

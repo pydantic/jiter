@@ -68,7 +68,7 @@ pub enum JsonErrorType {
     FloatKeyMustBeFinite,
 
     /// Lone leading surrogate in hex escape.
-    LoneLeadingSurrogateInHexEscape,
+    LoneLeadingSurrogateInHexEscape(usize),
 
     /// JSON has a comma after the last value in an array or map.
     TrailingComma,
@@ -77,7 +77,7 @@ pub enum JsonErrorType {
     TrailingCharacters,
 
     /// Unexpected end of hex escape.
-    UnexpectedEndOfHexEscape,
+    UnexpectedEndOfHexEscape(usize),
 
     /// Encountered nesting of JSON maps and arrays more than 128 layers deep.
     RecursionLimitExceeded,
@@ -109,10 +109,10 @@ impl std::fmt::Display for JsonErrorType {
             Self::KeyMustBeAString => f.write_str("key must be a string"),
             Self::ExpectedNumericKey => f.write_str("invalid value: expected key to be a number in quotes"),
             Self::FloatKeyMustBeFinite => f.write_str("float key must be finite (got NaN or +/-inf)"),
-            Self::LoneLeadingSurrogateInHexEscape => f.write_str("lone leading surrogate in hex escape"),
+            Self::LoneLeadingSurrogateInHexEscape(_) => f.write_str("lone leading surrogate in hex escape"),
             Self::TrailingComma => f.write_str("trailing comma"),
             Self::TrailingCharacters => f.write_str("trailing characters"),
-            Self::UnexpectedEndOfHexEscape => f.write_str("unexpected end of hex escape"),
+            Self::UnexpectedEndOfHexEscape(_) => f.write_str("unexpected end of hex escape"),
             Self::RecursionLimitExceeded => f.write_str("recursion limit exceeded"),
         }
     }

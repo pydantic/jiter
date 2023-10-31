@@ -84,10 +84,11 @@ fn remove_suffix(s: &str) -> &str {
 fn errors_equal(jiter_error: &JiterError, serde_error: &SerdeError) -> bool {
     let jiter_error_str = jiter_error.to_string();
     let serde_error_str = serde_error.to_string();
-    if jiter_error_str.starts_with("invalid escape at") {
-        // strings like `"\"\\u\\"` give a EOF error for serde and invalid escape for jiter
-        true
-    } else if serde_error_str.starts_with("number out of range") {
+    // if jiter_error_str.starts_with("invalid escape at") {
+    //     // strings like `"\"\\u\\"` give a EOF error for serde and invalid escape for jiter
+    //     true
+    // } else if serde_error_str.starts_with("number out of range") {
+    if serde_error_str.starts_with("number out of range") {
         // ignore this case as serde is stricter so fails on this before jiter does
         true
     } else if serde_error_str.starts_with("recursion limit exceeded") {

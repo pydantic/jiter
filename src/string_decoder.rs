@@ -94,16 +94,16 @@ fn to_str(bytes: &[u8], ascii_only: bool, start: usize) -> JsonResult<&str> {
     }
 }
 
-/// Taken from https://github.com/serde-rs/json/blob/45f10ec816e3f2765ac08f7ca73752326b0475d7/src/read.rs#L873-L928
+/// Taken approximately from https://github.com/serde-rs/json/blob/v1.0.107/src/read.rs#L872-L945
 fn parse_escape(data: &[u8], index: usize, start: usize) -> JsonResult<(char, usize)> {
     let (n, index) = parse_u4(data, index, start)?;
     match n {
-        0xDC00..=0xDFFF => json_err!(InvalidEscape, index - start, start - 1),
-        0xD800..=0xDBFF => match (data.get(index + 1), data.get(index + 2)) {
-            (Some(b'\\'), Some(b'u')) => {
+        0xDC00..=0xDFFF => json_err!(LoneLeadingSurrogateInHexEscape, index - start, start - 1),
+        0xD800..=0xDBFF => match data.get(index + 1..index + 3) {
+            Some(slice) if slice == b"\\u" => {
                 let (n2, index) = parse_u4(data, index + 2, start)?;
                 if !(0xDC00..=0xDFFF).contains(&n2) {
-                    return json_err!(InvalidEscape, index - start, start - 1);
+                    return json_err!(LoneLeadingSurrogateInHexEscape, index - start, start - 1);
                 }
                 let n2 = (((n - 0xD800) as u32) << 10 | (n2 - 0xDC00) as u32) + 0x1_0000;
 
@@ -112,23 +112,27 @@ fn parse_escape(data: &[u8], index: usize, start: usize) -> JsonResult<(char, us
                     None => json_err!(EofWhileParsingString, index),
                 }
             }
-            _ => json_err!(InvalidEscape, index - start, start - 1),
+            Some(_) => json_err!(UnexpectedEndOfHexEscape, index - start, start - 1),
+            None => match data.get(index + 1) {
+                Some(b'\\') | None => json_err!(EofWhileParsingString, data.len()),
+                Some(_) => json_err!(UnexpectedEndOfHexEscape, index - start, start - 1),
+            },
         },
         _ => match char::from_u32(n as u32) {
             Some(c) => Ok((c, index)),
-            None => json_err!(EofWhileParsingString, index),
+            None => json_err!(InvalidEscape, index - start, index),
         },
     }
 }
 
 fn parse_u4(data: &[u8], mut index: usize, start: usize) -> JsonResult<(u16, usize)> {
     let mut n = 0;
-    for _ in 0..4 {
+    let u4 = data
+        .get(index + 1..index + 5)
+        .ok_or_else(|| json_error!(EofWhileParsingString, data.len()))?;
+
+    for c in u4.iter() {
         index += 1;
-        let c = match data.get(index) {
-            Some(c) => *c,
-            None => return json_err!(EofWhileParsingString, index),
-        };
         let hex = match c {
             b'0'..=b'9' => (c & 0x0f) as u16,
             b'a'..=b'f' => (c - b'a' + 10) as u16,
