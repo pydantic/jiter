@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use num_bigint::BigInt;
 use smallvec::SmallVec;
 
@@ -19,8 +21,8 @@ pub enum JsonValue {
     Array(JsonArray),
     Object(JsonObject),
 }
-pub type JsonArray = Box<SmallVec<[JsonValue; 8]>>;
-pub type JsonObject = Box<LazyIndexMap<String, JsonValue>>;
+pub type JsonArray = Arc<SmallVec<[JsonValue; 8]>>;
+pub type JsonObject = Arc<LazyIndexMap<String, JsonValue>>;
 
 #[cfg(feature = "python")]
 impl pyo3::ToPyObject for JsonValue {
@@ -50,11 +52,7 @@ impl JsonValue {
 
         let map_err = |e: JsonError| {
             let position = FilePosition::find(data, e.index);
-            JsonValueError {
-                error_type: e.error_type,
-                index: e.index,
-                position,
-            }
+            JsonValueError::new(e.error_type, e.index, position)
         };
 
         let mut tape = Tape::default();
@@ -117,15 +115,14 @@ pub(crate) fn take_value(
                     let v = take_value(peak_first, parser, tape, recursion_limit)?;
                 );
                 array.push(v);
-                while parser.array_step()? {
-                    let peak = parser.peak()?;
+                while let Some(peak) = parser.array_step()? {
                     check_recursion!(recursion_limit, parser.index,
                         let v = take_value(peak, parser, tape, recursion_limit)?;
                     );
                     array.push(v);
                 }
             }
-            Ok(JsonValue::Array(Box::new(array)))
+            Ok(JsonValue::Array(Arc::new(array)))
         }
         Peak::Object => {
             // same for objects
@@ -147,7 +144,7 @@ pub(crate) fn take_value(
                 }
             }
 
-            Ok(JsonValue::Object(Box::new(object)))
+            Ok(JsonValue::Object(Arc::new(object)))
         }
     }
 }

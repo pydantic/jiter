@@ -2,6 +2,7 @@ use num_bigint::BigInt;
 use std::fs::File;
 use std::io::Read;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use smallvec::smallvec;
 
@@ -10,11 +11,15 @@ use jiter::{
     NumberInt, Parser, Peak, StringDecoder, StringDecoderRange,
 };
 
-fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
+fn json_vec(parser: &mut Parser, peak: Option<Peak>) -> JsonResult<Vec<String>> {
     let mut v = Vec::new();
     let mut tape: Vec<u8> = Vec::new();
-    let peak = parser.peak()?;
-    let position = parser.current_position();
+    let peak = match peak {
+        Some(peak) => peak,
+        None => parser.peak()?,
+    };
+
+    let position = parser.current_position().short();
     match peak {
         Peak::True => {
             parser.consume_true()?;
@@ -38,13 +43,12 @@ fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
         }
         Peak::Array => {
             v.push(format!("[ @ {position}"));
-            if parser.array_first()?.is_some() {
-                loop {
-                    let el_vec = json_vec(parser)?;
+            if let Some(peak) = parser.array_first()? {
+                let el_vec = json_vec(parser, Some(peak))?;
+                v.extend(el_vec);
+                while let Some(peak) = parser.array_step()? {
+                    let el_vec = json_vec(parser, Some(peak))?;
                     v.extend(el_vec);
-                    if !parser.array_step()? {
-                        break;
-                    }
                 }
             }
             v.push("]".to_string());
@@ -53,11 +57,11 @@ fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
             v.push(format!("{{ @ {position}"));
             if let Some(key) = parser.object_first::<StringDecoderRange>(&mut tape)? {
                 v.push(format!("Key({key:?})"));
-                let value_vec = json_vec(parser)?;
+                let value_vec = json_vec(parser, None)?;
                 v.extend(value_vec);
                 while let Some(key) = parser.object_step::<StringDecoderRange>(&mut tape)? {
                     v.push(format!("Key({key:?}"));
-                    let value_vec = json_vec(parser)?;
+                    let value_vec = json_vec(parser, None)?;
                     v.extend(value_vec);
                 }
             }
@@ -68,7 +72,7 @@ fn json_vec(parser: &mut Parser) -> JsonResult<Vec<String>> {
 }
 
 fn display_number(first: u8, parser: &mut Parser) -> JsonResult<String> {
-    let position = parser.current_position();
+    let position = parser.current_position().short();
     let number = parser.consume_number::<NumberAny>(first)?;
     let s = match number {
         NumberAny::Int(NumberInt::Int(int)) => {
@@ -87,25 +91,34 @@ fn display_number(first: u8, parser: &mut Parser) -> JsonResult<String> {
 macro_rules! single_expect_ok_or_error {
     ($name:ident, ok, $json:literal, $expected:expr) => {
         paste::item! {
+            #[allow(non_snake_case)]
             #[test]
-            fn [< single_element_ok_ $name >]() {
+            fn [< single_element_ok__ $name >]() {
                 let mut parser = Parser::new($json.as_bytes());
-                let elements = json_vec(&mut parser).unwrap().join(", ");
+                let elements = json_vec(&mut parser, None).unwrap().join(", ");
                 assert_eq!(elements, $expected);
                 parser.finish().unwrap();
             }
         }
     };
-    ($name:ident, err, $json:literal, $error:expr) => {
+
+    ($name:ident, err, $json:literal, $expected_error:literal) => {
         paste::item! {
+            #[allow(non_snake_case)]
             #[test]
-            fn [< single_element_xerror_ $name _ $error:snake _error >]() {
+            fn [< single_element_xerror__ $name >]() {
                 let mut parser = Parser::new($json.as_bytes());
-                let result = json_vec(&mut parser);
+                let result = json_vec(&mut parser, None);
                 let first_value = match result {
                     Ok(v) => v,
                     Err(e) => {
-                        assert_eq!(e.error_type, JsonErrorType::$error);
+                        let position = parser.error_position(e.index);
+                        let actual_error = format!("{:?} @ {}", e.error_type, position.short());
+                        assert_eq!(actual_error, $expected_error);
+
+                        let full_error = format!("{} at {}", e.error_type, position);
+                        let serde_err = serde_json::from_str::<serde_json::Value>($json).unwrap_err();
+                        assert_eq!(full_error, serde_err.to_string());
                         return
                     },
                 };
@@ -113,7 +126,11 @@ macro_rules! single_expect_ok_or_error {
                 match result {
                     Ok(_) => panic!("unexpectedly valid at finish: {:?} -> {:?}", $json, first_value),
                     Err(e) => {
-                        assert_eq!(e.error_type, JsonErrorType::$error);
+                        // to check to_string works, and for coverage
+                        e.to_string();
+                        let position = parser.error_position(e.index);
+                        let actual_error = format!("{:?} @ {}", e.error_type, position.short());
+                        assert_eq!(actual_error, $expected_error);
                         return
                     },
                 }
@@ -123,7 +140,7 @@ macro_rules! single_expect_ok_or_error {
 }
 
 macro_rules! single_tests {
-    ($($name:ident: $ok_or_err:ident => $input:literal, $expected:expr;)*) => {
+    ($($name:ident: $ok_or_err:ident => $input:literal, $expected:literal;)*) => {
         $(
             single_expect_ok_or_error!($name, $ok_or_err, $input, $expected);
         )*
@@ -160,25 +177,45 @@ single_tests! {
     v_true: ok => "true", "true @ 1:1";
     v_false: ok => "false", "false @ 1:1";
     offset_true: ok => "  true", "true @ 1:3";
-    string_unclosed: err => r#""foobar"#, UnexpectedEnd;
-    bad_int: err => "-", UnexpectedEnd;
-    bad_true: err => "truX", InvalidTrue;
-    bad_true: err => "tru", UnexpectedEnd;
-    bad_false: err => "falsX", InvalidFalse;
-    bad_false: err => "fals", UnexpectedEnd;
-    bad_null: err => "nulX", InvalidNull;
-    bad_null: err => "nul", UnexpectedEnd;
-    object_trailing_comma: err => r#"{"foo": "bar",}"#, UnexpectedCharacter;
-    array_trailing_comma: err => r#"[1, 2,]"#, UnexpectedCharacter;
+    empty: err => "", "EofWhileParsingValue @ 1:0";
+    string_unclosed: err => r#""foobar"#, "EofWhileParsingString @ 1:7";
+    bad_int_neg: err => "-", "EofWhileParsingValue @ 1:1";
+    bad_true1: err => "truX", "ExpectedSomeIdent @ 1:4";
+    bad_true2: err => "tru", "EofWhileParsingValue @ 1:3";
+    bad_true3: err => "trX", "ExpectedSomeIdent @ 1:3";
+    bad_false1: err => "falsX", "ExpectedSomeIdent @ 1:5";
+    bad_false2: err => "fals", "EofWhileParsingValue @ 1:4";
+    bad_null1: err => "nulX", "ExpectedSomeIdent @ 1:4";
+    bad_null2: err => "nul", "EofWhileParsingValue @ 1:3";
+    object_trailing_comma: err => r#"{"foo": "bar",}"#, "TrailingComma @ 1:15";
+    array_trailing_comma: err => r#"[1, 2,]"#, "TrailingComma @ 1:7";
+    array_wrong_char_after_comma: err => r#"[1, 2,;"#, "ExpectedSomeValue @ 1:7";
+    array_end_after_comma: err => "[9,", "EofWhileParsingValue @ 1:3";
+    object_wrong_char: err => r#"{"foo":42;"#, "ExpectedObjectCommaOrEnd @ 1:10";
+    object_wrong_char_after_comma: err => r#"{"foo":42,;"#, "KeyMustBeAString @ 1:11";
+    object_end_after_comma: err => r#"{"x": 9,"#, "EofWhileParsingValue @ 1:8";
+    object_end_after_colon: err => r#"{"":"#, "EofWhileParsingValue @ 1:4";
+    eof_while_parsing_object: err => r#"{"foo": 1"#, "EofWhileParsingObject @ 1:9";
+    expected_colon: err => r#"{"foo"1"#, "ExpectedColon @ 1:7";
     array_bool: ok => "[true, false]", "[ @ 1:1, true @ 1:2, false @ 1:8, ]";
     object_string: ok => r#"{"foo": "ba"}"#, "{ @ 1:1, Key(2..5), String(9..11) @ 1:9, }";
     object_null: ok => r#"{"foo": null}"#, "{ @ 1:1, Key(2..5), null @ 1:9, }";
     object_bool_compact: ok => r#"{"foo":true}"#, "{ @ 1:1, Key(2..5), true @ 1:8, }";
     deep_array: ok => r#"[["Not too deep"]]"#, "[ @ 1:1, [ @ 1:2, String(3..15) @ 1:3, ], ]";
-    object_key_int: err => r#"{4: 4}"#, UnexpectedCharacter;
-    array_no_close: err => r#"["#, UnexpectedEnd;
-    array_double_close: err => "[1]]", UnexpectedCharacter;
-    double_zero: err => "001", InvalidNumber;
+    object_key_int: err => r#"{4: 4}"#, "KeyMustBeAString @ 1:2";
+    array_no_close: err => r#"["#, "EofWhileParsingList @ 1:1";
+    array_double_close: err => "[1]]", "TrailingCharacters @ 1:4";
+    invalid_float_e_end: err => "0E", "EofWhileParsingValue @ 1:2";
+    invalid_float_dot_end: err => "0.", "EofWhileParsingValue @ 1:2";
+    invalid_float_bracket: err => "2E[", "InvalidNumber @ 1:3";
+    trailing_char: err => "2z", "TrailingCharacters @ 1:2";
+    invalid_number_newline: err => "-\n", "InvalidNumber @ 2:0";
+    double_zero: err => "00", "InvalidNumber @ 1:2";
+    double_zero_one: err => "001", "InvalidNumber @ 1:2";
+    first_line: err => "[1 x]", "ExpectedListCommaOrEnd @ 1:4";
+    second_line: err => "[1\nx]", "ExpectedListCommaOrEnd @ 2:1";
+    floats_error: err => "06", "InvalidNumber @ 1:2";
+    unexpect_value: err => "[\u{16}\u{8}", "ExpectedSomeValue @ 1:2";
 }
 
 #[test]
@@ -189,14 +226,14 @@ fn invalid_string_controls() {
     let mut parser = Parser::new(b);
     let peak = parser.peak().unwrap();
     assert!(matches!(peak, Peak::String));
-    let result = parser.consume_string::<StringDecoder>(&mut tape);
-    match result {
-        Ok(t) => panic!("unexpectedly valid: {:?} -> {:?}", json, t),
-        Err(e) => {
-            assert_eq!(e.index, 0);
-            assert_eq!(e.error_type, JsonErrorType::InvalidString(3))
-        }
-    }
+    let e = parser.consume_string::<StringDecoder>(&mut tape).unwrap_err();
+    assert_eq!(e.error_type, JsonErrorType::ControlCharacterWhileParsingString);
+    assert_eq!(e.index, 4);
+    assert_eq!(parser.error_position(e.index), FilePosition::new(1, 5));
+    assert_eq!(
+        e.to_string(),
+        "control character (\\u0000-\\u001F) found while parsing a string at index 4"
+    );
 }
 
 #[test]
@@ -206,7 +243,8 @@ fn json_parse_str() {
     let data = json.as_bytes();
     let mut parser = Parser::new(data);
     let peak = parser.peak().unwrap();
-    assert!(matches!(peak, Peak::String));
+    assert_eq!(peak, Peak::String);
+    assert_eq!(parser.index, 1);
     assert_eq!(parser.current_position(), FilePosition::new(1, 2));
 
     let result_string = parser.consume_string::<StringDecoder>(&mut tape).unwrap();
@@ -242,6 +280,45 @@ string_tests! {
     backslash: r#""\\""# => r"\";
     controls: "\"\\b\\f\\n\\r\\t\"" => "\u{8}\u{c}\n\r\t";
     controls_python: "\"\\b\\f\\n\\r\\t\"" => "\x08\x0c\n\r\t";  // python notation for the same thing
+}
+
+macro_rules! string_test_errors {
+    ($($name:ident: $json:literal => $expected_error:literal;)*) => {
+        $(
+            paste::item! {
+                #[test]
+                fn [< string_parsing_errors_ $name >]() {
+                    let data = $json.as_bytes();
+                    let mut tape: Vec<u8> = Vec::new();
+                    let mut parser = Parser::new(data);
+                    let peak = parser.peak().unwrap();
+                    assert_eq!(peak, Peak::String);
+                    match parser.consume_string::<StringDecoder>(&mut tape) {
+                        Ok(t) => panic!("unexpectedly valid: {:?} -> {:?}", $json, t),
+                        Err(e) => {
+                            // to check to_string works, and for coverage
+                            e.to_string();
+                            let position = parser.error_position(e.index);
+                            let actual_error = format!("{:?} @ {} - {}", e.error_type, e.index, position.short());
+                            assert_eq!(actual_error, $expected_error);
+                        }
+                    }
+                }
+            }
+        )*
+    }
+}
+
+string_test_errors! {
+    u4_unclosed: r#""\uxx"# => "EofWhileParsingString @ 5 - 1:5";
+    u4_unclosed2: r#""\udBdd"# => "EofWhileParsingString @ 7 - 1:7";
+    line_leading_surrogate: r#""\uddBd""# => "LoneLeadingSurrogateInHexEscape @ 6 - 1:7";
+    unexpected_hex_escape1: r#""\udBd8x"# => "UnexpectedEndOfHexEscape @ 7 - 1:8";
+    unexpected_hex_escape2: r#""\udBd8xx"# => "UnexpectedEndOfHexEscape @ 7 - 1:8";
+    unexpected_hex_escape3: "\"un\\uDBBB\0" => "UnexpectedEndOfHexEscape @ 9 - 1:10";
+    unexpected_hex_escape4: r#""\ud8e0\e"# => "UnexpectedEndOfHexEscape @ 8 - 1:9";
+    newline_in_string: "\"\n" => "ControlCharacterWhileParsingString @ 1 - 2:0";
+    invalid_escape: r#" "\u12xx" "# => "InvalidEscape @ 6 - 1:7";
 }
 
 #[test]
@@ -294,13 +371,17 @@ macro_rules! test_position {
 }
 
 test_position! {
+    empty_zero: b"", 0, FilePosition::new(1, 0);
+    empty_one: b"", 1, FilePosition::new(1, 0);
     first_line_zero: b"123456", 0, FilePosition::new(1, 1);
     first_line_first: b"123456", 1, FilePosition::new(1, 2);
     first_line_3rd: b"123456", 3, FilePosition::new(1, 4);
-    first_line_last: b"123456", 6, FilePosition::new(1, 7);
-    first_line_after: b"123456", 7, FilePosition::new(1, 7);
-    first_line_last2: b"123456\n789", 6, FilePosition::new(1, 7);
-    second_line: b"123456\n789", 7, FilePosition::new(2, 1);
+    first_line_5th: b"123456", 5, FilePosition::new(1, 6);
+    first_line_last: b"123456", 6, FilePosition::new(1, 6);
+    first_line_after: b"123456", 7, FilePosition::new(1, 6);
+    second_line0: b"123456\n789", 6, FilePosition::new(2, 0);
+    second_line1: b"123456\n789", 7, FilePosition::new(2, 1);
+    second_line2: b"123456\n789", 8, FilePosition::new(2, 2);
 }
 
 #[test]
@@ -328,30 +409,21 @@ fn parse_zero_exp_float() {
 }
 
 #[test]
-fn bad_string() {
+fn bad_lower_value_in_string() {
     let bytes: Vec<u8> = vec![34, 27, 32, 34];
-    let r = JsonValue::parse(&bytes);
-    match r {
-        Ok(v) => panic!("unexpected valid {v:?}"),
-        Err(e) => {
-            assert_eq!(e.index, 0);
-            assert_eq!(e.error_type, JsonErrorType::InvalidString(0))
-        }
-    };
+    let e = JsonValue::parse(&bytes).unwrap_err();
+    assert_eq!(e.error_type, JsonErrorType::ControlCharacterWhileParsingString);
+    assert_eq!(e.index, 1);
+    assert_eq!(e.position, FilePosition::new(1, 2));
 }
 
 #[test]
-fn good_high_order_string() {
+fn bad_high_order_string() {
     let bytes: Vec<u8> = vec![34, 32, 32, 210, 34];
-    let r = JsonValue::parse(&bytes);
-    match r {
-        Ok(v) => panic!("unexpected valid {v:?}"),
-        Err(e) => {
-            assert_eq!(e.error_type, JsonErrorType::InvalidString(2));
-            assert_eq!(e.index, 0);
-            assert_eq!(e.position, FilePosition::new(1, 1));
-        }
-    };
+    let e = JsonValue::parse(&bytes).unwrap_err();
+    assert_eq!(e.error_type, JsonErrorType::InvalidUnicodeCodePoint);
+    assert_eq!(e.index, 4);
+    assert_eq!(e.to_string(), "invalid unicode code point at line 1 column 5")
 }
 
 #[test]
@@ -360,7 +432,7 @@ fn udb_string() {
     let v = JsonValue::parse(&bytes).unwrap();
     match v {
         JsonValue::String(s) => assert_eq!(s.as_bytes(), [244, 135, 159, 157]),
-        _ => panic!("unexpected valid {v:?}"),
+        _ => panic!("unexpected value {v:?}"),
     }
 }
 
@@ -373,13 +445,13 @@ fn parse_object() {
     expected.insert("foo".to_string(), JsonValue::String("bar".to_string()));
     expected.insert(
         "spam".to_string(),
-        JsonValue::Array(Box::new(smallvec![
+        JsonValue::Array(Arc::new(smallvec![
             JsonValue::Int(1),
             JsonValue::Null,
             JsonValue::Bool(true)
         ])),
     );
-    assert_eq!(v, JsonValue::Object(Box::new(expected)));
+    assert_eq!(v, JsonValue::Object(Arc::new(expected)));
 }
 
 #[test]
@@ -388,7 +460,7 @@ fn parse_array_3() {
     let v = JsonValue::parse(json.as_bytes()).unwrap();
     assert_eq!(
         v,
-        JsonValue::Array(Box::new(smallvec![
+        JsonValue::Array(Arc::new(smallvec![
             JsonValue::Int(1),
             JsonValue::Null,
             JsonValue::Bool(true)
@@ -400,20 +472,15 @@ fn parse_array_3() {
 fn parse_array_empty() {
     let json = r#"[   ]"#;
     let v = JsonValue::parse(json.as_bytes()).unwrap();
-    assert_eq!(v, JsonValue::Array(Box::new(smallvec![])));
+    assert_eq!(v, JsonValue::Array(Arc::new(smallvec![])));
 }
 
 #[test]
 fn repeat_trailing_array() {
     let json = "[1]]";
-    let result = JsonValue::parse(json.as_bytes());
-    match result {
-        Ok(t) => panic!("unexpectedly valid: {:?} -> {:?}", json, t),
-        Err(e) => {
-            assert_eq!(e.error_type, JsonErrorType::UnexpectedCharacter);
-            // assert_eq!(e.position, FilePosition::new(1, 4));
-        }
-    }
+    let e = JsonValue::parse(json.as_bytes()).unwrap_err();
+    assert_eq!(e.error_type, JsonErrorType::TrailingCharacters);
+    assert_eq!(e.position, FilePosition::new(1, 4));
 }
 
 #[test]
@@ -422,14 +489,23 @@ fn parse_value_nested() {
     let v = JsonValue::parse(json.as_bytes()).unwrap();
     assert_eq!(
         v,
-        JsonValue::Array(Box::new(smallvec![
+        JsonValue::Array(Arc::new(smallvec![
             JsonValue::Int(1),
             JsonValue::Int(2),
-            JsonValue::Array(Box::new(smallvec![JsonValue::Int(3), JsonValue::Int(4)])),
+            JsonValue::Array(Arc::new(smallvec![JsonValue::Int(3), JsonValue::Int(4)])),
             JsonValue::Int(5),
             JsonValue::Int(6),
         ]),)
     )
+}
+
+#[test]
+fn test_array_trailing() {
+    let json = r#"[1, 2,]"#;
+    let e = JsonValue::parse(json.as_bytes()).unwrap_err();
+    assert_eq!(e.error_type, JsonErrorType::TrailingComma);
+    assert_eq!(e.position, FilePosition::new(1, 7));
+    assert_eq!(e.to_string(), "trailing comma at line 1 column 7");
 }
 
 fn read_file(path: &str) -> String {
@@ -460,12 +536,25 @@ fn jiter_object() {
     assert_eq!(jiter.next_key().unwrap(), Some("spam"));
     assert_eq!(jiter.next_array().unwrap(), Some(Peak::Num(b'1')));
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(1));
-    assert!(jiter.array_step().unwrap());
+    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Num(b'2')));
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(2));
-    assert!(jiter.array_step().unwrap());
+    assert_eq!(jiter.array_step().unwrap(), Some(Peak::String));
     assert_eq!(jiter.next_bytes().unwrap(), b"x");
-    assert!(!jiter.array_step().unwrap());
+    assert!(jiter.array_step().unwrap().is_none());
     assert_eq!(jiter.next_key().unwrap(), None);
+    jiter.finish().unwrap();
+}
+
+#[test]
+fn jiter_bool() {
+    let mut jiter = Jiter::new(b"[true, false, null]");
+    assert_eq!(jiter.next_array().unwrap(), Some(Peak::True));
+    assert_eq!(jiter.next_bool().unwrap(), true);
+    assert_eq!(jiter.array_step().unwrap(), Some(Peak::False));
+    assert_eq!(jiter.next_bool().unwrap(), false);
+    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Null));
+    jiter.next_null().unwrap();
+    assert_eq!(jiter.array_step().unwrap(), None);
     jiter.finish().unwrap();
 }
 
@@ -484,15 +573,15 @@ fn jiter_number() {
     let mut jiter = Jiter::new(br#"  [1, 2.2, 3, 4.1, 5.67]"#);
     assert_eq!(jiter.next_array().unwrap(), Some(Peak::Num(b'1')));
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(1));
-    assert_eq!(jiter.array_step().unwrap(), true);
+    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Num(b'2')));
     assert_eq!(jiter.next_float().unwrap(), 2.2);
-    assert_eq!(jiter.array_step().unwrap(), true);
+    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Num(b'3')));
     assert_eq!(jiter.next_number().unwrap(), NumberAny::Int(NumberInt::Int(3)));
-    assert_eq!(jiter.array_step().unwrap(), true);
+    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Num(b'4')));
     assert_eq!(jiter.next_number().unwrap(), NumberAny::Float(4.1));
-    assert_eq!(jiter.array_step().unwrap(), true);
+    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Num(b'5')));
     assert_eq!(jiter.next_number_bytes().unwrap(), b"5.67");
-    assert_eq!(jiter.array_step().unwrap(), false);
+    assert_eq!(jiter.array_step().unwrap(), None);
     jiter.finish().unwrap();
 }
 
@@ -500,16 +589,16 @@ fn jiter_number() {
 fn jiter_bytes_u_escape() {
     let mut jiter = Jiter::new(br#"{"foo": "xx \u00a3"}"#);
     assert_eq!(jiter.next_object_bytes().unwrap().unwrap(), b"foo");
-    match jiter.next_bytes() {
-        Ok(r) => panic!("unexpectedly valid: {:?}", r),
-        Err(e) => {
-            assert_eq!(
-                e.error_type,
-                JiterErrorType::JsonError(JsonErrorType::StringEscapeNotSupported(4))
-            );
-            assert_eq!(jiter.error_position(&e), FilePosition::new(1, 9));
-        }
-    }
+    let e = jiter.next_bytes().unwrap_err();
+    assert_eq!(
+        e.error_type,
+        JiterErrorType::JsonError(JsonErrorType::StringEscapeNotSupported)
+    );
+    assert_eq!(jiter.error_position(&e), FilePosition::new(1, 14));
+    assert_eq!(
+        e.with_position(&jiter).to_string(),
+        "string escape sequences are not supported at line 1 column 14"
+    )
 }
 
 #[test]
@@ -524,38 +613,33 @@ fn jiter_trailing_bracket() {
     let mut jiter = Jiter::new(b"[1]]");
     assert_eq!(jiter.next_array().unwrap(), Some(Peak::Num(b'1')));
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(1));
-    assert!(!jiter.array_step().unwrap());
-    let result = jiter.finish();
-    match result {
-        Ok(t) => panic!("unexpectedly valid: {:?}", t),
-        Err(e) => {
-            assert_eq!(
-                e.error_type,
-                JiterErrorType::JsonError(JsonErrorType::UnexpectedCharacter)
-            );
-            assert_eq!(jiter.error_position(&e), FilePosition::new(1, 4));
-        }
-    }
+    assert!(jiter.array_step().unwrap().is_none());
+    let e = jiter.finish().unwrap_err();
+    assert_eq!(
+        e.error_type,
+        JiterErrorType::JsonError(JsonErrorType::TrailingCharacters)
+    );
+    assert_eq!(jiter.error_position(&e), FilePosition::new(1, 4));
 }
 
 #[test]
 fn jiter_wrong_type() {
     let mut jiter = Jiter::new(b" 123");
-    let result = jiter.next_str();
-    match result {
-        Ok(t) => panic!("unexpectedly valid: {:?}", t),
-        Err(e) => {
-            assert_eq!(
-                e.error_type,
-                JiterErrorType::WrongType {
-                    expected: JsonType::String,
-                    actual: JsonType::Int,
-                }
-            );
-            assert_eq!(e.index, 1);
-            assert_eq!(jiter.error_position(&e), FilePosition::new(1, 2));
+    let e = jiter.next_str().unwrap_err();
+    assert_eq!(
+        e.error_type,
+        JiterErrorType::WrongType {
+            expected: JsonType::String,
+            actual: JsonType::Int
         }
-    }
+    );
+    assert_eq!(e.index, 1);
+    assert_eq!(jiter.error_position(&e), FilePosition::new(1, 2));
+    assert_eq!(e.to_string(), "expected string but found int at index 1");
+    assert_eq!(
+        e.with_position(&jiter).to_string(),
+        "expected string but found int at line 1 column 2"
+    );
 }
 
 #[test]
@@ -602,13 +686,10 @@ fn unique_iter_object_repeat() {
 fn test_recursion_limit() {
     let json = (0..2000).map(|_| "[").collect::<String>();
     let bytes = json.as_bytes();
-    match JsonValue::parse(bytes) {
-        Ok(v) => panic!("unexpectedly valid: {:?}", v),
-        Err(e) => {
-            assert_eq!(e.error_type, JsonErrorType::RecursionLimitExceeded);
-            assert_eq!(e.index, 201);
-        }
-    }
+    let e = JsonValue::parse(bytes).unwrap_err();
+    assert_eq!(e.error_type, JsonErrorType::RecursionLimitExceeded);
+    assert_eq!(e.index, 201);
+    assert_eq!(e.to_string(), "recursion limit exceeded at line 1 column 202");
 }
 
 #[test]
@@ -669,11 +750,8 @@ fn test_4300_int() {
 fn test_4302_int_err() {
     let json = (0..4302).map(|_| "9".to_string()).collect::<Vec<_>>().join("");
     let bytes = json.as_bytes();
-    match JsonValue::parse(bytes) {
-        Ok(v) => panic!("unexpectedly valid: {:?}", v),
-        Err(e) => {
-            assert_eq!(e.error_type, JsonErrorType::NumberTooLarge);
-            assert_eq!(e.index, 4301);
-        }
-    }
+    let e = JsonValue::parse(bytes).unwrap_err();
+    assert_eq!(e.error_type, JsonErrorType::NumberOutOfRange);
+    assert_eq!(e.index, 4301);
+    assert_eq!(e.to_string(), "number out of range at line 1 column 4302");
 }

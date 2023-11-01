@@ -15,17 +15,29 @@ pub enum Peak {
 }
 
 impl Peak {
-    fn new(next: u8, index: usize) -> JsonResult<Self> {
+    fn new(next: u8) -> Option<Self> {
         match next {
-            b'[' => Ok(Self::Array),
-            b'{' => Ok(Self::Object),
-            b'"' => Ok(Self::String),
-            b't' => Ok(Self::True),
-            b'f' => Ok(Self::False),
-            b'n' => Ok(Self::Null),
-            b'0'..=b'9' => Ok(Self::Num(next)),
-            b'-' => Ok(Self::Num(next)),
-            _ => json_err!(UnexpectedCharacter, index),
+            b'[' => Some(Self::Array),
+            b'{' => Some(Self::Object),
+            b'"' => Some(Self::String),
+            b't' => Some(Self::True),
+            b'f' => Some(Self::False),
+            b'n' => Some(Self::Null),
+            b'0'..=b'9' => Some(Self::Num(next)),
+            b'-' => Some(Self::Num(next)),
+            _ => None,
+        }
+    }
+
+    pub fn display_type(&self) -> &'static str {
+        match self {
+            Self::Null => "a null",
+            Self::True => "a true",
+            Self::False => "a false",
+            Self::Num(_) => "a number",
+            Self::String => "a string",
+            Self::Array => "an array",
+            Self::Object => "an object",
         }
     }
 }
@@ -55,13 +67,14 @@ impl<'a> Parser<'a> {
         FilePosition::find(self.data, index)
     }
 
-    /// we should enable PGO, then add `#[inline(always)]` so this method can be optimised
-    /// for each call from Jiter.
     pub fn peak(&mut self) -> JsonResult<Peak> {
         if let Some(next) = self.eat_whitespace() {
-            Peak::new(next, self.index)
+            match Peak::new(next) {
+                Some(p) => Ok(p),
+                None => json_err!(ExpectedSomeValue, self.index),
+            }
         } else {
-            json_err!(UnexpectedEnd, self.index)
+            json_err!(EofWhileParsingValue, self.index)
         }
     }
 
@@ -72,28 +85,30 @@ impl<'a> Parser<'a> {
                 self.index += 1;
                 Ok(None)
             } else {
-                Peak::new(next, self.index).map(Some)
+                self.array_peak()
             }
         } else {
-            json_err!(UnexpectedEnd, self.index)
+            json_err!(EofWhileParsingList, self.index)
         }
     }
 
-    pub fn array_step(&mut self) -> JsonResult<bool> {
+    pub fn array_step(&mut self) -> JsonResult<Option<Peak>> {
         if let Some(next) = self.eat_whitespace() {
             match next {
                 b',' => {
                     self.index += 1;
-                    Ok(true)
+                    self.array_peak()
                 }
                 b']' => {
                     self.index += 1;
-                    Ok(false)
+                    Ok(None)
                 }
-                _ => json_err!(UnexpectedCharacter, self.index),
+                _ => {
+                    json_err!(ExpectedListCommaOrEnd, self.index)
+                }
             }
         } else {
-            json_err!(UnexpectedEnd, self.index)
+            json_err!(EofWhileParsingList, self.index)
         }
     }
 
@@ -112,10 +127,10 @@ impl<'a> Parser<'a> {
                     self.index += 1;
                     Ok(None)
                 }
-                _ => json_err!(UnexpectedCharacter, self.index),
+                _ => json_err!(KeyMustBeAString, self.index),
             }
         } else {
-            json_err!(UnexpectedEnd, self.index)
+            json_err!(EofWhileParsingObject, self.index)
         }
     }
 
@@ -130,24 +145,21 @@ impl<'a> Parser<'a> {
             match next {
                 b',' => {
                     self.index += 1;
-                    if let Some(next) = self.eat_whitespace() {
-                        if next == b'"' {
-                            self.object_key::<D>(tape).map(Some)
-                        } else {
-                            json_err!(UnexpectedCharacter, self.index)
-                        }
-                    } else {
-                        json_err!(UnexpectedEnd, self.index)
+                    match self.eat_whitespace() {
+                        Some(b'"') => self.object_key::<D>(tape).map(Some),
+                        Some(b'}') => json_err!(TrailingComma, self.index),
+                        Some(_) => json_err!(KeyMustBeAString, self.index),
+                        None => json_err!(EofWhileParsingValue, self.index),
                     }
                 }
                 b'}' => {
                     self.index += 1;
                     Ok(None)
                 }
-                _ => json_err!(UnexpectedCharacter, self.index),
+                _ => json_err!(ExpectedObjectCommaOrEnd, self.index),
             }
         } else {
-            json_err!(UnexpectedEnd, self.index)
+            json_err!(EofWhileParsingObject, self.index)
         }
     }
 
@@ -155,41 +167,20 @@ impl<'a> Parser<'a> {
         if self.eat_whitespace().is_none() {
             Ok(())
         } else {
-            json_err!(UnexpectedCharacter, self.index)
+            json_err!(TrailingCharacters, self.index)
         }
     }
 
     pub fn consume_true(&mut self) -> JsonResult<()> {
-        match self.data.get(self.index + 1..self.index + 4) {
-            Some(s) if s == TRUE_REST => {
-                self.index += 4;
-                Ok(())
-            }
-            Some(_) => json_err!(InvalidTrue, self.index),
-            None => json_err!(UnexpectedEnd, self.data.len()),
-        }
+        self.consume_ident(TRUE_REST)
     }
 
     pub fn consume_false(&mut self) -> JsonResult<()> {
-        match self.data.get(self.index + 1..self.index + 5) {
-            Some(s) if s == FALSE_REST => {
-                self.index += 5;
-                Ok(())
-            }
-            Some(_) => json_err!(InvalidFalse, self.index),
-            None => json_err!(UnexpectedEnd, self.data.len()),
-        }
+        self.consume_ident(FALSE_REST)
     }
 
     pub fn consume_null(&mut self) -> JsonResult<()> {
-        match self.data.get(self.index + 1..self.index + 4) {
-            Some(s) if s == NULL_REST => {
-                self.index += 4;
-                Ok(())
-            }
-            Some(_) => json_err!(InvalidNull, self.index),
-            None => json_err!(UnexpectedEnd, self.data.len()),
-        }
+        self.consume_ident(NULL_REST)
     }
 
     pub fn consume_string<'s, 't, D: AbstractStringDecoder<'t>>(
@@ -222,10 +213,50 @@ impl<'a> Parser<'a> {
                 self.index += 1;
                 Ok(output)
             } else {
-                json_err!(UnexpectedCharacter, self.index)
+                json_err!(ExpectedColon, self.index)
             }
         } else {
-            json_err!(UnexpectedEnd, self.index)
+            json_err!(EofWhileParsingObject, self.index)
+        }
+    }
+
+    fn consume_ident<const SIZE: usize>(&mut self, expected: [u8; SIZE]) -> JsonResult<()> {
+        match self.data.get(self.index + 1..self.index + SIZE + 1) {
+            Some(s) if s == expected => {
+                self.index += SIZE + 1;
+                Ok(())
+            }
+            // TODO very sadly iterating over expected cause extra branches in the generated assembly
+            //   and is significantly slower than just returning an error
+            _ => {
+                self.index += 1;
+                for c in expected.iter() {
+                    match self.data.get(self.index) {
+                        Some(v) if v == c => self.index += 1,
+                        Some(_) => return json_err!(ExpectedSomeIdent, self.index),
+                        _ => break,
+                    }
+                }
+                json_err!(EofWhileParsingValue, self.index)
+            }
+        }
+    }
+
+    fn array_peak(&mut self) -> JsonResult<Option<Peak>> {
+        if let Some(next) = self.eat_whitespace() {
+            match Peak::new(next) {
+                Some(p) => Ok(Some(p)),
+                None => {
+                    // if next is a `]`, we have a "trailing comma" error
+                    if next == b']' {
+                        json_err!(TrailingComma, self.index)
+                    } else {
+                        json_err!(ExpectedSomeValue, self.index)
+                    }
+                }
+            }
+        } else {
+            json_err!(EofWhileParsingValue, self.index)
         }
     }
 

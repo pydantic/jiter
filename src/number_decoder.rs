@@ -62,13 +62,21 @@ pub struct NumberFloat;
 impl AbstractNumberDecoder for NumberFloat {
     type Output = f64;
 
-    fn decode(data: &[u8], index: usize, _first: u8) -> JsonResult<(Self::Output, usize)> {
+    fn decode(data: &[u8], index: usize, first: u8) -> JsonResult<(Self::Output, usize)> {
         let start = index;
         const JSON: u128 = lexical_format::JSON;
         let options = ParseFloatOptions::new();
         match parse_partial_with_options::<f64, JSON>(&data[start..], &options) {
             Ok((float, index)) => Ok((float, index + start)),
-            Err(_) => json_err!(InvalidNumber, index),
+            Err(_) => {
+                // it's impossible to work out the right error from LexicalError here, so we parse again
+                // with NumberRange and use that error
+                match NumberRange::decode(data, start, first) {
+                    Err(e) => Err(e),
+                    // shouldn't happen
+                    Ok(_) => unreachable!("NumberRange should always return an error"),
+                }
+            }
         }
     }
 }
@@ -127,7 +135,7 @@ impl IntParse {
             Some(b'0') => return Ok((Self::Float, index)),
             Some(digit) if (b'1'..=b'9').contains(digit) => (digit & 0x0f) as i64,
             Some(_) => return json_err!(InvalidNumber, index),
-            None => return json_err!(UnexpectedEnd, index),
+            None => return json_err!(EofWhileParsingValue, index),
         };
         // i64::MAX = 9223372036854775807 - 18 chars
         for _ in 1..18 {
@@ -164,7 +172,7 @@ impl IntParse {
             }
             length += 18;
             if length > 4300 {
-                return json_err!(NumberTooLarge, index);
+                return json_err!(NumberOutOfRange, index);
             }
             big_value *= 10u64.pow(18);
             big_value += value;
@@ -200,12 +208,13 @@ impl AbstractNumberDecoder for NumberRange {
                         let end = consume_exponential(data, index)?;
                         Ok((start..end, end))
                     }
-                    _ => return Ok((start..index, index)),
+                    Some(_) => return json_err!(InvalidNumber, index),
+                    None => return Ok((start..index, index)),
                 };
             }
             Some(digit) if (b'1'..=b'9').contains(digit) => (),
             Some(_) => return json_err!(InvalidNumber, index),
-            None => return json_err!(UnexpectedEnd, index),
+            None => return json_err!(EofWhileParsingValue, index),
         };
 
         index += 1;
@@ -238,13 +247,13 @@ fn consume_exponential(data: &[u8], mut index: usize) -> JsonResult<usize> {
         }
         Some(v) if v.is_ascii_digit() => (),
         Some(_) => return json_err!(InvalidNumber, index),
-        None => return json_err!(UnexpectedEnd, index),
+        None => return json_err!(EofWhileParsingValue, index),
     };
 
     match data.get(index) {
         Some(v) if v.is_ascii_digit() => (),
         Some(_) => return json_err!(InvalidNumber, index),
-        None => return json_err!(UnexpectedEnd, index),
+        None => return json_err!(EofWhileParsingValue, index),
     };
     index += 1;
 
@@ -263,7 +272,7 @@ fn consume_decimal(data: &[u8], mut index: usize) -> JsonResult<usize> {
     match data.get(index) {
         Some(v) if v.is_ascii_digit() => (),
         Some(_) => return json_err!(InvalidNumber, index),
-        None => return json_err!(UnexpectedEnd, index),
+        None => return json_err!(EofWhileParsingValue, index),
     };
     index += 1;
 
