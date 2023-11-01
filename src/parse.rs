@@ -251,7 +251,7 @@ impl<'a> Parser<'a> {
                     if next == b']' {
                         json_err!(TrailingComma, self.index)
                     } else {
-                        json_err!(ExpectedSomeValue, self.index + 1)
+                        json_err!(ExpectedSomeValue, self.index)
                     }
                 }
             }

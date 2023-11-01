@@ -4,7 +4,7 @@ use std::fmt;
 pub enum JsonErrorType {
     /// string escape sequences are not supported in this method, usize here is the position within the string
     /// that is invalid
-    StringEscapeNotSupported(usize),
+    StringEscapeNotSupported,
 
     /// float value was found where an int was expected
     FloatExpectingInt,
@@ -44,7 +44,7 @@ pub enum JsonErrorType {
     ExpectedDoubleQuote,
 
     /// Invalid hex escape code.
-    InvalidEscape(usize),
+    InvalidEscape,
 
     /// Invalid number.
     InvalidNumber,
@@ -53,10 +53,10 @@ pub enum JsonErrorType {
     NumberOutOfRange,
 
     /// Invalid unicode code point.
-    InvalidUnicodeCodePoint(usize),
+    InvalidUnicodeCodePoint,
 
     /// Control character found while parsing a string.
-    ControlCharacterWhileParsingString(usize),
+    ControlCharacterWhileParsingString,
 
     /// Object key is not a string.
     KeyMustBeAString,
@@ -68,7 +68,7 @@ pub enum JsonErrorType {
     FloatKeyMustBeFinite,
 
     /// Lone leading surrogate in hex escape.
-    LoneLeadingSurrogateInHexEscape(usize),
+    LoneLeadingSurrogateInHexEscape,
 
     /// JSON has a comma after the last value in an array or map.
     TrailingComma,
@@ -77,7 +77,7 @@ pub enum JsonErrorType {
     TrailingCharacters,
 
     /// Unexpected end of hex escape.
-    UnexpectedEndOfHexEscape(usize),
+    UnexpectedEndOfHexEscape,
 
     /// Encountered nesting of JSON maps and arrays more than 128 layers deep.
     RecursionLimitExceeded,
@@ -87,7 +87,7 @@ impl std::fmt::Display for JsonErrorType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Messages for enum members copied from serde_json are unchanged
         match self {
-            Self::StringEscapeNotSupported(_) => f.write_str("string escape sequences are not supported"),
+            Self::StringEscapeNotSupported => f.write_str("string escape sequences are not supported"),
             Self::FloatExpectingInt => f.write_str("float value was found where an int was expected"),
             Self::EofWhileParsingList => f.write_str("EOF while parsing a list"),
             Self::EofWhileParsingObject => f.write_str("EOF while parsing an object"),
@@ -99,20 +99,20 @@ impl std::fmt::Display for JsonErrorType {
             Self::ExpectedSomeIdent => f.write_str("expected ident"),
             Self::ExpectedSomeValue => f.write_str("expected value"),
             Self::ExpectedDoubleQuote => f.write_str("expected `\"`"),
-            Self::InvalidEscape(_) => f.write_str("invalid escape"),
+            Self::InvalidEscape => f.write_str("invalid escape"),
             Self::InvalidNumber => f.write_str("invalid number"),
             Self::NumberOutOfRange => f.write_str("number out of range"),
-            Self::InvalidUnicodeCodePoint(_) => f.write_str("invalid unicode code point"),
-            Self::ControlCharacterWhileParsingString(_) => {
+            Self::InvalidUnicodeCodePoint => f.write_str("invalid unicode code point"),
+            Self::ControlCharacterWhileParsingString => {
                 f.write_str("control character (\\u0000-\\u001F) found while parsing a string")
             }
             Self::KeyMustBeAString => f.write_str("key must be a string"),
             Self::ExpectedNumericKey => f.write_str("invalid value: expected key to be a number in quotes"),
             Self::FloatKeyMustBeFinite => f.write_str("float key must be finite (got NaN or +/-inf)"),
-            Self::LoneLeadingSurrogateInHexEscape(_) => f.write_str("lone leading surrogate in hex escape"),
+            Self::LoneLeadingSurrogateInHexEscape => f.write_str("lone leading surrogate in hex escape"),
             Self::TrailingComma => f.write_str("trailing comma"),
             Self::TrailingCharacters => f.write_str("trailing characters"),
-            Self::UnexpectedEndOfHexEscape(_) => f.write_str("unexpected end of hex escape"),
+            Self::UnexpectedEndOfHexEscape => f.write_str("unexpected end of hex escape"),
             Self::RecursionLimitExceeded => f.write_str("recursion limit exceeded"),
         }
     }
@@ -136,10 +136,6 @@ macro_rules! json_error {
     ($error_type:ident, $index:expr) => {
         crate::errors::JsonError::new(crate::errors::JsonErrorType::$error_type, $index)
     };
-
-    ($error_type:ident, $error_value: expr, $index:expr) => {
-        crate::errors::JsonError::new(crate::errors::JsonErrorType::$error_type($error_value), $index)
-    };
 }
 
 pub(crate) use json_error;
@@ -147,10 +143,6 @@ pub(crate) use json_error;
 macro_rules! json_err {
     ($error_type:ident, $index:expr) => {
         Err(crate::errors::json_error!($error_type, $index))
-    };
-
-    ($error_type:ident, $error_value: expr, $index:expr) => {
-        Err(crate::errors::json_error!($error_type, $error_value, $index))
     };
 }
 

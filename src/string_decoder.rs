@@ -60,11 +60,11 @@ impl<'t> AbstractStringDecoder<'t> for StringDecoder<'t> {
                             b'r' => tape.push(b'\r'),
                             b't' => tape.push(b'\t'),
                             b'u' => {
-                                let (c, new_index) = parse_escape(data, index, start)?;
+                                let (c, new_index) = parse_escape(data, index)?;
                                 index = new_index;
                                 tape.extend_from_slice(c.encode_utf8(&mut [0_u8; 4]).as_bytes());
                             }
-                            _ => return json_err!(InvalidEscape, index - start, start - 1),
+                            _ => return json_err!(InvalidEscape, index),
                         }
                         last_escape = index + 1;
                     } else {
@@ -72,7 +72,7 @@ impl<'t> AbstractStringDecoder<'t> for StringDecoder<'t> {
                     }
                 }
                 // all values below 32 are invalid
-                next if *next < 32u8 => return json_err!(ControlCharacterWhileParsingString, index - start, start - 1),
+                next if *next < 32u8 => return json_err!(ControlCharacterWhileParsingString, index),
                 next if *next >= 128u8 && ascii_only => {
                     ascii_only = false;
                 }
@@ -90,20 +90,20 @@ fn to_str(bytes: &[u8], ascii_only: bool, start: usize) -> JsonResult<&str> {
         // transmute from bytes to str
         Ok(unsafe { std::str::from_utf8_unchecked(bytes) })
     } else {
-        std::str::from_utf8(bytes).map_err(|e| json_error!(InvalidUnicodeCodePoint, e.valid_up_to(), start - 1))
+        std::str::from_utf8(bytes).map_err(|e| json_error!(InvalidUnicodeCodePoint, start + e.valid_up_to() + 1))
     }
 }
 
 /// Taken approximately from https://github.com/serde-rs/json/blob/v1.0.107/src/read.rs#L872-L945
-fn parse_escape(data: &[u8], index: usize, start: usize) -> JsonResult<(char, usize)> {
-    let (n, index) = parse_u4(data, index, start)?;
+fn parse_escape(data: &[u8], index: usize) -> JsonResult<(char, usize)> {
+    let (n, index) = parse_u4(data, index)?;
     match n {
-        0xDC00..=0xDFFF => json_err!(LoneLeadingSurrogateInHexEscape, index - start, start - 1),
+        0xDC00..=0xDFFF => json_err!(LoneLeadingSurrogateInHexEscape, index),
         0xD800..=0xDBFF => match data.get(index + 1..index + 3) {
             Some(slice) if slice == b"\\u" => {
-                let (n2, index) = parse_u4(data, index + 2, start)?;
+                let (n2, index) = parse_u4(data, index + 2)?;
                 if !(0xDC00..=0xDFFF).contains(&n2) {
-                    return json_err!(LoneLeadingSurrogateInHexEscape, index - start, start - 1);
+                    return json_err!(LoneLeadingSurrogateInHexEscape, index);
                 }
                 let n2 = (((n - 0xD800) as u32) << 10 | (n2 - 0xDC00) as u32) + 0x1_0000;
 
@@ -112,20 +112,20 @@ fn parse_escape(data: &[u8], index: usize, start: usize) -> JsonResult<(char, us
                     None => json_err!(EofWhileParsingString, index),
                 }
             }
-            Some(_) => json_err!(UnexpectedEndOfHexEscape, index - start, start - 1),
+            Some(_) => json_err!(UnexpectedEndOfHexEscape, index),
             None => match data.get(index + 1) {
                 Some(b'\\') | None => json_err!(EofWhileParsingString, data.len()),
-                Some(_) => json_err!(UnexpectedEndOfHexEscape, index - start, start - 1),
+                Some(_) => json_err!(UnexpectedEndOfHexEscape, index + 1),
             },
         },
         _ => match char::from_u32(n as u32) {
             Some(c) => Ok((c, index)),
-            None => json_err!(InvalidEscape, index - start, index),
+            None => json_err!(InvalidEscape, index),
         },
     }
 }
 
-fn parse_u4(data: &[u8], mut index: usize, start: usize) -> JsonResult<(u16, usize)> {
+fn parse_u4(data: &[u8], mut index: usize) -> JsonResult<(u16, usize)> {
     let mut n = 0;
     let u4 = data
         .get(index + 1..index + 5)
@@ -137,7 +137,7 @@ fn parse_u4(data: &[u8], mut index: usize, start: usize) -> JsonResult<(u16, usi
             b'0'..=b'9' => (c & 0x0f) as u16,
             b'a'..=b'f' => (c - b'a' + 10) as u16,
             b'A'..=b'F' => (c - b'A' + 10) as u16,
-            _ => return json_err!(InvalidEscape, index - start, start - 1),
+            _ => return json_err!(InvalidEscape, index),
         };
         n = (n << 4) + hex;
     }
@@ -169,8 +169,8 @@ impl<'t> AbstractStringDecoder<'t> for StringDecoderRange {
                             // these escapes are easy to validate
                             b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't' => (),
                             // unicode escapes are harder to validate, we just prevent them here
-                            b'u' => return json_err!(StringEscapeNotSupported, index - start, start - 1),
-                            _ => return json_err!(InvalidEscape, index - start, start - 1),
+                            b'u' => return json_err!(StringEscapeNotSupported, index),
+                            _ => return json_err!(InvalidEscape, index),
                         }
                     } else {
                         return json_err!(EofWhileParsingString, index);

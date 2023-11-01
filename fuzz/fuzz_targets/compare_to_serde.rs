@@ -72,15 +72,6 @@ fn ints_equal(i1: &i64, n2: &SerdeNumber) -> bool {
     return floats_approx(i1.to_f64(), n2.as_f64())
 }
 
-fn remove_suffix(s: &str) -> &str {
-    match s.find("line ") {
-        Some(line_index) => {
-            &s[..line_index]
-        },
-        None => s,
-    }
-}
-
 fn errors_equal(jiter_error: &JiterError, serde_error: &SerdeError) -> bool {
     let jiter_error_str = jiter_error.to_string();
     let serde_error_str = serde_error.to_string();
@@ -92,7 +83,6 @@ fn errors_equal(jiter_error: &JiterError, serde_error: &SerdeError) -> bool {
         true
     } else {
         return jiter_error_str == serde_error_str
-        // remove_suffix(&jiter_error_str) == remove_suffix(&serde_error_str)
     }
 }
 

@@ -221,6 +221,7 @@ single_tests! {
     first_line: err => "[1 x]", "ExpectedListCommaOrEnd @ 1:4";
     second_line: err => "[1\nx]", "ExpectedListCommaOrEnd @ 2:1";
     floats_error: err => "06", "InvalidNumber @ 1:2";
+    unexpect_value: err => "[\u{16}\u{8}", "ExpectedSomeValue @ 1:2";
 }
 
 #[test]
@@ -235,8 +236,9 @@ fn invalid_string_controls() {
     match result {
         Ok(t) => panic!("unexpectedly valid: {:?} -> {:?}", json, t),
         Err(e) => {
-            assert_eq!(e.index, 0);
-            assert_eq!(e.error_type, JsonErrorType::ControlCharacterWhileParsingString(3))
+            assert_eq!(e.error_type, JsonErrorType::ControlCharacterWhileParsingString);
+            assert_eq!(e.index, 4);
+            assert_eq!(parser.error_position(e.index), FilePosition::new(1, 5));
         }
     }
 }
@@ -315,10 +317,11 @@ macro_rules! string_test_errors {
 string_test_errors! {
     u4_unclosed: r#""\uxx"# => "EofWhileParsingString @ 5 - 1:5";
     u4_unclosed2: r#""\udBdd"# => "EofWhileParsingString @ 7 - 1:7";
-    line_leading_surrogate: r#""\uddBd""# => "LoneLeadingSurrogateInHexEscape(5) @ 0 - 1:1";
-    unexpected_hex_escape1: r#""\udBd8x"# => "UnexpectedEndOfHexEscape(5) @ 0 - 1:1";
-    unexpected_hex_escape2: r#""\udBd8xx"# => "UnexpectedEndOfHexEscape(5) @ 0 - 1:1";
-    // TODO newline_in_string: "\"\n" => "ControlCharacterWhileParsingString(5) @ 0 - 2:0";
+    line_leading_surrogate: r#""\uddBd""# => "LoneLeadingSurrogateInHexEscape @ 6 - 1:7";
+    unexpected_hex_escape1: r#""\udBd8x"# => "UnexpectedEndOfHexEscape @ 7 - 1:8";
+    unexpected_hex_escape2: r#""\udBd8xx"# => "UnexpectedEndOfHexEscape @ 6 - 1:7";
+    newline_in_string: "\"\n" => "ControlCharacterWhileParsingString @ 1 - 2:0";
+    unexpected_end_of_hex: "\"un\\uDBBB\0" => "UnexpectedEndOfHexEscape @ 9 - 1:10";
 }
 
 #[test]
@@ -415,8 +418,9 @@ fn bad_lower_value_in_string() {
     match r {
         Ok(v) => panic!("unexpected valid {v:?}"),
         Err(e) => {
-            assert_eq!(e.index, 0);
-            assert_eq!(e.error_type, JsonErrorType::ControlCharacterWhileParsingString(0))
+            assert_eq!(e.error_type, JsonErrorType::ControlCharacterWhileParsingString);
+            assert_eq!(e.index, 1);
+            assert_eq!(e.position, FilePosition::new(1, 2));
         }
     };
 }
@@ -428,9 +432,9 @@ fn bad_high_order_string() {
     match r {
         Ok(v) => panic!("unexpected valid {v:?}"),
         Err(e) => {
-            assert_eq!(e.error_type, JsonErrorType::InvalidUnicodeCodePoint(2));
-            assert_eq!(e.index, 0);
-            assert_eq!(e.position, FilePosition::new(1, 1));
+            assert_eq!(e.error_type, JsonErrorType::InvalidUnicodeCodePoint);
+            assert_eq!(e.index, 4);
+            assert_eq!(e.position, FilePosition::new(1, 5));
         }
     };
 }
@@ -600,9 +604,9 @@ fn jiter_bytes_u_escape() {
         Err(e) => {
             assert_eq!(
                 e.error_type,
-                JiterErrorType::JsonError(JsonErrorType::StringEscapeNotSupported(4))
+                JiterErrorType::JsonError(JsonErrorType::StringEscapeNotSupported)
             );
-            assert_eq!(jiter.error_position(&e), FilePosition::new(1, 9));
+            assert_eq!(jiter.error_position(&e), FilePosition::new(1, 14));
         }
     }
 }
