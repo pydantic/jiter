@@ -112,7 +112,8 @@ fn parse_escape(data: &[u8], index: usize) -> JsonResult<(char, usize)> {
                     None => json_err!(EofWhileParsingString, index),
                 }
             }
-            Some(_) => json_err!(UnexpectedEndOfHexEscape, index),
+            Some(slice) if slice.starts_with(b"\\") => json_err!(UnexpectedEndOfHexEscape, index + 2),
+            Some(_) => json_err!(UnexpectedEndOfHexEscape, index + 1),
             None => match data.get(index + 1) {
                 Some(b'\\') | None => json_err!(EofWhileParsingString, data.len()),
                 Some(_) => json_err!(UnexpectedEndOfHexEscape, index + 1),

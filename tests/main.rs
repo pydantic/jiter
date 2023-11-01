@@ -319,9 +319,10 @@ string_test_errors! {
     u4_unclosed2: r#""\udBdd"# => "EofWhileParsingString @ 7 - 1:7";
     line_leading_surrogate: r#""\uddBd""# => "LoneLeadingSurrogateInHexEscape @ 6 - 1:7";
     unexpected_hex_escape1: r#""\udBd8x"# => "UnexpectedEndOfHexEscape @ 7 - 1:8";
-    unexpected_hex_escape2: r#""\udBd8xx"# => "UnexpectedEndOfHexEscape @ 6 - 1:7";
+    unexpected_hex_escape2: r#""\udBd8xx"# => "UnexpectedEndOfHexEscape @ 7 - 1:8";
+    unexpected_hex_escape3: "\"un\\uDBBB\0" => "UnexpectedEndOfHexEscape @ 9 - 1:10";
+    unexpected_hex_escape4: r#""\ud8e0\e"# => "UnexpectedEndOfHexEscape @ 8 - 1:9";
     newline_in_string: "\"\n" => "ControlCharacterWhileParsingString @ 1 - 2:0";
-    unexpected_end_of_hex: "\"un\\uDBBB\0" => "UnexpectedEndOfHexEscape @ 9 - 1:10";
 }
 
 #[test]
