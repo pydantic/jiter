@@ -546,6 +546,19 @@ fn jiter_object() {
 }
 
 #[test]
+fn jiter_bool() {
+    let mut jiter = Jiter::new(b"[true, false, null]");
+    assert_eq!(jiter.next_array().unwrap(), Some(Peak::True));
+    assert_eq!(jiter.next_bool().unwrap(), true);
+    assert_eq!(jiter.array_step().unwrap(), Some(Peak::False));
+    assert_eq!(jiter.next_bool().unwrap(), false);
+    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Null));
+    jiter.next_null().unwrap();
+    assert_eq!(jiter.array_step().unwrap(), None);
+    jiter.finish().unwrap();
+}
+
+#[test]
 fn jiter_bytes() {
     let mut jiter = Jiter::new(br#"{"foo": "bar", "new-line": "\\n"}"#);
     assert_eq!(jiter.next_object_bytes().unwrap().unwrap(), b"foo");
