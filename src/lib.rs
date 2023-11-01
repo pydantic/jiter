@@ -18,7 +18,7 @@ pub use lazy_index_map::LazyIndexMap;
 pub use number_decoder::{NumberAny, NumberFloat, NumberInt, NumberRange};
 pub use parse::{Parser, Peak};
 pub use string_decoder::{StringDecoder, StringDecoderRange};
-pub use value::{JsonArray, JsonObject, JsonValue};
+pub use value::{JsonArray, JsonData, JsonObject, JsonValue};
 
 #[cfg(feature = "python")]
 pub use python::python_parse;
