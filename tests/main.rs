@@ -118,19 +118,9 @@ macro_rules! single_expect_ok_or_error {
                         let actual_error = format!("{:?} @ {}", e.error_type, position.short());
                         assert_eq!(actual_error, $expected_error);
 
-                        // let r = serde_json::from_str::<serde_json::Value>($json);
-                        // let serde_position = match r {
-                        //     Ok(v) => panic!("serde unexpectedly valid: {:?} -> {:?}", $json, v),
-                        //     Err(e) => (e.line(), e.column()),
-                        // };
-                        // let jiter_position = (position.line, position.column);
-                        // assert_eq!(
-                        //     jiter_position,
-                        //     serde_position,
-                        //     "jiter position {:?} doesn't match serde position {:?}",
-                        //     jiter_position,
-                        //     serde_position
-                        // );
+                        let full_error = format!("{} at {}", e.error_type, position);
+                        let serde_err = serde_json::from_str::<serde_json::Value>($json).unwrap_err();
+                        assert_eq!(full_error, serde_err.to_string());
                         return
                     },
                 };
@@ -207,6 +197,8 @@ single_tests! {
     object_wrong_char_after_comma: err => r#"{"foo":42,;"#, "KeyMustBeAString @ 1:11";
     object_end_after_comma: err => r#"{"x": 9,"#, "EofWhileParsingValue @ 1:8";
     object_end_after_colon: err => r#"{"":"#, "EofWhileParsingValue @ 1:4";
+    eof_while_parsing_object: err => r#"{"foo": 1"#, "EofWhileParsingObject @ 1:9";
+    expected_colon: err => r#"{"foo"1"#, "ExpectedColon @ 1:7";
     array_bool: ok => "[true, false]", "[ @ 1:1, true @ 1:2, false @ 1:8, ]";
     object_string: ok => r#"{"foo": "ba"}"#, "{ @ 1:1, Key(2..5), String(9..11) @ 1:9, }";
     object_null: ok => r#"{"foo": null}"#, "{ @ 1:1, Key(2..5), null @ 1:9, }";
@@ -328,6 +320,7 @@ string_test_errors! {
     unexpected_hex_escape3: "\"un\\uDBBB\0" => "UnexpectedEndOfHexEscape @ 9 - 1:10";
     unexpected_hex_escape4: r#""\ud8e0\e"# => "UnexpectedEndOfHexEscape @ 8 - 1:9";
     newline_in_string: "\"\n" => "ControlCharacterWhileParsingString @ 1 - 2:0";
+    invalid_escape: r#" "\u12xx" "# => "InvalidEscape @ 6 - 1:7";
 }
 
 #[test]
@@ -585,12 +578,17 @@ fn jiter_number() {
 fn jiter_bytes_u_escape() {
     let mut jiter = Jiter::new(br#"{"foo": "xx \u00a3"}"#);
     assert_eq!(jiter.next_object_bytes().unwrap().unwrap(), b"foo");
-    let e = jiter.next_bytes().unwrap_err();
+    let mut e = jiter.next_bytes().unwrap_err();
     assert_eq!(
         e.error_type,
         JiterErrorType::JsonError(JsonErrorType::StringEscapeNotSupported)
     );
     assert_eq!(jiter.error_position(&e), FilePosition::new(1, 14));
+    e.set_position(&jiter);
+    assert_eq!(
+        e.to_string(),
+        "string escape sequences are not supported at line 1 column 14"
+    )
 }
 
 #[test]
@@ -740,4 +738,5 @@ fn test_4302_int_err() {
     let e = JsonValue::parse(bytes).unwrap_err();
     assert_eq!(e.error_type, JsonErrorType::NumberOutOfRange);
     assert_eq!(e.index, 4301);
+    assert_eq!(e.to_string(), "number out of range at line 1 column 4302");
 }

@@ -52,11 +52,7 @@ impl JsonValue {
 
         let map_err = |e: JsonError| {
             let position = FilePosition::find(data, e.index);
-            JsonValueError {
-                error_type: e.error_type,
-                index: e.index,
-                position,
-            }
+            JsonValueError::new(e.error_type, e.index, position)
         };
 
         let mut tape = Tape::default();

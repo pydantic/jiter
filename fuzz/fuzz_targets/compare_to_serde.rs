@@ -117,6 +117,9 @@ fuzz_target!(|json: String| {
             if error_string.starts_with("number out of range") {
                 // this happens because of stricter behaviour on exponential floats in serde
                 return
+            } else if error_string.starts_with("recursion limit exceeded") {
+                // serde has a different recursion limit to jiter
+                return
             } else {
                 dbg!(error, error_string, jiter_value);
                 panic!("serde_json failed to parse json that Jiter did");

@@ -152,6 +152,7 @@ macro_rules! json_err {
     };
 }
 
+use crate::Jiter;
 pub(crate) use json_err;
 
 pub(crate) const DEFAULT_RECURSION_LIMIT: u8 = 200;
@@ -167,24 +168,66 @@ pub enum JsonType {
     Object,
 }
 
+impl std::fmt::Display for JsonType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Null => f.write_str("null"),
+            Self::Bool => f.write_str("bool"),
+            Self::Int => f.write_str("int"),
+            Self::Float => f.write_str("float"),
+            Self::String => f.write_str("string"),
+            Self::Array => f.write_str("array"),
+            Self::Object => f.write_str("object"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum JiterErrorType {
     JsonError(JsonErrorType),
     WrongType { expected: JsonType, actual: JsonType },
-    StringFormat,
-    NumericValue,
-    UnknownError,
+}
+
+impl std::fmt::Display for JiterErrorType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::JsonError(error_type) => write!(f, "{}", error_type),
+            Self::WrongType { expected, actual } => {
+                write!(f, "expected {} but found {}", expected, actual)
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct JiterError {
     pub error_type: JiterErrorType,
     pub index: usize,
+    pub position: Option<FilePosition>,
+}
+
+impl std::fmt::Display for JiterError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(ref p) = self.position {
+            write!(f, "{} at {}", self.error_type, p)
+        } else {
+            write!(f, "{} at index {}", self.error_type, self.index)
+        }
+    }
 }
 
 impl JiterError {
     pub(crate) fn new(error_type: JiterErrorType, index: usize) -> Self {
-        Self { error_type, index }
+        Self {
+            error_type,
+            index,
+            position: None,
+        }
+    }
+
+    pub fn set_position(&mut self, jiter: &Jiter) {
+        let position = jiter.error_position(self);
+        self.position = Some(position);
     }
 
     pub(crate) fn wrong_type(expected: JsonType, actual: JsonType, index: usize) -> Self {
@@ -197,6 +240,7 @@ impl From<JsonError> for JiterError {
         Self {
             error_type: JiterErrorType::JsonError(error.error_type),
             index: error.index,
+            position: None,
         }
     }
 }
@@ -211,6 +255,16 @@ pub struct JsonValueError {
 impl std::fmt::Display for JsonValueError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} at {}", self.error_type, self.position)
+    }
+}
+
+impl JsonValueError {
+    pub(crate) fn new(error_type: JsonErrorType, index: usize, position: FilePosition) -> Self {
+        Self {
+            error_type,
+            index,
+            position,
+        }
     }
 }
 
