@@ -156,35 +156,35 @@ macro_rules! single_tests {
 }
 
 single_tests! {
-    string: ok => r#""foobar""#, "String(1..7) @ 1:0";
-    int_pos: ok => "1234", "Int(1234) @ 1:0";
-    int_neg: ok => "-1234", "Int(-1234) @ 1:0";
-    big_int: ok => "92233720368547758070", "BigInt(92233720368547758070) @ 1:0";
-    big_int_neg: ok => "-92233720368547758070", "BigInt(-92233720368547758070) @ 1:0";
-    big_int2: ok => "99999999999999999999999999999999999999999999999999", "BigInt(99999999999999999999999999999999999999999999999999) @ 1:0";
-    float_pos: ok => "12.34", "Float(12.34) @ 1:0";
-    float_neg: ok => "-12.34", "Float(-12.34) @ 1:0";
-    float_exp: ok => "2.2e10", "Float(22000000000) @ 1:0";
-    float_simple_exp: ok => "20e10", "Float(200000000000) @ 1:0";
-    float_exp_pos: ok => "2.2e+10", "Float(22000000000) @ 1:0";
-    float_exp_neg: ok => "2.2e-2", "Float(0.022) @ 1:0";
-    float_exp_zero: ok => "0.000e123", "Float(0) @ 1:0";
-    float_exp_massive1: ok => "2e2147483647", "Float(inf) @ 1:0";
-    float_exp_massive2: ok => "2e2147483648", "Float(inf) @ 1:0";
-    float_exp_massive3: ok => "2e2147483646", "Float(inf) @ 1:0";
-    float_exp_massive4: ok => "2e2147483646", "Float(inf) @ 1:0";
-    float_exp_massive5: ok => "18446744073709551615000.0", "Float(18446744073709552000000) @ 1:0";
-    float_exp_massive6: ok => "0.0E667", "Float(0) @ 1:0";
-    float_exp_tiny0: ok => "2e-2147483647", "Float(0) @ 1:0";
-    float_exp_tiny1: ok => "2e-2147483648", "Float(0) @ 1:0";
-    float_exp_tiny2: ok => "2e-2147483646", "Float(0) @ 1:0";
-    float_exp_tiny3: ok => "8e-7766666666", "Float(0) @ 1:0";
-    float_exp_tiny4: ok => "200.08e-76200000102", "Float(0) @ 1:0";
-    float_exp_tiny5: ok => "0e459", "Float(0) @ 1:0";
-    null: ok => "null", "null @ 1:0";
-    v_true: ok => "true", "true @ 1:0";
-    v_false: ok => "false", "false @ 1:0";
-    offset_true: ok => "  true", "true @ 1:2";
+    string: ok => r#""foobar""#, "String(1..7) @ 1:1";
+    int_pos: ok => "1234", "Int(1234) @ 1:1";
+    int_neg: ok => "-1234", "Int(-1234) @ 1:1";
+    big_int: ok => "92233720368547758070", "BigInt(92233720368547758070) @ 1:1";
+    big_int_neg: ok => "-92233720368547758070", "BigInt(-92233720368547758070) @ 1:1";
+    big_int2: ok => "99999999999999999999999999999999999999999999999999", "BigInt(99999999999999999999999999999999999999999999999999) @ 1:1";
+    float_pos: ok => "12.34", "Float(12.34) @ 1:1";
+    float_neg: ok => "-12.34", "Float(-12.34) @ 1:1";
+    float_exp: ok => "2.2e10", "Float(22000000000) @ 1:1";
+    float_simple_exp: ok => "20e10", "Float(200000000000) @ 1:1";
+    float_exp_pos: ok => "2.2e+10", "Float(22000000000) @ 1:1";
+    float_exp_neg: ok => "2.2e-2", "Float(0.022) @ 1:1";
+    float_exp_zero: ok => "0.000e123", "Float(0) @ 1:1";
+    float_exp_massive1: ok => "2e2147483647", "Float(inf) @ 1:1";
+    float_exp_massive2: ok => "2e2147483648", "Float(inf) @ 1:1";
+    float_exp_massive3: ok => "2e2147483646", "Float(inf) @ 1:1";
+    float_exp_massive4: ok => "2e2147483646", "Float(inf) @ 1:1";
+    float_exp_massive5: ok => "18446744073709551615000.0", "Float(18446744073709552000000) @ 1:1";
+    float_exp_massive6: ok => "0.0E667", "Float(0) @ 1:1";
+    float_exp_tiny0: ok => "2e-2147483647", "Float(0) @ 1:1";
+    float_exp_tiny1: ok => "2e-2147483648", "Float(0) @ 1:1";
+    float_exp_tiny2: ok => "2e-2147483646", "Float(0) @ 1:1";
+    float_exp_tiny3: ok => "8e-7766666666", "Float(0) @ 1:1";
+    float_exp_tiny4: ok => "200.08e-76200000102", "Float(0) @ 1:1";
+    float_exp_tiny5: ok => "0e459", "Float(0) @ 1:1";
+    null: ok => "null", "null @ 1:1";
+    v_true: ok => "true", "true @ 1:1";
+    v_false: ok => "false", "false @ 1:1";
+    offset_true: ok => "  true", "true @ 1:3";
     empty: err => "", "EofWhileParsingValue @ 1:0";
     string_unclosed: err => r#""foobar"#, "EofWhileParsingString @ 1:7";
     bad_int_neg: err => "-", "EofWhileParsingValue @ 1:1";
@@ -203,22 +203,24 @@ single_tests! {
     object_wrong_char_after_comma: err => r#"{"foo":42,;"#, "KeyMustBeAString @ 1:11";
     object_end_after_comma: err => r#"{"x": 9,"#, "EofWhileParsingValue @ 1:8";
     object_end_after_colon: err => r#"{"":"#, "EofWhileParsingValue @ 1:4";
-    array_bool: ok => "[true, false]", "[ @ 1:0, true @ 1:1, false @ 1:7, ]";
-    object_string: ok => r#"{"foo": "ba"}"#, "{ @ 1:0, Key(2..5), String(9..11) @ 1:8, }";
-    object_null: ok => r#"{"foo": null}"#, "{ @ 1:0, Key(2..5), null @ 1:8, }";
-    object_bool_compact: ok => r#"{"foo":true}"#, "{ @ 1:0, Key(2..5), true @ 1:7, }";
-    deep_array: ok => r#"[["Not too deep"]]"#, "[ @ 1:0, [ @ 1:1, String(3..15) @ 1:2, ], ]";
+    array_bool: ok => "[true, false]", "[ @ 1:1, true @ 1:2, false @ 1:8, ]";
+    object_string: ok => r#"{"foo": "ba"}"#, "{ @ 1:1, Key(2..5), String(9..11) @ 1:9, }";
+    object_null: ok => r#"{"foo": null}"#, "{ @ 1:1, Key(2..5), null @ 1:9, }";
+    object_bool_compact: ok => r#"{"foo":true}"#, "{ @ 1:1, Key(2..5), true @ 1:8, }";
+    deep_array: ok => r#"[["Not too deep"]]"#, "[ @ 1:1, [ @ 1:2, String(3..15) @ 1:3, ], ]";
     object_key_int: err => r#"{4: 4}"#, "KeyMustBeAString @ 1:2";
     array_no_close: err => r#"["#, "EofWhileParsingList @ 1:1";
     array_double_close: err => "[1]]", "TrailingCharacters @ 1:4";
     invalid_float_e_end: err => "0E", "EofWhileParsingValue @ 1:2";
     invalid_float_dot_end: err => "0.", "EofWhileParsingValue @ 1:2";
-    invalid_float_bracket: err => "2E[", "InvalidNumber @ 1:2";
+    invalid_float_bracket: err => "2E[", "InvalidNumber @ 1:3";
     trailing_char: err => "2z", "TrailingCharacters @ 1:2";
     invalid_number_newline: err => "-\n", "InvalidNumber @ 2:0";
-    // double_zero: err => "00", "InvalidNumber @ 1:2";
-    // double_zero_one: err => "001", "InvalidNumber @ 1:2";
+    double_zero: err => "00", "InvalidNumber @ 1:2";
+    double_zero_one: err => "001", "InvalidNumber @ 1:2";
+    first_line: err => "[1 x]", "ExpectedListCommaOrEnd @ 1:4";
     second_line: err => "[1\nx]", "ExpectedListCommaOrEnd @ 2:1";
+    floats_error: err => "06", "InvalidNumber @ 1:2";
 }
 
 #[test]
@@ -246,8 +248,9 @@ fn json_parse_str() {
     let data = json.as_bytes();
     let mut parser = Parser::new(data);
     let peak = parser.peak().unwrap();
-    assert!(matches!(peak, Peak::String));
-    assert_eq!(parser.current_position(), FilePosition::new(1, 1));
+    assert_eq!(peak, Peak::String);
+    assert_eq!(parser.index, 1);
+    assert_eq!(parser.current_position(), FilePosition::new(1, 2));
 
     let result_string = parser.consume_string::<StringDecoder>(&mut tape).unwrap();
     assert_eq!(result_string, "foobar");
@@ -298,7 +301,8 @@ macro_rules! string_test_errors {
                     match parser.consume_string::<StringDecoder>(&mut tape) {
                         Ok(t) => panic!("unexpectedly valid: {:?} -> {:?}", $json, t),
                         Err(e) => {
-                            let actual_error = format!("{:?} @ {}", e.error_type, e.index);
+                            let position = parser.error_position(e.index);
+                            let actual_error = format!("{:?} @ {} - {}", e.error_type, e.index, position.short());
                             assert_eq!(actual_error, $expected_error);
                         }
                     }
@@ -309,11 +313,12 @@ macro_rules! string_test_errors {
 }
 
 string_test_errors! {
-    u4_unclosed: r#""\uxx"# => "EofWhileParsingString @ 5";
-    u4_unclosed2: r#""\udBdd"# => "EofWhileParsingString @ 7";
-    line_leading_surrogate: r#""\uddBd""# => "LoneLeadingSurrogateInHexEscape(5) @ 0";
-    unexpected_hex_escape1: r#""\udBd8x"# => "UnexpectedEndOfHexEscape(5) @ 0";
-    unexpected_hex_escape2: r#""\udBd8xx"# => "UnexpectedEndOfHexEscape(5) @ 0";
+    u4_unclosed: r#""\uxx"# => "EofWhileParsingString @ 5 - 1:5";
+    u4_unclosed2: r#""\udBdd"# => "EofWhileParsingString @ 7 - 1:7";
+    line_leading_surrogate: r#""\uddBd""# => "LoneLeadingSurrogateInHexEscape(5) @ 0 - 1:1";
+    unexpected_hex_escape1: r#""\udBd8x"# => "UnexpectedEndOfHexEscape(5) @ 0 - 1:1";
+    unexpected_hex_escape2: r#""\udBd8xx"# => "UnexpectedEndOfHexEscape(5) @ 0 - 1:1";
+    // TODO newline_in_string: "\"\n" => "ControlCharacterWhileParsingString(5) @ 0 - 2:0";
 }
 
 #[test]
@@ -366,14 +371,17 @@ macro_rules! test_position {
 }
 
 test_position! {
-    first_line_zero: b"123456", 0, FilePosition::new(1, 0);
-    first_line_first: b"123456", 1, FilePosition::new(1, 1);
-    first_line_3rd: b"123456", 3, FilePosition::new(1, 3);
+    empty_zero: b"", 0, FilePosition::new(1, 0);
+    empty_one: b"", 1, FilePosition::new(1, 0);
+    first_line_zero: b"123456", 0, FilePosition::new(1, 1);
+    first_line_first: b"123456", 1, FilePosition::new(1, 2);
+    first_line_3rd: b"123456", 3, FilePosition::new(1, 4);
+    first_line_5th: b"123456", 5, FilePosition::new(1, 6);
     first_line_last: b"123456", 6, FilePosition::new(1, 6);
     first_line_after: b"123456", 7, FilePosition::new(1, 6);
     second_line0: b"123456\n789", 6, FilePosition::new(2, 0);
-    second_line1: b"123456\n789", 7, FilePosition::new(2, 0);
-    second_line2: b"123456\n789", 8, FilePosition::new(2, 1);
+    second_line1: b"123456\n789", 7, FilePosition::new(2, 1);
+    second_line2: b"123456\n789", 8, FilePosition::new(2, 2);
 }
 
 #[test]
@@ -422,7 +430,7 @@ fn bad_high_order_string() {
         Err(e) => {
             assert_eq!(e.error_type, JsonErrorType::InvalidUnicodeCodePoint(2));
             assert_eq!(e.index, 0);
-            assert_eq!(e.position, FilePosition::new(1, 0));
+            assert_eq!(e.position, FilePosition::new(1, 1));
         }
     };
 }
@@ -594,7 +602,7 @@ fn jiter_bytes_u_escape() {
                 e.error_type,
                 JiterErrorType::JsonError(JsonErrorType::StringEscapeNotSupported(4))
             );
-            assert_eq!(jiter.error_position(&e), FilePosition::new(1, 8));
+            assert_eq!(jiter.error_position(&e), FilePosition::new(1, 9));
         }
     }
 }
@@ -640,7 +648,7 @@ fn jiter_wrong_type() {
                 }
             );
             assert_eq!(e.index, 1);
-            assert_eq!(jiter.error_position(&e), FilePosition::new(1, 1));
+            assert_eq!(jiter.error_position(&e), FilePosition::new(1, 2));
         }
     }
 }

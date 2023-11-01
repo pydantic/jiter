@@ -244,7 +244,10 @@ impl FilePosition {
                 last_line_start = index + 1;
             }
             if index == find {
-                break;
+                return Self {
+                    line,
+                    column: index + 1 - last_line_start,
+                };
             }
             index += 1;
         }

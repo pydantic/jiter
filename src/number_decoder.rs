@@ -208,8 +208,8 @@ impl AbstractNumberDecoder for NumberRange {
                         let end = consume_exponential(data, index)?;
                         Ok((start..end, end))
                     }
-                    Some(b'0') => return json_err!(InvalidNumber, index),
-                    _ => return Ok((start..index, index)),
+                    Some(_) => return json_err!(InvalidNumber, index),
+                    None => return Ok((start..index, index)),
                 };
             }
             Some(digit) if (b'1'..=b'9').contains(digit) => (),

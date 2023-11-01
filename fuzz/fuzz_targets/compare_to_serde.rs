@@ -111,6 +111,7 @@ fuzz_target!(|json: String| {
                     if errors_equal(&jiter_error, &serde_error) {
                         return
                     } else {
+                        println!("============================");
                         dbg!(json, &jiter_error, jiter_error.to_string(), &serde_error, serde_error.to_string());
                         panic!("errors not equal");
                         // return
