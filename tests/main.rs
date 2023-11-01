@@ -112,8 +112,6 @@ macro_rules! single_expect_ok_or_error {
                 let first_value = match result {
                     Ok(v) => v,
                     Err(e) => {
-                        // to check to_string works, and for coverage
-                        e.to_string();
                         let position = parser.error_position(e.index);
                         let actual_error = format!("{:?} @ {}", e.error_type, position.short());
                         assert_eq!(actual_error, $expected_error);
@@ -425,7 +423,7 @@ fn bad_high_order_string() {
     let e = JsonValue::parse(&bytes).unwrap_err();
     assert_eq!(e.error_type, JsonErrorType::InvalidUnicodeCodePoint);
     assert_eq!(e.index, 4);
-    assert_eq!(e.position, FilePosition::new(1, 5));
+    assert_eq!(e.to_string(), "invalid unicode code point at line 1 column 5")
 }
 
 #[test]
@@ -578,15 +576,14 @@ fn jiter_number() {
 fn jiter_bytes_u_escape() {
     let mut jiter = Jiter::new(br#"{"foo": "xx \u00a3"}"#);
     assert_eq!(jiter.next_object_bytes().unwrap().unwrap(), b"foo");
-    let mut e = jiter.next_bytes().unwrap_err();
+    let e = jiter.next_bytes().unwrap_err();
     assert_eq!(
         e.error_type,
         JiterErrorType::JsonError(JsonErrorType::StringEscapeNotSupported)
     );
     assert_eq!(jiter.error_position(&e), FilePosition::new(1, 14));
-    e.set_position(&jiter);
     assert_eq!(
-        e.to_string(),
+        e.with_position(&jiter).to_string(),
         "string escape sequences are not supported at line 1 column 14"
     )
 }
@@ -625,6 +622,11 @@ fn jiter_wrong_type() {
     );
     assert_eq!(e.index, 1);
     assert_eq!(jiter.error_position(&e), FilePosition::new(1, 2));
+    assert_eq!(e.to_string(), "expected string but found int at index 1");
+    assert_eq!(
+        e.with_position(&jiter).to_string(),
+        "expected string but found int at line 1 column 2"
+    );
 }
 
 #[test]

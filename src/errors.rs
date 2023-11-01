@@ -40,9 +40,6 @@ pub enum JsonErrorType {
     /// Expected this character to start a JSON value.
     ExpectedSomeValue,
 
-    /// Expected this character to be a `"`.
-    ExpectedDoubleQuote,
-
     /// Invalid hex escape code.
     InvalidEscape,
 
@@ -60,12 +57,6 @@ pub enum JsonErrorType {
 
     /// Object key is not a string.
     KeyMustBeAString,
-
-    /// Contents of key were supposed to be a number.
-    ExpectedNumericKey,
-
-    /// Object key is a non-finite float value.
-    FloatKeyMustBeFinite,
 
     /// Lone leading surrogate in hex escape.
     LoneLeadingSurrogateInHexEscape,
@@ -98,7 +89,6 @@ impl std::fmt::Display for JsonErrorType {
             Self::ExpectedObjectCommaOrEnd => f.write_str("expected `,` or `}`"),
             Self::ExpectedSomeIdent => f.write_str("expected ident"),
             Self::ExpectedSomeValue => f.write_str("expected value"),
-            Self::ExpectedDoubleQuote => f.write_str("expected `\"`"),
             Self::InvalidEscape => f.write_str("invalid escape"),
             Self::InvalidNumber => f.write_str("invalid number"),
             Self::NumberOutOfRange => f.write_str("number out of range"),
@@ -107,8 +97,6 @@ impl std::fmt::Display for JsonErrorType {
                 f.write_str("control character (\\u0000-\\u001F) found while parsing a string")
             }
             Self::KeyMustBeAString => f.write_str("key must be a string"),
-            Self::ExpectedNumericKey => f.write_str("invalid value: expected key to be a number in quotes"),
-            Self::FloatKeyMustBeFinite => f.write_str("float key must be finite (got NaN or +/-inf)"),
             Self::LoneLeadingSurrogateInHexEscape => f.write_str("lone leading surrogate in hex escape"),
             Self::TrailingComma => f.write_str("trailing comma"),
             Self::TrailingCharacters => f.write_str("trailing characters"),
@@ -225,9 +213,12 @@ impl JiterError {
         }
     }
 
-    pub fn set_position(&mut self, jiter: &Jiter) {
-        let position = jiter.error_position(self);
-        self.position = Some(position);
+    pub fn with_position(&self, jiter: &Jiter) -> Self {
+        Self {
+            error_type: self.error_type.clone(),
+            index: self.index,
+            position: Some(jiter.error_position(self)),
+        }
     }
 
     pub(crate) fn wrong_type(expected: JsonType, actual: JsonType, index: usize) -> Self {
