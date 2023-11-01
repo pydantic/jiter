@@ -132,6 +132,12 @@ impl JsonError {
     }
 }
 
+impl std::fmt::Display for JsonError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} at index {}", self.error_type, self.index)
+    }
+}
+
 macro_rules! json_error {
     ($error_type:ident, $index:expr) => {
         crate::errors::JsonError::new(crate::errors::JsonErrorType::$error_type, $index)
