@@ -58,7 +58,7 @@ impl<'j> JsonString<'j> for Cow<'j, str> {
 }
 
 #[cfg(feature = "python")]
-impl<T> pyo3::ToPyObject for JsonValue<T> {
+impl<'j, T: JsonString<'j>> pyo3::ToPyObject for JsonValue<'j, T> {
     fn to_object(&self, py: pyo3::Python<'_>) -> pyo3::PyObject {
         match self {
             Self::Null => py.None(),

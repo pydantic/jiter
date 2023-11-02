@@ -82,23 +82,7 @@ where
                 .collect()
         })
     }
-
-    // will be used by `JsonValue::into_owned` if we implement it
-    // TODO rename to something better
 }
-
-// impl<'j> LazyIndexMap<Cow<'j, str>, JsonValue<'j>> {
-//     pub fn into_owned(self) -> LazyIndexMap<Cow<'static, str>, JsonValue<'static>> {
-//         LazyIndexMap {
-//             vec: self
-//                 .vec
-//                 .into_iter()
-//                 .map(|(k, v)| (k.into_owned().into(), v.into_owned()))
-//                 .collect(),
-//             map: OnceLock::new(),
-//         }
-//     }
-// }
 
 impl<K: PartialEq, V: PartialEq> PartialEq for LazyIndexMap<K, V> {
     fn eq(&self, other: &Self) -> bool {

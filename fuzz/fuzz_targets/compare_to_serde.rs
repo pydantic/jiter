@@ -30,8 +30,7 @@ pub fn values_equal(jiter_value: &JiterValue<String>, serde_value: &SerdeValue) 
                 return false;
             }
             for (k1, v1) in o1.iter_unique() {
-                let k1: &str = k1.as_ref();
-                if let Some(v2) = o2.get(k1) {
+                if let Some(v2) = o2.get::<str>(k1.as_ref()) {
                     if !values_equal(v1, v2) {
                         return false;
                     }
