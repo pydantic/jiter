@@ -43,16 +43,16 @@ impl AbstractNumberDecoder for NumberInt {
     type Output = NumberInt;
 
     fn decode(data: &[u8], index: usize, first: u8) -> JsonResult<(Self::Output, usize)> {
-        let (int_parse, index) = Number::parse(data, index, first)?;
+        let (int_parse, index) = IntParse::parse(data, index, first)?;
         match int_parse {
-            Number::Int(positive, int) => {
+            IntParse::Int(positive, int) => {
                 if positive {
                     Ok((int, index))
                 } else {
                     Ok((int.negate(), index))
                 }
             }
-            Number::Float => json_err!(FloatExpectingInt, index),
+            IntParse::Float => json_err!(FloatExpectingInt, index),
         }
     }
 }
@@ -101,9 +101,9 @@ impl AbstractNumberDecoder for NumberAny {
 
     fn decode(data: &[u8], index: usize, first: u8) -> JsonResult<(Self::Output, usize)> {
         let start = index;
-        let (int_parse, index) = Number::parse(data, index, first)?;
+        let (int_parse, index) = IntParse::parse(data, index, first)?;
         match int_parse {
-            Number::Int(positive, int) => {
+            IntParse::Int(positive, int) => {
                 if positive {
                     Ok((Self::Int(int), index))
                 } else {
@@ -116,12 +116,12 @@ impl AbstractNumberDecoder for NumberAny {
 }
 
 #[derive(Debug)]
-enum Number {
+enum IntParse {
     Int(bool, NumberInt),
     Float,
 }
 
-impl Number {
+impl IntParse {
     /// Turns out this is faster than fancy bit manipulation, see
     /// https://github.com/Alexhuszagh/rust-lexical/blob/main/lexical-parse-integer/docs/Algorithm.md
     /// for some context
