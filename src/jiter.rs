@@ -2,18 +2,18 @@ use crate::errors::{FilePosition, JiterError, JsonType, DEFAULT_RECURSION_LIMIT}
 use crate::number_decoder::{NumberAny, NumberFloat, NumberInt, NumberRange};
 use crate::parse::{Parser, Peak};
 use crate::string_decoder::{StringDecoder, StringDecoderRange, Tape};
-use crate::value::{take_value, JsonValue};
+use crate::value::{take_value, JsonString, JsonValue};
 
 pub type JiterResult<T> = Result<T, JiterError>;
 
-pub struct Jiter<'a> {
-    data: &'a [u8],
-    parser: Parser<'a>,
+pub struct Jiter<'j> {
+    data: &'j [u8],
+    parser: Parser<'j>,
     tape: Tape,
 }
 
-impl<'a> Jiter<'a> {
-    pub fn new(data: &'a [u8]) -> Self {
+impl<'j> Jiter<'j> {
+    pub fn new(data: &'j [u8]) -> Self {
         Self {
             data,
             parser: Parser::new(data),
@@ -115,9 +115,10 @@ impl<'a> Jiter<'a> {
     }
 
     pub fn known_str(&mut self) -> JiterResult<&str> {
-        self.parser
-            .consume_string::<StringDecoder>(&mut self.tape)
-            .map_err(Into::into)
+        match self.parser.consume_string::<StringDecoder>(&mut self.tape) {
+            Ok(output) => Ok(output.as_str()),
+            Err(e) => Err(e.into()),
+        }
     }
 
     pub fn next_bytes(&mut self) -> JiterResult<&[u8]> {
@@ -131,12 +132,12 @@ impl<'a> Jiter<'a> {
         }
     }
 
-    pub fn next_value(&mut self) -> JiterResult<JsonValue> {
+    pub fn next_value<T: JsonString<'j>>(&mut self) -> JiterResult<JsonValue<'j, T>> {
         let peak = self.peak()?;
         self.known_value(peak)
     }
 
-    pub fn known_value(&mut self, peak: Peak) -> JiterResult<JsonValue> {
+    pub fn known_value<T: JsonString<'j>>(&mut self, peak: Peak) -> JiterResult<JsonValue<'j, T>> {
         take_value(peak, &mut self.parser, &mut self.tape, DEFAULT_RECURSION_LIMIT).map_err(Into::into)
     }
 
@@ -158,13 +159,11 @@ impl<'a> Jiter<'a> {
 
     pub fn next_object(&mut self) -> JiterResult<Option<&str>> {
         let peak = self.peak()?;
-        match peak {
-            Peak::Object => self
-                .parser
-                .object_first::<StringDecoder<'_>>(&mut self.tape)
-                .map_err(Into::into),
-            _ => Err(self.wrong_type(JsonType::Object, peak)),
-        }
+        let strs = match peak {
+            Peak::Object => self.parser.object_first::<StringDecoder>(&mut self.tape)?,
+            _ => return Err(self.wrong_type(JsonType::Object, peak)),
+        };
+        Ok(strs.map(|s| s.as_str()))
     }
 
     pub fn next_object_bytes(&mut self) -> JiterResult<Option<&[u8]>> {
@@ -179,9 +178,8 @@ impl<'a> Jiter<'a> {
     }
 
     pub fn next_key(&mut self) -> JiterResult<Option<&str>> {
-        self.parser
-            .object_step::<StringDecoder>(&mut self.tape)
-            .map_err(Into::into)
+        let strs = self.parser.object_step::<StringDecoder>(&mut self.tape)?;
+        Ok(strs.map(|s| s.as_str()))
     }
 
     pub fn next_key_bytes(&mut self) -> JiterResult<Option<&[u8]>> {
