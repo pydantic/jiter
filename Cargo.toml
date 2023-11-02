@@ -1,6 +1,6 @@
 [package]
 name = "jiter"
-version = "0.0.2"
+version = "0.0.3"
 edition = "2021"
 description = "Iterable JSON parser"
 readme = "README.md"
@@ -15,7 +15,7 @@ num-bigint = "0.4.4"
 num-traits = "0.2.16"
 ahash = "0.8.0"
 smallvec = "1.11.0"
-pyo3 = { version = "0.19.2", features = ["num-bigint"], optional = true }
+pyo3 = { version = "0.20.0", features = ["num-bigint"], optional = true }
 lexical-core = { version = "0.8.5", features = ["format"] }
 
 [features]
@@ -25,7 +25,7 @@ python = ["dep:pyo3"]
 paste = "1.0.7"
 serde_json = {version = "1.0.87", features = ["preserve_order", "arbitrary_precision", "float_roundtrip"]}
 serde = "1.0.147"
-pyo3 = { version = "0.19.2", features = ["num-bigint", "auto-initialize"] }
+pyo3 = { version = "0.20.0", features = ["num-bigint", "auto-initialize"] }
 
 [profile.bench]
 debug = true
