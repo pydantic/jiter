@@ -150,6 +150,8 @@ macro_rules! single_tests {
 single_tests! {
     string: ok => r#""foobar""#, "String(1..7) @ 1:1";
     int_pos: ok => "1234", "Int(1234) @ 1:1";
+    int_zero: ok => "0", "Int(0) @ 1:1";
+    int_zero_space: ok => "0 ", "Int(0) @ 1:1";
     int_neg: ok => "-1234", "Int(-1234) @ 1:1";
     big_int: ok => "92233720368547758070", "BigInt(92233720368547758070) @ 1:1";
     big_int_neg: ok => "-92233720368547758070", "BigInt(-92233720368547758070) @ 1:1";

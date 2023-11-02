@@ -132,7 +132,15 @@ impl IntParse {
             index += 1;
         };
         let mut value = match data.get(index) {
-            Some(b'0') => return Ok((Self::Float, index)),
+            Some(b'0') => {
+                index += 1;
+                return match data.get(index) {
+                    Some(b'.') => Ok((Self::Float, index)),
+                    Some(b'e') | Some(b'E') => Ok((Self::Float, index)),
+                    Some(digit) if digit.is_ascii_digit() => json_err!(InvalidNumber, index),
+                    _ => Ok((Self::Int(positive, NumberInt::Int(0)), index)),
+                };
+            }
             Some(digit) if (b'1'..=b'9').contains(digit) => (digit & 0x0f) as i64,
             Some(_) => return json_err!(InvalidNumber, index),
             None => return json_err!(EofWhileParsingValue, index),
