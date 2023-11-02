@@ -1,58 +1,29 @@
-use std::fmt::Display;
+use std::marker::PhantomData;
 use std::ops::Range;
 
 use crate::errors::{json_err, json_error, JsonResult};
 
 pub type Tape = Vec<u8>;
 
-/// `'t` is the lifetime of the tape (reusable buffer), `'j` is the lifetime of the JSON data itself
-/// data must outlive tape, so if you return data with the lifetime of tape,
-/// a slice of data the original JSON data is okay too
-pub trait AbstractStringDecoder<'t, 'j>
-where
-    'j: 't,
-{
+pub trait AbstractStringDecoder<'t> {
     type Output;
 
-    fn decode(data: &'j [u8], index: usize, tape: &'t mut Tape) -> JsonResult<(Self::Output, usize)>;
+    fn decode<'d>(data: &'d [u8], index: usize, tape: &'t mut Tape) -> JsonResult<(Self::Output, usize)>
+    where
+        'd: 't;
 }
 
-pub struct StringDecoder;
-
-#[derive(Debug)]
-pub enum StringOutput<'t, 'j>
-where
-    'j: 't,
-{
-    Tape(&'t str),
-    Data(&'j str),
+pub struct StringDecoder<'t> {
+    _phantom: &'t PhantomData<()>,
 }
 
-impl Display for StringOutput<'_, '_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Tape(s) => write!(f, "{}", s),
-            Self::Data(s) => write!(f, "{}", s),
-        }
-    }
-}
+impl<'t> AbstractStringDecoder<'t> for StringDecoder<'t> {
+    type Output = &'t str;
 
-impl<'t, 'j> StringOutput<'t, 'j> {
-    pub fn as_str(&self) -> &'t str {
-        match self {
-            Self::Tape(s) => s,
-            Self::Data(s) => s,
-        }
-    }
-}
-
-impl<'t, 'j> AbstractStringDecoder<'t, 'j> for StringDecoder
-where
-    'j: 't,
-{
-    type Output = StringOutput<'t, 'j>;
-
-    fn decode(data: &'j [u8], mut index: usize, tape: &'t mut Tape) -> JsonResult<(Self::Output, usize)> {
+    fn decode<'d>(data: &'d [u8], mut index: usize, tape: &'t mut Tape) -> JsonResult<(Self::Output, usize)>
+    where
+        'd: 't,
+    {
         index += 1;
         tape.clear();
         let start = index;
@@ -63,16 +34,18 @@ where
         while let Some(next) = data.get(index) {
             match next {
                 b'"' => {
-                    return if found_escape {
+                    // in theory we could use `std::str::from_utf8_unchecked` here,
+                    // it leads to big performance gains but some cases e.g. good_high_order_string
+                    // passing when they error here, serde uses `std::str::from_utf8`, python's `json.loads`
+                    // allows these higher order strings
+                    let s = if found_escape {
                         tape.extend_from_slice(&data[last_escape..index]);
-                        index += 1;
-                        let s = to_str(tape, ascii_only, start)?;
-                        Ok((StringOutput::Tape(s), index))
+                        to_str(tape, ascii_only, start)?
                     } else {
-                        let s = to_str(&data[start..index], ascii_only, start)?;
-                        index += 1;
-                        Ok((StringOutput::Data(s), index))
+                        to_str(&data[start..index], ascii_only, start)?
                     };
+                    index += 1;
+                    return Ok((s, index));
                 }
                 b'\\' => {
                     found_escape = true;
@@ -107,7 +80,7 @@ where
             }
             index += 1;
         }
-        json_err!(EofWhileParsingString, index)
+        json_err!(EofWhileParsingString, index) // -1 to help match serde's error locations
     }
 }
 
@@ -174,13 +147,13 @@ fn parse_u4(data: &[u8], mut index: usize) -> JsonResult<(u16, usize)> {
 
 pub struct StringDecoderRange;
 
-impl<'t, 'j> AbstractStringDecoder<'t, 'j> for StringDecoderRange
-where
-    'j: 't,
-{
+impl<'t> AbstractStringDecoder<'t> for StringDecoderRange {
     type Output = Range<usize>;
 
-    fn decode(data: &'j [u8], mut index: usize, _tape: &'t mut Tape) -> JsonResult<(Self::Output, usize)> {
+    fn decode<'d>(data: &'d [u8], mut index: usize, _tape: &'t mut Tape) -> JsonResult<(Self::Output, usize)>
+    where
+        'd: 't,
+    {
         index += 1;
         let start = index;
         while let Some(next) = data.get(index) {

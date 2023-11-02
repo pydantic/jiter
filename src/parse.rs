@@ -47,18 +47,18 @@ static FALSE_REST: [u8; 4] = [b'a', b'l', b's', b'e'];
 static NULL_REST: [u8; 3] = [b'u', b'l', b'l'];
 
 #[derive(Debug, Clone)]
-pub struct Parser<'j> {
-    data: &'j [u8],
+pub struct Parser<'a> {
+    data: &'a [u8],
     pub index: usize,
 }
 
-impl<'j> Parser<'j> {
-    pub fn new(data: &'j [u8]) -> Self {
+impl<'a> Parser<'a> {
+    pub fn new(data: &'a [u8]) -> Self {
         Self { data, index: 0 }
     }
 }
 
-impl<'j> Parser<'j> {
+impl<'a> Parser<'a> {
     pub fn current_position(&self) -> FilePosition {
         FilePosition::find(self.data, self.index)
     }
@@ -112,12 +112,12 @@ impl<'j> Parser<'j> {
         }
     }
 
-    pub fn object_first<'t, D: AbstractStringDecoder<'t, 'j>>(
-        &mut self,
+    pub fn object_first<'s, 't, D: AbstractStringDecoder<'t>>(
+        &'s mut self,
         tape: &'t mut Tape,
     ) -> JsonResult<Option<D::Output>>
     where
-        'j: 't,
+        's: 't,
     {
         self.index += 1;
         if let Some(next) = self.eat_whitespace() {
@@ -134,12 +134,12 @@ impl<'j> Parser<'j> {
         }
     }
 
-    pub fn object_step<'t, D: AbstractStringDecoder<'t, 'j>>(
-        &mut self,
+    pub fn object_step<'s, 't, D: AbstractStringDecoder<'t>>(
+        &'s mut self,
         tape: &'t mut Tape,
     ) -> JsonResult<Option<D::Output>>
     where
-        'j: 't,
+        's: 't,
     {
         if let Some(next) = self.eat_whitespace() {
             match next {
@@ -183,9 +183,12 @@ impl<'j> Parser<'j> {
         self.consume_ident(NULL_REST)
     }
 
-    pub fn consume_string<'t, D: AbstractStringDecoder<'t, 'j>>(&mut self, tape: &'t mut Tape) -> JsonResult<D::Output>
+    pub fn consume_string<'s, 't, D: AbstractStringDecoder<'t>>(
+        &'s mut self,
+        tape: &'t mut Tape,
+    ) -> JsonResult<D::Output>
     where
-        'j: 't,
+        's: 't,
     {
         let (output, index) = D::decode(self.data, self.index, tape)?;
         self.index = index;
@@ -199,9 +202,9 @@ impl<'j> Parser<'j> {
     }
 
     /// private method to get an object key, then consume the colon which should follow
-    fn object_key<'t, D: AbstractStringDecoder<'t, 'j>>(&mut self, tape: &'t mut Tape) -> JsonResult<D::Output>
+    fn object_key<'s, 't, D: AbstractStringDecoder<'t>>(&'s mut self, tape: &'t mut Tape) -> JsonResult<D::Output>
     where
-        'j: 't,
+        's: 't,
     {
         let (output, index) = D::decode(self.data, self.index, tape)?;
         self.index = index;

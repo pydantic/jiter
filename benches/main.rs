@@ -1,5 +1,4 @@
 #![feature(test)]
-use std::borrow::Cow;
 use std::fs::File;
 use std::io::Read;
 
@@ -16,31 +15,12 @@ fn read_file(path: &str) -> String {
     contents
 }
 
-fn jiter_value_string(path: &str, bench: &mut Bencher) {
+fn jiter_value(path: &str, bench: &mut Bencher) {
     let json = read_file(path);
     let json_data = json.as_bytes();
     bench.iter(|| {
-        let v: JsonValue<String> = JsonValue::parse(black_box(json_data)).unwrap();
+        let v = JsonValue::parse(black_box(json_data)).unwrap();
         black_box(v)
-    })
-}
-
-fn jiter_value_cow(path: &str, bench: &mut Bencher) {
-    let json = read_file(path);
-    let json_data = json.as_bytes();
-    bench.iter(|| {
-        let v: JsonValue<Cow<str>> = JsonValue::parse(black_box(json_data)).unwrap();
-        let t = match v {
-            JsonValue::Null => "Null",
-            JsonValue::Bool(_) => "Bool",
-            JsonValue::Int(_) => "Int",
-            JsonValue::BigInt(_) => "BigInt",
-            JsonValue::Float(_) => "Float",
-            JsonValue::Str(_) => "Str",
-            JsonValue::Array(_) => "Array",
-            JsonValue::Object(_) => "Object",
-        };
-        black_box(t)
     })
 }
 
@@ -199,15 +179,9 @@ macro_rules! test_cases {
     ($file_name:ident) => {
         paste::item! {
             #[bench]
-            fn [< $file_name _jiter_value_string >](bench: &mut Bencher) {
+            fn [< $file_name _jiter_value >](bench: &mut Bencher) {
                 let file_path = format!("./benches/{}.json", stringify!($file_name));
-                jiter_value_string(&file_path, bench);
-            }
-
-            #[bench]
-            fn [< $file_name _jiter_value_cow >](bench: &mut Bencher) {
-                let file_path = format!("./benches/{}.json", stringify!($file_name));
-                jiter_value_cow(&file_path, bench);
+                jiter_value(&file_path, bench);
             }
 
             #[bench]
