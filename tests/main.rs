@@ -343,11 +343,12 @@ fn test_key_str() {
     let mut parser = Parser::new(json.as_bytes());
     let p = parser.peak().unwrap();
     assert!(matches!(p, Peak::Object));
-    let k = parser.object_first::<StringDecoder>(&mut tape).unwrap();
-    assert_eq!(k.map(|s| s.as_str()), Some("foo"));
+    let k = parser.object_first::<StringDecoder>(&mut tape).unwrap().unwrap();
+    assert_eq!(k.as_str(), "foo");
     let p = parser.peak().unwrap();
     assert!(matches!(p, Peak::String));
     let v = parser.consume_string::<StringDecoder>(&mut tape).unwrap();
+    assert_eq!(v.to_string(), "bar".to_string());
     assert_eq!(v.as_str(), "bar");
     let next_key = parser.object_step::<StringDecoder>(&mut tape).unwrap();
     assert!(next_key.is_none());

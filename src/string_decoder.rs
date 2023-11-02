@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::fmt::Display;
 use std::ops::Range;
 
@@ -43,13 +42,6 @@ impl<'t, 'j> StringOutput<'t, 'j> {
         match self {
             Self::Tape(s) => s,
             Self::Data(s) => s,
-        }
-    }
-
-    pub fn to_cow(&self) -> Cow<'j, str> {
-        match self {
-            Self::Tape(s) => Cow::Owned(s.to_string()),
-            Self::Data(s) => Cow::Borrowed(s),
         }
     }
 }
@@ -115,7 +107,7 @@ where
             }
             index += 1;
         }
-        json_err!(EofWhileParsingString, index) // -1 to help match serde's error locations
+        json_err!(EofWhileParsingString, index)
     }
 }
 
