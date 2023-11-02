@@ -322,6 +322,20 @@ string_test_errors! {
 }
 
 #[test]
+fn invalid_unicode_code() {
+    let json = vec![34, 92, 34, 206, 44, 163, 34];
+    // dbg!(json.iter().map(|b| *b as char).collect::<Vec<_>>());
+    let mut tape: Vec<u8> = Vec::new();
+    let mut parser = Parser::new(&json);
+    let p = parser.peak().unwrap();
+    assert!(matches!(p, Peak::String));
+    let e = parser.consume_string::<StringDecoder>(&mut tape).unwrap_err();
+    assert_eq!(e.error_type, JsonErrorType::InvalidUnicodeCodePoint);
+    assert_eq!(e.index, 3);
+    assert_eq!(parser.error_position(e.index), FilePosition::new(1, 4));
+}
+
+#[test]
 fn test_key_str() {
     let json = r#"{"foo": "bar"}"#;
     let mut tape: Vec<u8> = Vec::new();
