@@ -6,14 +6,13 @@ use serde_json::{Value as SerdeValue, Number as SerdeNumber, Error as SerdeError
 use libfuzzer_sys::fuzz_target;
 use num_traits::ToPrimitive;
 
-pub fn values_equal(jiter_value: &JiterValue, serde_value: &SerdeValue) -> bool {
+pub fn values_equal(jiter_value: &JiterValue<String>, serde_value: &SerdeValue) -> bool {
     match (jiter_value, serde_value) {
         (JiterValue::Null, SerdeValue::Null) => true,
         (JiterValue::Bool(b1), SerdeValue::Bool(b2)) => b1 == b2,
         (JiterValue::Int(i1), SerdeValue::Number(n2)) => ints_equal(i1, n2),
         (JiterValue::BigInt(i1), SerdeValue::Number(n2)) => floats_approx(i1.to_f64(), n2.as_f64()),
         (JiterValue::Float(f1), SerdeValue::Number(n2)) => floats_approx(Some(*f1), n2.as_f64()),
-        (JiterValue::String(s1), SerdeValue::String(s2)) => s1 == s2,
         (JiterValue::Str(s1), SerdeValue::String(s2)) => s1 == s2,
         (JiterValue::Array(a1), SerdeValue::Array(a2)) => {
             if a1.len() != a2.len() {
@@ -31,7 +30,8 @@ pub fn values_equal(jiter_value: &JiterValue, serde_value: &SerdeValue) -> bool 
                 return false;
             }
             for (k1, v1) in o1.iter_unique() {
-                if let Some(v2) = o2.get(k1.as_ref()) {
+                let k1: &str = k1.as_ref();
+                if let Some(v2) = o2.get(k1) {
                     if !values_equal(v1, v2) {
                         return false;
                     }
@@ -102,7 +102,7 @@ fn errors_equal(jiter_error: &JiterError, serde_error: &SerdeError) -> bool {
 // fuzz_target!(|json: String| {
 //     let json_data = json.as_bytes();
 fuzz_target!(|json_data: &[u8]| {
-    let jiter_value = match JiterValue::parse(json_data) {
+    let jiter_value = match JiterValue::<String>::parse(json_data) {
         Ok(v) => v,
         Err(jiter_error) => {
             match serde_json::from_slice::<SerdeValue>(json_data) {
