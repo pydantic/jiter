@@ -1,6 +1,6 @@
 #![no_main]
 
-use jiter::{JsonValue as JiterValue, JsonValueError as JiterError};
+use jiter::{JsonValue as JiterValue, JsonValueError as JiterError, JsonErrorType as JiterJsonErrorType};
 use serde_json::{Value as SerdeValue, Number as SerdeNumber, Error as SerdeError};
 
 use libfuzzer_sys::fuzz_target;
@@ -72,6 +72,15 @@ fn ints_equal(i1: &i64, n2: &SerdeNumber) -> bool {
     return floats_approx(i1.to_f64(), n2.as_f64())
 }
 
+fn remove_suffix(s: &str) -> &str {
+    match s.find("line ") {
+        Some(line_index) => {
+            &s[..line_index]
+        },
+        None => s,
+    }
+}
+
 fn errors_equal(jiter_error: &JiterError, serde_error: &SerdeError) -> bool {
     let jiter_error_str = jiter_error.to_string();
     let serde_error_str = serde_error.to_string();
@@ -81,14 +90,17 @@ fn errors_equal(jiter_error: &JiterError, serde_error: &SerdeError) -> bool {
     } else if serde_error_str.starts_with("recursion limit exceeded") {
         // serde has a different recursion limit to jiter
         true
+    } else if matches!(jiter_error.error_type, JiterJsonErrorType::InvalidUnicodeCodePoint) {
+        // https://github.com/serde-rs/json/issues/1083
+        remove_suffix(&jiter_error_str) == remove_suffix(&serde_error_str)
     } else {
         return jiter_error_str == serde_error_str
     }
 }
 
-fuzz_target!(|json: String| {
-    let json_data = json.as_bytes();
-// fuzz_target!(|json_data: &[u8]| {
+// fuzz_target!(|json: String| {
+//     let json_data = json.as_bytes();
+fuzz_target!(|json_data: &[u8]| {
     let jiter_value = match JiterValue::parse(json_data) {
         Ok(v) => v,
         Err(jiter_error) => {
@@ -102,7 +114,7 @@ fuzz_target!(|json: String| {
                         return
                     } else {
                         println!("============================");
-                        dbg!(json, &jiter_error, jiter_error.to_string(), &serde_error, serde_error.to_string());
+                        dbg!(&jiter_error, jiter_error.to_string(), &serde_error, serde_error.to_string());
                         panic!("errors not equal");
                         // return
                     }
