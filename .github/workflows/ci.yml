@@ -54,12 +54,13 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
-    - uses: dtolnay/rust-toolchain@nightly
-    - uses: Swatinem/rust-cache@v2
+    - uses: moonrepo/setup-rust@v0
+      with:
+        channel: stable
+        cache-target: release
+        bins: cargo-codspeed
 
     - run: python benches/generate_big.py
-
-    - run: cargo install cargo-codspeed
 
     - run: cargo codspeed build -F python
 
