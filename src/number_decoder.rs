@@ -43,16 +43,16 @@ impl AbstractNumberDecoder for NumberInt {
     type Output = NumberInt;
 
     fn decode(data: &[u8], index: usize, first: u8) -> JsonResult<(Self::Output, usize)> {
-        let (int_parse, index) = IntParse::parse(data, index, first)?;
+        let (int_parse, index) = Number::parse(data, index, first)?;
         match int_parse {
-            IntParse::Int(positive, int) => {
+            Number::Int(positive, int) => {
                 if positive {
                     Ok((int, index))
                 } else {
                     Ok((int.negate(), index))
                 }
             }
-            IntParse::Float => json_err!(FloatExpectingInt, index),
+            Number::Float => json_err!(FloatExpectingInt, index),
         }
     }
 }
@@ -101,9 +101,9 @@ impl AbstractNumberDecoder for NumberAny {
 
     fn decode(data: &[u8], index: usize, first: u8) -> JsonResult<(Self::Output, usize)> {
         let start = index;
-        let (int_parse, index) = IntParse::parse(data, index, first)?;
+        let (int_parse, index) = Number::parse(data, index, first)?;
         match int_parse {
-            IntParse::Int(positive, int) => {
+            Number::Int(positive, int) => {
                 if positive {
                     Ok((Self::Int(int), index))
                 } else {
@@ -116,12 +116,12 @@ impl AbstractNumberDecoder for NumberAny {
 }
 
 #[derive(Debug)]
-enum IntParse {
+enum Number {
     Int(bool, NumberInt),
     Float,
 }
 
-impl IntParse {
+impl Number {
     /// Turns out this is faster than fancy bit manipulation, see
     /// https://github.com/Alexhuszagh/rust-lexical/blob/main/lexical-parse-integer/docs/Algorithm.md
     /// for some context
@@ -132,7 +132,15 @@ impl IntParse {
             index += 1;
         };
         let mut value = match data.get(index) {
-            Some(b'0') => return Ok((Self::Float, index)),
+            Some(b'0') => {
+                index += 1;
+                return match data.get(index) {
+                    Some(b'.') => Ok((Self::Float, index)),
+                    Some(b'e') | Some(b'E') => Ok((Self::Float, index)),
+                    Some(digit) if digit.is_ascii_digit() => json_err!(InvalidNumber, index),
+                    _ => Ok((Self::Int(positive, NumberInt::Int(0)), index)),
+                };
+            }
             Some(digit) if (b'1'..=b'9').contains(digit) => (digit & 0x0f) as i64,
             Some(_) => return json_err!(InvalidNumber, index),
             None => return json_err!(EofWhileParsingValue, index),
