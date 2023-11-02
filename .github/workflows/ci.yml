@@ -44,6 +44,7 @@ jobs:
         RUSTFLAGS: '-C instrument-coverage'
 
     - run: coverage-prepare --ignore-filename-regex '/tests/' lcov $(find target/debug/deps -regex '.*/main[^.]*')
+    - run: coverage-prepare --ignore-filename-regex '/tests/' lcov $(find target/debug/deps -regex '.*/python[^.]*')
 
     - run: cargo test --doc
 
