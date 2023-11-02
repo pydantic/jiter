@@ -1,5 +1,7 @@
-use std::sync::Arc;
 use std::borrow::Cow;
+use std::fmt::{Debug, Display};
+use std::hash::Hash;
+use std::sync::Arc;
 
 use num_bigint::BigInt;
 use smallvec::SmallVec;
@@ -12,23 +14,51 @@ use crate::string_decoder::{StringDecoder, StringOutput, Tape};
 use crate::JsonError;
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum JsonValue<'j> {
+pub enum JsonValue<'j, T: JsonString<'j>> {
     Null,
     Bool(bool),
     Int(i64),
     BigInt(BigInt),
     Float(f64),
-    String(String),
-    Str(&'j str),
-    Array(JsonArray<'j>),
-    Object(JsonObject<'j>),
+    Str(T),
+    Array(JsonArray<'j, T>),
+    Object(JsonObject<'j, T>),
 }
 
-pub type JsonArray<'j> = Arc<SmallVec<[JsonValue<'j>; 8]>>;
-pub type JsonObject<'j> = Arc<LazyIndexMap<Cow<'j, str>, JsonValue<'j>>>;
+pub type JsonArray<'j, T> = Arc<SmallVec<[JsonValue<'j, T>; 8]>>;
+pub type JsonObject<'j, T> = Arc<LazyIndexMap<T, JsonValue<'j, T>>>;
+
+//  + Into<Cow<str>>
+#[cfg(feature = "python")]
+pub trait JsonString<'j>: Clone + Debug + Eq + Hash + Display + pyo3::ToPyObject {
+    fn from_string_output(s: StringOutput<'_, 'j>) -> Self;
+}
+
+#[cfg(not(feature = "python"))]
+pub trait JsonString<'j>: Clone + Debug + Eq + Hash + Display {
+    fn from_string_output(s: StringOutput<'_, 'j>) -> Self;
+}
+
+impl<'j> JsonString<'j> for String {
+    fn from_string_output(s: StringOutput) -> Self {
+        match s {
+            StringOutput::Tape(s) => s.to_string(),
+            StringOutput::Data(s) => s.to_string(),
+        }
+    }
+}
+
+impl<'j> JsonString<'j> for Cow<'j, str> {
+    fn from_string_output(s: StringOutput<'_, 'j>) -> Self {
+        match s {
+            StringOutput::Tape(s) => Cow::Owned(s.to_string()),
+            StringOutput::Data(s) => Cow::Borrowed(s),
+        }
+    }
+}
 
 #[cfg(feature = "python")]
-impl<'j> pyo3::ToPyObject for JsonValue<'j> {
+impl<T> pyo3::ToPyObject for JsonValue<T> {
     fn to_object(&self, py: pyo3::Python<'_>) -> pyo3::PyObject {
         match self {
             Self::Null => py.None(),
@@ -36,7 +66,6 @@ impl<'j> pyo3::ToPyObject for JsonValue<'j> {
             Self::Int(i) => i.to_object(py),
             Self::BigInt(b) => b.to_object(py),
             Self::Float(f) => f.to_object(py),
-            Self::String(s) => s.to_object(py),
             Self::Str(s) => s.to_object(py),
             Self::Array(v) => pyo3::types::PyList::new(py, v.iter().map(|v| v.to_object(py))).to_object(py),
             Self::Object(o) => {
@@ -50,7 +79,7 @@ impl<'j> pyo3::ToPyObject for JsonValue<'j> {
     }
 }
 
-impl<'j> JsonValue<'j> {
+impl<'j, T: JsonString<'j>> JsonValue<'j, T> {
     pub fn parse(data: &'j [u8]) -> Result<Self, JsonValueError> {
         let mut parser = Parser::new(data);
 
@@ -64,20 +93,6 @@ impl<'j> JsonValue<'j> {
         let v = take_value(peak, &mut parser, &mut tape, DEFAULT_RECURSION_LIMIT).map_err(map_err)?;
         parser.finish().map_err(map_err)?;
         Ok(v)
-    }
-
-    pub fn into_owned(self) -> JsonValue<'static> {
-        match self {
-            Self::Null => JsonValue::Null,
-            Self::Bool(b) => JsonValue::Bool(b),
-            Self::Int(i) => JsonValue::Int(i),
-            Self::BigInt(b) => JsonValue::BigInt(b),
-            Self::Float(f) => JsonValue::Float(f),
-            Self::String(s) => JsonValue::String(s),
-            Self::Str(s) => JsonValue::String(s.to_string()),
-            Self::Array(v) => JsonValue::Array(Box::new(v.into_iter().map(|v| v.into_owned()).collect())),
-            Self::Object(o) => JsonValue::Object(Box::new(o.into_owned())),
-        }
     }
 }
 
@@ -94,12 +109,12 @@ macro_rules! check_recursion {
     };
 }
 
-pub(crate) fn take_value<'j>(
+pub(crate) fn take_value<'j, T: JsonString<'j>>(
     peak: Peak,
     parser: &mut Parser<'j>,
     tape: &mut Tape,
     mut recursion_limit: u8,
-) -> JsonResult<JsonValue<'j>> {
+) -> JsonResult<JsonValue<'j, T>> {
     match peak {
         Peak::True => {
             parser.consume_true()?;
@@ -115,10 +130,7 @@ pub(crate) fn take_value<'j>(
         }
         Peak::String => {
             let s = parser.consume_string::<StringDecoder>(tape)?;
-            match s {
-                StringOutput::Tape(s) => Ok(JsonValue::String(s.to_string())),
-                StringOutput::Data(s) => Ok(JsonValue::Str(s)),
-            }
+            Ok(JsonValue::Str(T::from_string_output(s)))
         }
         Peak::Num(first) => {
             let n = parser.consume_number::<NumberAny>(first)?;
@@ -130,7 +142,7 @@ pub(crate) fn take_value<'j>(
         }
         Peak::Array => {
             // we could do something clever about guessing the size of the array
-            let mut array: SmallVec<[JsonValue; 8]> = SmallVec::new();
+            let mut array: SmallVec<[JsonValue<T>; 8]> = SmallVec::new();
             if let Some(peak_first) = parser.array_first()? {
                 check_recursion!(recursion_limit, parser.index,
                     let v = take_value(peak_first, parser, tape, recursion_limit)?;
@@ -147,16 +159,16 @@ pub(crate) fn take_value<'j>(
         }
         Peak::Object => {
             // same for objects
-            let mut object = LazyIndexMap::new();
+            let mut object: LazyIndexMap<T, JsonValue<T>> = LazyIndexMap::new();
             if let Some(first_key) = parser.object_first::<StringDecoder>(tape)? {
-                let first_key = first_key.to_cow();
+                let first_key = T::from_string_output(first_key);
                 let peak = parser.peak()?;
                 check_recursion!(recursion_limit, parser.index,
                     let first_value = take_value(peak, parser, tape, recursion_limit)?;
                 );
                 object.insert(first_key, first_value);
                 while let Some(key) = parser.object_step::<StringDecoder>(tape)? {
-                    let key = key.to_cow();
+                    let key = T::from_string_output(key);
                     let peak = parser.peak()?;
                     check_recursion!(recursion_limit, parser.index,
                         let value = take_value(peak, parser, tape, recursion_limit)?;

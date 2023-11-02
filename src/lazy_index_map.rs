@@ -1,4 +1,4 @@
-use std::borrow::{Borrow, Cow};
+use std::borrow::Borrow;
 use std::cmp::{Eq, PartialEq};
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -7,8 +7,6 @@ use std::sync::OnceLock;
 
 use ahash::AHashMap;
 use smallvec::SmallVec;
-
-use crate::JsonValue;
 
 #[derive(Debug, Clone, Default)]
 pub struct LazyIndexMap<K, V> {
@@ -89,18 +87,18 @@ where
     // TODO rename to something better
 }
 
-impl<'j> LazyIndexMap<Cow<'j, str>, JsonValue<'j>> {
-    pub fn into_owned(self) -> LazyIndexMap<Cow<'static, str>, JsonValue<'static>> {
-        LazyIndexMap {
-            vec: self
-                .vec
-                .into_iter()
-                .map(|(k, v)| (k.into_owned().into(), v.into_owned()))
-                .collect(),
-            map: OnceLock::new(),
-        }
-    }
-}
+// impl<'j> LazyIndexMap<Cow<'j, str>, JsonValue<'j>> {
+//     pub fn into_owned(self) -> LazyIndexMap<Cow<'static, str>, JsonValue<'static>> {
+//         LazyIndexMap {
+//             vec: self
+//                 .vec
+//                 .into_iter()
+//                 .map(|(k, v)| (k.into_owned().into(), v.into_owned()))
+//                 .collect(),
+//             map: OnceLock::new(),
+//         }
+//     }
+// }
 
 impl<K: PartialEq, V: PartialEq> PartialEq for LazyIndexMap<K, V> {
     fn eq(&self, other: &Self) -> bool {
