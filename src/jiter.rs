@@ -2,7 +2,7 @@ use crate::errors::{FilePosition, JiterError, JsonType, DEFAULT_RECURSION_LIMIT}
 use crate::number_decoder::{NumberAny, NumberFloat, NumberInt, NumberRange};
 use crate::parse::{Parser, Peak};
 use crate::string_decoder::{StringDecoder, StringDecoderRange, Tape};
-use crate::value::{take_value, JsonString, JsonValue};
+use crate::value::{take_value, JsonValue};
 
 pub type JiterResult<T> = Result<T, JiterError>;
 
@@ -132,12 +132,12 @@ impl<'j> Jiter<'j> {
         }
     }
 
-    pub fn next_value<T: JsonString<'j>>(&mut self) -> JiterResult<JsonValue<'j, T>> {
+    pub fn next_value(&mut self) -> JiterResult<JsonValue> {
         let peak = self.peak()?;
         self.known_value(peak)
     }
 
-    pub fn known_value<T: JsonString<'j>>(&mut self, peak: Peak) -> JiterResult<JsonValue<'j, T>> {
+    pub fn known_value(&mut self, peak: Peak) -> JiterResult<JsonValue> {
         take_value(peak, &mut self.parser, &mut self.tape, DEFAULT_RECURSION_LIMIT).map_err(Into::into)
     }
 
