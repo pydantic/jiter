@@ -61,11 +61,9 @@ jobs:
 
     - run: cargo install cargo-codspeed
 
-    - name: Build the benchmark target(s)
-      run: cargo codspeed build
+    - run: cargo codspeed build -F python
 
-    - name: Run the benchmarks
-      uses: CodSpeedHQ/action@v1
+    - uses: CodSpeedHQ/action@v1
       with:
         run: cargo codspeed run
         token: ${{ secrets.CODSPEED_TOKEN }}
