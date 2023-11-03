@@ -108,7 +108,7 @@ pub(crate) fn take_value(
             Ok(JsonValue::Str(s.to_string()))
         }
         Peak::Num(first) => {
-            let n = parser.consume_number::<NumberAny>(first)?;
+            let n = parser.consume_number::<NumberAny>(first, allow_inf_nan)?;
             match n {
                 NumberAny::Int(NumberInt::Int(int)) => Ok(JsonValue::Int(int)),
                 NumberAny::Int(NumberInt::BigInt(big_int)) => Ok(JsonValue::BigInt(big_int)),

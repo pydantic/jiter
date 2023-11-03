@@ -121,7 +121,10 @@ impl<'j> Jiter<'j> {
     /// Knowing the next value is a number, parse it.
     pub fn known_number(&mut self, peak: Peak) -> JiterResult<NumberAny> {
         match peak {
-            Peak::Num(first) => self.parser.consume_number::<NumberAny>(first).map_err(Into::into),
+            Peak::Num(first) => self
+                .parser
+                .consume_number::<NumberAny>(first, self.allow_inf_nan)
+                .map_err(Into::into),
             _ => Err(self.wrong_type(JsonType::Int, peak)),
         }
     }
@@ -135,7 +138,10 @@ impl<'j> Jiter<'j> {
     /// Knowing the next value is an integer, parse it.
     pub fn known_int(&mut self, peak: Peak) -> JiterResult<NumberInt> {
         match peak {
-            Peak::Num(first) => self.parser.consume_number::<NumberInt>(first).map_err(Into::into),
+            Peak::Num(first) => self
+                .parser
+                .consume_number::<NumberInt>(first, self.allow_inf_nan)
+                .map_err(Into::into),
             _ => Err(self.wrong_type(JsonType::Int, peak)),
         }
     }
@@ -149,7 +155,10 @@ impl<'j> Jiter<'j> {
     /// Knowing the next value is a float, parse it.
     pub fn known_float(&mut self, peak: Peak) -> JiterResult<f64> {
         match peak {
-            Peak::Num(first) => self.parser.consume_number::<NumberFloat>(first).map_err(Into::into),
+            Peak::Num(first) => self
+                .parser
+                .consume_number::<NumberFloat>(first, self.allow_inf_nan)
+                .map_err(Into::into),
             _ => Err(self.wrong_type(JsonType::Int, peak)),
         }
     }
@@ -159,7 +168,7 @@ impl<'j> Jiter<'j> {
         let peak = self.peak()?;
         match peak {
             Peak::Num(first) => {
-                let range = self.parser.consume_number::<NumberRange>(first)?;
+                let range = self.parser.consume_number::<NumberRange>(first, self.allow_inf_nan)?;
                 Ok(&self.data[range])
             }
             _ => Err(self.wrong_type(JsonType::Float, peak)),
@@ -302,7 +311,7 @@ impl<'j> Jiter<'j> {
 
     fn wrong_num(&self, first: u8, expected: JsonType) -> JiterError {
         let mut parser2 = self.parser.clone();
-        let actual = match parser2.consume_number::<NumberAny>(first) {
+        let actual = match parser2.consume_number::<NumberAny>(first, self.allow_inf_nan) {
             Ok(NumberAny::Int { .. }) => JsonType::Int,
             Ok(NumberAny::Float { .. }) => JsonType::Float,
             Err(e) => return e.into(),

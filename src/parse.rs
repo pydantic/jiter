@@ -28,6 +28,8 @@ impl Peak {
             b'N' => Some(Self::NaN),
             b'0'..=b'9' => Some(Self::Num(next)),
             b'-' => Some(Self::Num(next)),
+            // For `Infinity`
+            b'I' => Some(Self::Num(next)),
             _ => None,
         }
     }
@@ -37,9 +39,10 @@ static TRUE_REST: [u8; 3] = [b'r', b'u', b'e'];
 static FALSE_REST: [u8; 4] = [b'a', b'l', b's', b'e'];
 static NULL_REST: [u8; 3] = [b'u', b'l', b'l'];
 static NAN_REST: [u8; 2] = [b'a', b'N'];
+static INFINITY_REST: [u8; 7] = [b'n', b'f', b'i', b'n', b'i', b't', b'y'];
 
 #[derive(Debug, Clone)]
-pub struct Parser<'j> {
+pub(crate) struct Parser<'j> {
     data: &'j [u8],
     pub index: usize,
 }
@@ -184,8 +187,12 @@ impl<'j> Parser<'j> {
         Ok(output)
     }
 
-    pub fn consume_number<D: AbstractNumberDecoder>(&mut self, first: u8) -> JsonResult<D::Output> {
-        let (output, index) = D::decode(self.data, self.index, first)?;
+    pub fn consume_number<D: AbstractNumberDecoder>(
+        &mut self,
+        first: u8,
+        allow_inf_nan: bool,
+    ) -> JsonResult<D::Output> {
+        let (output, index) = D::decode(self.data, self.index, first, allow_inf_nan)?;
         self.index = index;
         Ok(output)
     }
@@ -210,25 +217,8 @@ impl<'j> Parser<'j> {
     }
 
     fn consume_ident<const SIZE: usize>(&mut self, expected: [u8; SIZE]) -> JsonResult<()> {
-        match self.data.get(self.index + 1..self.index + SIZE + 1) {
-            Some(s) if s == expected => {
-                self.index += SIZE + 1;
-                Ok(())
-            }
-            // TODO very sadly iterating over expected cause extra branches in the generated assembly
-            //   and is significantly slower than just returning an error
-            _ => {
-                self.index += 1;
-                for c in expected.iter() {
-                    match self.data.get(self.index) {
-                        Some(v) if v == c => self.index += 1,
-                        Some(_) => return json_err!(ExpectedSomeIdent, self.index),
-                        _ => break,
-                    }
-                }
-                json_err!(EofWhileParsingValue, self.index)
-            }
-        }
+        self.index = consume_ident(self.data, self.index, expected)?;
+        Ok(())
     }
 
     fn array_peak(&mut self) -> JsonResult<Option<Peak>> {
@@ -257,5 +247,28 @@ impl<'j> Parser<'j> {
             }
         }
         None
+    }
+}
+
+pub(crate) fn consume_infinity(data: &[u8], index: usize) -> JsonResult<usize> {
+    consume_ident(data, index, INFINITY_REST)
+}
+
+fn consume_ident<const SIZE: usize>(data: &[u8], mut index: usize, expected: [u8; SIZE]) -> JsonResult<usize> {
+    match data.get(index + 1..index + SIZE + 1) {
+        Some(s) if s == expected => Ok(index + SIZE + 1),
+        // TODO very sadly iterating over expected cause extra branches in the generated assembly
+        //   and is significantly slower than just returning an error
+        _ => {
+            index += 1;
+            for c in expected.iter() {
+                match data.get(index) {
+                    Some(v) if v == c => index += 1,
+                    Some(_) => return json_err!(ExpectedSomeIdent, index),
+                    _ => break,
+                }
+            }
+            json_err!(EofWhileParsingValue, index)
+        }
     }
 }

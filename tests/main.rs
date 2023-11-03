@@ -192,6 +192,8 @@ single_tests! {
     v_true: ok => "true", "true @ 1:1";
     v_false: ok => "false", "false @ 1:1";
     nan: ok => "NaN", "NaN @ 1:1";
+    infinity: ok => "Infinity", "Float(inf) @ 1:1";
+    neg_infinity: ok => "-Infinity", "Float(-inf) @ 1:1";
     offset_true: ok => "  true", "true @ 1:3";
     empty: err => "", "EofWhileParsingValue @ 1:0";
     string_unclosed: err => r#""foobar"#, "EofWhileParsingString @ 1:7";
@@ -362,6 +364,31 @@ fn nan_disallowed() {
 }
 
 #[test]
+fn inf_disallowed() {
+    let json = r#"[Infinity]"#;
+    let mut jiter = Jiter::new(json.as_bytes(), false);
+    assert_eq!(jiter.next_array().unwrap().unwrap(), Peak::Num(b'I'));
+    let e = jiter.next_nan().unwrap_err();
+    assert_eq!(
+        e.error_type,
+        JiterErrorType::JsonError(JsonErrorType::ExpectedSomeValue)
+    );
+    assert_eq!(e.index, 1);
+    assert_eq!(jiter.error_position(e.index), FilePosition::new(1, 2));
+}
+
+#[test]
+fn inf_neg_disallowed() {
+    let json = r#"[-Infinity]"#;
+    let mut jiter = Jiter::new(json.as_bytes(), false);
+    assert_eq!(jiter.next_array().unwrap().unwrap(), Peak::Num(b'-'));
+    let e = jiter.next_nan().unwrap_err();
+    assert_eq!(e.error_type, JiterErrorType::JsonError(JsonErrorType::InvalidNumber));
+    assert_eq!(e.index, 2);
+    assert_eq!(jiter.error_position(e.index), FilePosition::new(1, 3));
+}
+
+#[test]
 fn nan_disallowed_wrong_type() {
     let json = r#"[NaN]"#;
     let mut jiter = Jiter::new(json.as_bytes(), false);
@@ -376,10 +403,15 @@ fn nan_disallowed_wrong_type() {
 }
 
 #[test]
-fn value_allow_nan() {
-    let json = r#"[1, NaN]"#;
+fn value_allow_nan_inf() {
+    let json = r#"[1, NaN, Infinity, -Infinity]"#;
     let value = JsonValue::parse(json.as_bytes(), true).unwrap();
-    let expected = JsonValue::Array(Arc::new(smallvec![JsonValue::Int(1), JsonValue::Float(f64::NAN),]));
+    let expected = JsonValue::Array(Arc::new(smallvec![
+        JsonValue::Int(1),
+        JsonValue::Float(f64::NAN),
+        JsonValue::Float(f64::INFINITY),
+        JsonValue::Float(f64::NEG_INFINITY)
+    ]));
     // compare debug since `f64::NAN != f64::NAN`
     assert_eq!(format!("{:?}", value), format!("{:?}", expected));
 }
