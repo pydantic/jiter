@@ -1,4 +1,5 @@
-use codspeed_bencher_compat::{benchmark_group, benchmark_main, black_box, Bencher};
+use bencher::black_box;
+use codspeed_bencher_compat::{benchmark_group, benchmark_main, Bencher};
 
 use jiter::python_parse;
 use std::fs::File;
