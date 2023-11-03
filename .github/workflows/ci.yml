@@ -30,8 +30,7 @@ jobs:
       with:
         channel: ${{ matrix.rust-version }}
         bins: rustfilt coverage-prepare
-
-    - run: rustup component add llvm-tools-preview
+        components: llvm-tools-preview
 
     - run: cargo test -F python
       env:
