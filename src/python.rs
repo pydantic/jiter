@@ -11,18 +11,24 @@ use crate::string_decoder::{StringDecoder, Tape};
 
 /// Parse a JSON value from a byte slice and return a Python object.
 ///
+/// # Arguments
+/// - `py`: [Python](https://docs.rs/pyo3/latest/pyo3/marker/struct.Python.html) marker token.
+/// - `json_data`: The JSON data to parse.
+/// - `allow_inf_nan`: Whether to allow `(-)Infinity` and `NaN` values.
+///
 /// # Returns
 ///
 /// A [PyObject](https://docs.rs/pyo3/latest/pyo3/type.PyObject.html) representing the parsed JSON value.
-pub fn python_parse(py: Python, data: &[u8]) -> PyResult<PyObject> {
+pub fn python_parse(py: Python, json_data: &[u8], allow_inf_nan: bool) -> PyResult<PyObject> {
     let mut python_parser = PythonParser {
-        parser: Parser::new(data),
+        parser: Parser::new(json_data),
         tape: Tape::default(),
-        data,
+        data: json_data,
         recursion_limit: DEFAULT_RECURSION_LIMIT,
+        allow_inf_nan,
     };
 
-    let mje = |e: JsonError| map_json_error(data, e);
+    let mje = |e: JsonError| map_json_error(json_data, e);
 
     let peak = python_parser.parser.peak().map_err(mje)?;
     let v = python_parser.py_take_value(py, peak)?;
@@ -35,6 +41,7 @@ struct PythonParser<'j> {
     tape: Tape,
     data: &'j [u8],
     recursion_limit: u8,
+    allow_inf_nan: bool,
 }
 
 impl<'j> PythonParser<'j> {
@@ -53,10 +60,11 @@ impl<'j> PythonParser<'j> {
                 self.parser.consume_null().map_err(mje)?;
                 Ok(py.None())
             }
-            Peak::NaN => {
+            Peak::NaN if self.allow_inf_nan => {
                 self.parser.consume_nan().map_err(mje)?;
                 Ok(f64::NAN.to_object(py))
             }
+            Peak::NaN => Err(mje(json_error!(ExpectedSomeValue, self.parser.index))),
             Peak::String => {
                 let s = self
                     .parser
@@ -65,7 +73,10 @@ impl<'j> PythonParser<'j> {
                 Ok(PyString::new(py, s.as_str()).to_object(py))
             }
             Peak::Num(first) => {
-                let n = self.parser.consume_number::<NumberAny>(first, true).map_err(mje)?;
+                let n = self
+                    .parser
+                    .consume_number::<NumberAny>(first, self.allow_inf_nan)
+                    .map_err(mje)?;
                 match n {
                     NumberAny::Int(NumberInt::Int(int)) => Ok(int.to_object(py)),
                     NumberAny::Int(NumberInt::BigInt(big_int)) => Ok(big_int.to_object(py)),

@@ -40,6 +40,7 @@ fn test_python_parse_numeric() {
         let obj = python_parse(
             py,
             br#"  { "int": 1, "bigint": 123456789012345678901234567890, "float": 1.2}  "#,
+            false,
         )
         .unwrap();
         assert_eq!(
@@ -52,18 +53,27 @@ fn test_python_parse_numeric() {
 #[test]
 fn test_python_parse_other() {
     Python::with_gil(|py| {
-        let obj = python_parse(py, br#"["string", true, false, null]"#).unwrap();
-        assert_eq!(obj.as_ref(py).to_string(), "['string', True, False, None]");
+        let obj = python_parse(py, br#"["string", true, false, null, NaN, Infinity, -Infinity]"#, true).unwrap();
+        assert_eq!(
+            obj.as_ref(py).to_string(),
+            "['string', True, False, None, nan, inf, -inf]"
+        );
+    })
+}
+
+#[test]
+fn test_python_disallow_nan() {
+    Python::with_gil(|py| {
+        let e = python_parse(py, br#"[NaN]"#, false).unwrap_err();
+        assert_eq!(e.to_string(), "ValueError: expected value at line 1 column 2");
     })
 }
 
 #[test]
 fn test_error() {
-    Python::with_gil(|py| match python_parse(py, br#"["string""#) {
-        Ok(v) => panic!("unexpectedly valid: {:?}", v),
-        Err(e) => {
-            assert_eq!(e.to_string(), "ValueError: EOF while parsing a list at line 1 column 9");
-        }
+    Python::with_gil(|py| {
+        let e = python_parse(py, br#"["string""#, false).unwrap_err();
+        assert_eq!(e.to_string(), "ValueError: EOF while parsing a list at line 1 column 9");
     })
 }
 
@@ -72,7 +82,7 @@ fn test_recursion_limit() {
     let json = (0..10_000).map(|_| "[").collect::<String>();
     let bytes = json.as_bytes();
 
-    Python::with_gil(|py| match python_parse(py, bytes) {
+    Python::with_gil(|py| match python_parse(py, bytes, false) {
         Ok(v) => panic!("unexpectedly valid: {:?}", v),
         Err(e) => {
             assert_eq!(
@@ -90,7 +100,7 @@ fn test_recursion_limit_incr() {
     let bytes = json.as_bytes();
 
     Python::with_gil(|py| {
-        let v = python_parse(py, bytes).unwrap();
+        let v = python_parse(py, bytes, false).unwrap();
         assert_eq!(v.as_ref(py).len().unwrap(), 2000);
     })
 }
