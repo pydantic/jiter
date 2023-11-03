@@ -1,7 +1,4 @@
-#[macro_use]
-extern crate bencher;
-
-use bencher::{black_box, Bencher};
+use codspeed_bencher_compat::{benchmark_group, benchmark_main, black_box, Bencher};
 
 use std::fs::File;
 use std::io::Read;
