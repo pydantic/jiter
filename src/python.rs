@@ -5,8 +5,9 @@ use pyo3::types::{PyDict, PyList, PyString};
 use smallvec::SmallVec;
 
 use crate::errors::{json_error, DEFAULT_RECURSION_LIMIT};
-use crate::string_decoder::Tape;
-use crate::{FilePosition, JsonError, NumberAny, NumberInt, Parser, Peak, StringDecoder};
+use crate::parse::{Parser, Peak};
+use crate::string_decoder::{StringDecoder, Tape};
+use crate::{FilePosition, JsonError, NumberAny, NumberInt};
 
 pub fn python_parse(py: Python, data: &[u8]) -> PyResult<PyObject> {
     let mut python_parser = PythonParser {
