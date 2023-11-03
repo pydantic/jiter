@@ -15,6 +15,7 @@ fn python_parse_numeric(bench: &mut Bencher) {
             black_box(python_parse(
                 py,
                 black_box(br#"  { "int": 1, "bigint": 123456789012345678901234567890, "float": 1.2}  "#),
+                false,
             ))
             .unwrap()
         });
@@ -26,7 +27,7 @@ fn python_parse_other(bench: &mut Bencher) {
         bench.iter(|| {
             // Clear PyO3 memory on each loop iteration to avoid long GC traversal overheads.
             let _pool = unsafe { py.new_pool() };
-            black_box(python_parse(py, black_box(br#"["string", true, false, null]"#))).unwrap()
+            black_box(python_parse(py, black_box(br#"["string", true, false, null]"#), false)).unwrap()
         });
     })
 }
@@ -41,7 +42,7 @@ fn python_parse_medium_response(bench: &mut Bencher) {
         bench.iter(|| {
             // Clear PyO3 memory on each loop iteration to avoid long GC traversal overheads.
             let _pool = unsafe { py.new_pool() };
-            black_box(python_parse(py, black_box(json_data))).unwrap()
+            black_box(python_parse(py, black_box(json_data), false)).unwrap()
         });
     })
 }
@@ -56,7 +57,7 @@ fn python_parse_true_object(bench: &mut Bencher) {
         bench.iter(|| {
             // Clear PyO3 memory on each loop iteration to avoid long GC traversal overheads.
             let _pool = unsafe { py.new_pool() };
-            black_box(python_parse(py, black_box(json_data)).unwrap())
+            black_box(python_parse(py, black_box(json_data), false).unwrap())
         });
     })
 }
