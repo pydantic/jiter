@@ -22,10 +22,12 @@ lexical-core = { version = "0.8.5", features = ["format"] }
 python = ["dep:pyo3"]
 
 [dev-dependencies]
+bencher = "0.1.5"
 paste = "1.0.7"
 serde_json = {version = "1.0.87", features = ["preserve_order", "arbitrary_precision", "float_roundtrip"]}
 serde = "1.0.147"
 pyo3 = { version = "0.20.0", features = ["num-bigint", "auto-initialize"] }
+codspeed-bencher-compat = "2.3.1"
 
 [profile.bench]
 debug = true
@@ -38,5 +40,10 @@ name = "python"
 required-features = ["python"]
 
 [[bench]]
+name = "main"
+harness = false
+
+[[bench]]
 name = "python"
 required-features = ["python"]
+harness = false

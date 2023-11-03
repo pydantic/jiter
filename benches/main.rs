@@ -1,12 +1,11 @@
-#![feature(test)]
+use bencher::black_box;
+use codspeed_bencher_compat::{benchmark_group, benchmark_main, Bencher};
+
 use std::fs::File;
 use std::io::Read;
 
-extern crate test;
-
 use jiter::{Jiter, JsonValue, Peak};
 use serde_json::Value;
-use test::{black_box, Bencher};
 
 fn read_file(path: &str) -> String {
     let mut file = File::open(path).unwrap();
@@ -178,13 +177,11 @@ fn serde_value(path: &str, bench: &mut Bencher) {
 macro_rules! test_cases {
     ($file_name:ident) => {
         paste::item! {
-            #[bench]
             fn [< $file_name _jiter_value_string >](bench: &mut Bencher) {
                 let file_path = format!("./benches/{}.json", stringify!($file_name));
                 jiter_value(&file_path, bench);
             }
 
-            #[bench]
             fn [< $file_name _jiter_iter >](bench: &mut Bencher) {
                 let file_name = stringify!($file_name);
                 let file_path = format!("./benches/{}.json", file_name);
@@ -207,7 +204,6 @@ macro_rules! test_cases {
                 }
             }
 
-            #[bench]
             fn [< $file_name _serde_value >](bench: &mut Bencher) {
                 let file_path = format!("./benches/{}.json", stringify!($file_name));
                 serde_value(&file_path, bench);
@@ -232,3 +228,38 @@ test_cases!(floats_array);
 // from https://github.com/json-iterator/go-benchmark/blob/179abe5e3f72acce34fb5a16f3473b901fbdd6b9/
 // src/github.com/json-iterator/go-benchmark/benchmark.go#L30C17-L30C29
 test_cases!(medium_response);
+
+benchmark_group!(
+    benches,
+    big_jiter_iter,
+    big_jiter_value_string,
+    big_serde_value,
+    bigints_array_jiter_iter,
+    bigints_array_jiter_value_string,
+    bigints_array_serde_value,
+    floats_array_jiter_iter,
+    floats_array_jiter_value_string,
+    floats_array_serde_value,
+    massive_ints_array_jiter_iter,
+    massive_ints_array_jiter_value_string,
+    massive_ints_array_serde_value,
+    medium_response_jiter_iter,
+    medium_response_jiter_value_string,
+    medium_response_serde_value,
+    pass1_jiter_iter,
+    pass1_jiter_value_string,
+    pass1_serde_value,
+    pass2_jiter_iter,
+    pass2_jiter_value_string,
+    pass2_serde_value,
+    string_array_jiter_iter,
+    string_array_jiter_value_string,
+    string_array_serde_value,
+    true_array_jiter_iter,
+    true_array_jiter_value_string,
+    true_array_serde_value,
+    true_object_jiter_iter,
+    true_object_jiter_value_string,
+    true_object_serde_value
+);
+benchmark_main!(benches);

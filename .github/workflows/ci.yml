@@ -56,7 +56,7 @@ jobs:
 
     - uses: moonrepo/setup-rust@v0
       with:
-        channel: nightly
+        channel: stable
         cache-target: release
         bins: cargo-codspeed
 
