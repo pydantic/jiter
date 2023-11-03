@@ -5,8 +5,11 @@ use jiter::{python_parse, JsonValue};
 
 #[test]
 fn test_to_py_object_numeric() {
-    let value =
-        JsonValue::parse(br#"  { "int": 1, "bigint": 123456789012345678901234567890, "float": 1.2}  "#).unwrap();
+    let value = JsonValue::parse(
+        br#"  { "int": 1, "bigint": 123456789012345678901234567890, "float": 1.2}  "#,
+        false,
+    )
+    .unwrap();
     Python::with_gil(|py| {
         let python_value = value.to_object(py);
         let string = python_value.as_ref(py).to_string();
@@ -19,11 +22,11 @@ fn test_to_py_object_numeric() {
 
 #[test]
 fn test_to_py_object_other() {
-    let value = JsonValue::parse(br#"["string", "\u00a3", true, false, null]"#).unwrap();
+    let value = JsonValue::parse(br#"["string", "\u00a3", true, false, null, NaN]"#, true).unwrap();
     Python::with_gil(|py| {
         let python_value = value.to_object(py);
         let string = python_value.as_ref(py).to_string();
-        assert_eq!(string, "['string', '£', True, False, None]");
+        assert_eq!(string, "['string', '£', True, False, None, nan]");
     })
 }
 
