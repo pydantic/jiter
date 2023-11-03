@@ -177,7 +177,7 @@ fn serde_value(path: &str, bench: &mut Bencher) {
 macro_rules! test_cases {
     ($file_name:ident) => {
         paste::item! {
-            fn [< $file_name _jiter_value_string >](bench: &mut Bencher) {
+            fn [< $file_name _jiter_value >](bench: &mut Bencher) {
                 let file_path = format!("./benches/{}.json", stringify!($file_name));
                 jiter_value(&file_path, bench);
             }
