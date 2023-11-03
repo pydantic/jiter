@@ -6,3 +6,5 @@
 /scratch-project/
 /*.bm
 /env*/
+
+/Cargo.lock
