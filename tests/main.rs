@@ -40,8 +40,8 @@ fn json_vec(jiter: &mut Jiter, peak: Option<Peak>) -> JiterResult<Vec<String>> {
             let str = jiter.known_str()?;
             v.push(format!("String({str}) @ {position}"));
         }
-        Peak::Num(first) => {
-            let s = display_number(first, jiter)?;
+        Peak::Num(_) => {
+            let s = display_number(peak, jiter)?;
             v.push(s);
         }
         Peak::Array => {
@@ -74,9 +74,9 @@ fn json_vec(jiter: &mut Jiter, peak: Option<Peak>) -> JiterResult<Vec<String>> {
     Ok(v)
 }
 
-fn display_number(first: u8, jiter: &mut Jiter) -> JiterResult<String> {
+fn display_number(peak: Peak, jiter: &mut Jiter) -> JiterResult<String> {
     let position = jiter.current_position().short();
-    let number = jiter.known_number(first)?;
+    let number = jiter.known_number(peak)?;
     let s = match number {
         NumberAny::Int(NumberInt::Int(int)) => {
             format!("Int({int}) @ {position}")
@@ -348,7 +348,7 @@ fn invalid_unicode_code() {
 }
 
 #[test]
-fn test_nan_disallowed() {
+fn nan_disallowed() {
     let json = r#"[NaN]"#;
     let mut jiter = Jiter::new(json.as_bytes(), false);
     assert_eq!(jiter.next_array().unwrap().unwrap(), Peak::NaN);
@@ -362,7 +362,7 @@ fn test_nan_disallowed() {
 }
 
 #[test]
-fn test_nan_disallowed_wrong_type() {
+fn nan_disallowed_wrong_type() {
     let json = r#"[NaN]"#;
     let mut jiter = Jiter::new(json.as_bytes(), false);
     assert_eq!(jiter.next_array().unwrap().unwrap(), Peak::NaN);
@@ -376,7 +376,24 @@ fn test_nan_disallowed_wrong_type() {
 }
 
 #[test]
-fn test_key_str() {
+fn value_allow_nan() {
+    let json = r#"[1, NaN]"#;
+    let value = JsonValue::parse(json.as_bytes(), true).unwrap();
+    let expected = JsonValue::Array(Arc::new(smallvec![JsonValue::Int(1), JsonValue::Float(f64::NAN),]));
+    // compare debug since `f64::NAN != f64::NAN`
+    assert_eq!(format!("{:?}", value), format!("{:?}", expected));
+}
+
+#[test]
+fn value_disallow_nan() {
+    let json = r#"[1, NaN]"#;
+    let err = JsonValue::parse(json.as_bytes(), false).unwrap_err();
+    assert_eq!(err.error_type, JsonErrorType::ExpectedSomeValue);
+    assert_eq!(err.to_string(), "expected value at line 1 column 5");
+}
+
+#[test]
+fn key_str() {
     let json = r#"{"foo": "bar"}"#;
     let mut jiter = Jiter::new(json.as_bytes(), false);
     assert_eq!(jiter.next_object().unwrap().unwrap(), "foo");
@@ -386,7 +403,7 @@ fn test_key_str() {
 }
 
 #[test]
-fn test_key_bytes() {
+fn key_bytes() {
     let json = r#"{"foo": "bar"}"#.as_bytes();
     let mut jiter = Jiter::new(json, false);
     assert_eq!(jiter.next_object_bytes().unwrap().unwrap(), b"foo");

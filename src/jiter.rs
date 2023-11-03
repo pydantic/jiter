@@ -115,15 +115,15 @@ impl<'j> Jiter<'j> {
     /// A [NumberAny] representing the number.
     pub fn next_number(&mut self) -> JiterResult<NumberAny> {
         let peak = self.peak()?;
-        match peak {
-            Peak::Num(first) => self.known_number(first),
-            _ => Err(self.wrong_type(JsonType::Int, peak)),
-        }
+        self.known_number(peak)
     }
 
     /// Knowing the next value is a number, parse it.
-    pub fn known_number(&mut self, first: u8) -> JiterResult<NumberAny> {
-        self.parser.consume_number::<NumberAny>(first).map_err(Into::into)
+    pub fn known_number(&mut self, peak: Peak) -> JiterResult<NumberAny> {
+        match peak {
+            Peak::Num(first) => self.parser.consume_number::<NumberAny>(first).map_err(Into::into),
+            _ => Err(self.wrong_type(JsonType::Int, peak)),
+        }
     }
 
     /// Assuming the next value is an integer, consume it. Error if it is not an integer, or is invalid JSON.
