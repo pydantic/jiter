@@ -26,15 +26,11 @@ jobs:
       with:
         python-version: '3.11'
 
-    - uses: dtolnay/rust-toolchain@master
+    - uses: moonrepo/setup-rust@v0
       with:
-        toolchain: ${{ matrix.rust-version }}
-
-    - id: cache-rust
-      uses: Swatinem/rust-cache@v2
-
-    - run: cargo install rustfilt coverage-prepare
-      if: steps.cache-rust.outputs.cache-hit != 'true'
+        channel: ${{ matrix.rust-version }}
+        cache-target: debug
+        bins: rustfilt coverage-prepare
 
     - run: rustup component add llvm-tools-preview
 
@@ -74,10 +70,11 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
-    - uses: dtolnay/rust-toolchain@nightly
-    - uses: Swatinem/rust-cache@v2
-
-    - run: cargo install cargo-fuzz
+    - uses: moonrepo/setup-rust@v0
+      with:
+        channel: nightly
+        cache-target: release
+        bins: cargo-fuzz
 
     - run: cargo fuzz run compare_to_serde --release -- -max_total_time=300s
       working-directory: fuzz
@@ -87,12 +84,11 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
-    - name: install rust stable
-      uses: dtolnay/rust-toolchain@stable
+    - uses: moonrepo/setup-rust@v0
       with:
-        components: rustfmt, clippy
-
-    - uses: Swatinem/rust-cache@v2
+        channel: stable
+        cache-target: release
+        bins: rustfmt, clippy
 
     - uses: pre-commit/action@v3.0.0
       with:
@@ -101,7 +97,7 @@ jobs:
         PRE_COMMIT_COLOR: always
         SKIP: test
 
-    - run: cargo doc
+    - run: cargo doc -F python
 
   # https://github.com/marketplace/actions/alls-green#why used for branch protection checks
   check:

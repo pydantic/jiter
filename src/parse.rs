@@ -2,6 +2,7 @@ use crate::errors::{json_err, FilePosition, JsonResult};
 use crate::number_decoder::AbstractNumberDecoder;
 use crate::string_decoder::{AbstractStringDecoder, Tape};
 
+/// Enum used to describe the next expected value in JSON.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Peak {
     Null,

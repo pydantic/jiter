@@ -29,11 +29,11 @@ fn jiter_iter_big(path: &str, bench: &mut Bencher) {
     bench.iter(|| {
         let mut jiter = Jiter::new(json_data);
         let mut v_outer = Vec::new();
-        jiter.array_first().unwrap();
+        jiter.next_array().unwrap();
 
         loop {
             let mut v_inner = Vec::new();
-            if let Some(peak) = jiter.array_first().unwrap() {
+            if let Some(peak) = jiter.next_array().unwrap() {
                 let i = jiter.known_float(peak).unwrap();
                 v_inner.push(i);
                 while let Some(peak) = jiter.array_step().unwrap() {
@@ -55,7 +55,7 @@ fn find_string(jiter: &mut Jiter) -> String {
     match peak {
         Peak::String => jiter.known_str().unwrap().to_string(),
         Peak::Array => {
-            assert!(jiter.array_first().unwrap().is_some());
+            assert!(jiter.known_array().unwrap().is_some());
             let s = find_string(jiter).to_string();
             assert!(jiter.array_step().unwrap().is_none());
             s
@@ -81,8 +81,8 @@ fn jiter_iter_string_array(path: &str, bench: &mut Bencher) {
     bench.iter(|| {
         let mut jiter = Jiter::new(json_data);
         let mut v = Vec::new();
-        jiter.array_first().unwrap();
-        let i = jiter.next_str().unwrap();
+        jiter.next_array().unwrap();
+        let i = jiter.known_str().unwrap();
         // record len instead of allocating the string to simulate something like constructing a PyString
         v.push(i.len());
         while jiter.array_step().unwrap().is_some() {
@@ -100,7 +100,7 @@ fn jiter_iter_true_array(path: &str, bench: &mut Bencher) {
     bench.iter(|| {
         let mut jiter = Jiter::new(json_data);
         let mut v = Vec::new();
-        let first_peak = jiter.array_first().unwrap().unwrap();
+        let first_peak = jiter.next_array().unwrap().unwrap();
         let i = jiter.known_bool(first_peak).unwrap();
         v.push(i);
         while let Some(peak) = jiter.array_step().unwrap() {
@@ -137,7 +137,7 @@ fn jiter_iter_ints_array(path: &str, bench: &mut Bencher) {
     bench.iter(|| {
         let mut jiter = Jiter::new(json_data);
         let mut v = Vec::new();
-        let first_peak = jiter.array_first().unwrap().unwrap();
+        let first_peak = jiter.next_array().unwrap().unwrap();
         let i = jiter.known_int(first_peak).unwrap();
         v.push(i);
         while let Some(peak) = jiter.array_step().unwrap() {
@@ -154,7 +154,7 @@ fn jiter_iter_floats_array(path: &str, bench: &mut Bencher) {
     bench.iter(|| {
         let mut jiter = Jiter::new(json_data);
         let mut v = Vec::new();
-        let first_peak = jiter.array_first().unwrap().unwrap();
+        let first_peak = jiter.next_array().unwrap().unwrap();
         let i = jiter.known_float(first_peak).unwrap();
         v.push(i);
         while let Some(peak) = jiter.array_step().unwrap() {

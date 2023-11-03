@@ -1,6 +1,6 @@
 use std::borrow::Borrow;
 use std::cmp::{Eq, PartialEq};
-use std::fmt::Debug;
+use std::fmt;
 use std::hash::Hash;
 use std::slice::Iter as SliceIter;
 use std::sync::OnceLock;
@@ -8,17 +8,28 @@ use std::sync::OnceLock;
 use ahash::AHashMap;
 use smallvec::SmallVec;
 
-#[derive(Debug, Clone, Default)]
+/// Like [IndexMap](https://docs.rs/indexmap/latest/indexmap/) but only builds the lookup map when it's needed.
+#[derive(Clone, Default)]
 pub struct LazyIndexMap<K, V> {
     vec: SmallVec<[(K, V); 8]>,
     map: OnceLock<AHashMap<K, usize>>,
 }
 
+impl<K, V> fmt::Debug for LazyIndexMap<K, V>
+where
+    K: Clone + fmt::Debug + Eq + Hash,
+    V: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_map().entries(self.iter_unique()).finish()
+    }
+}
+
 /// Like [IndexMap](https://docs.rs/indexmap/latest/indexmap/) but only builds the lookup map when it's needed.
 impl<K, V> LazyIndexMap<K, V>
 where
-    K: Clone + Debug + Eq + Hash,
-    V: Debug,
+    K: Clone + fmt::Debug + Eq + Hash,
+    V: fmt::Debug,
 {
     pub fn new() -> Self {
         Self {

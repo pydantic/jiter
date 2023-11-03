@@ -3,13 +3,13 @@ use std::sync::Arc;
 use num_bigint::BigInt;
 use smallvec::SmallVec;
 
-use crate::errors::{FilePosition, JsonResult, JsonValueError, DEFAULT_RECURSION_LIMIT};
+use crate::errors::{FilePosition, JsonError, JsonResult, JsonValueError, DEFAULT_RECURSION_LIMIT};
 use crate::lazy_index_map::LazyIndexMap;
 use crate::number_decoder::{NumberAny, NumberInt};
 use crate::parse::{Parser, Peak};
 use crate::string_decoder::{StringDecoder, Tape};
-use crate::JsonError;
 
+/// Enum representing a JSON value.
 #[derive(Clone, Debug, PartialEq)]
 pub enum JsonValue {
     Null,
@@ -48,6 +48,7 @@ impl pyo3::ToPyObject for JsonValue {
 }
 
 impl JsonValue {
+    /// Parse a JSON value from a byte slice.
     pub fn parse(data: &[u8]) -> Result<Self, JsonValueError> {
         let mut parser = Parser::new(data);
 
