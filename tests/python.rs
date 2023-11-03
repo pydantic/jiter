@@ -22,11 +22,15 @@ fn test_to_py_object_numeric() {
 
 #[test]
 fn test_to_py_object_other() {
-    let value = JsonValue::parse(br#"["string", "\u00a3", true, false, null, NaN]"#, true).unwrap();
+    let value = JsonValue::parse(
+        br#"["string", "\u00a3", true, false, null, NaN, Infinity, -Infinity]"#,
+        true,
+    )
+    .unwrap();
     Python::with_gil(|py| {
         let python_value = value.to_object(py);
         let string = python_value.as_ref(py).to_string();
-        assert_eq!(string, "['string', '£', True, False, None, nan]");
+        assert_eq!(string, "['string', '£', True, False, None, nan, inf, -inf]");
     })
 }
 

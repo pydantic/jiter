@@ -65,7 +65,7 @@ impl<'j> PythonParser<'j> {
                 Ok(PyString::new(py, s.as_str()).to_object(py))
             }
             Peak::Num(first) => {
-                let n = self.parser.consume_number::<NumberAny>(first).map_err(mje)?;
+                let n = self.parser.consume_number::<NumberAny>(first, true).map_err(mje)?;
                 match n {
                     NumberAny::Int(NumberInt::Int(int)) => Ok(int.to_object(py)),
                     NumberAny::Int(NumberInt::BigInt(big_int)) => Ok(big_int.to_object(py)),
