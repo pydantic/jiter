@@ -29,7 +29,6 @@ jobs:
     - uses: moonrepo/setup-rust@v0
       with:
         channel: ${{ matrix.rust-version }}
-        cache-target: debug
         bins: rustfilt coverage-prepare
 
     - run: rustup component add llvm-tools-preview
