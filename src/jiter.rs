@@ -21,8 +21,12 @@ impl<'j> Jiter<'j> {
         }
     }
 
-    pub fn error_position(&self, error: &JiterError) -> FilePosition {
-        FilePosition::find(self.data, error.index)
+    pub fn current_position(&self) -> FilePosition {
+        self.parser.current_position()
+    }
+
+    pub fn error_position(&self, index: usize) -> FilePosition {
+        FilePosition::find(self.data, index)
     }
 
     pub fn peak(&mut self) -> JiterResult<Peak> {
@@ -32,12 +36,14 @@ impl<'j> Jiter<'j> {
     pub fn next_null(&mut self) -> JiterResult<()> {
         let peak = self.peak()?;
         match peak {
-            Peak::Null => {
-                self.parser.consume_null()?;
-                Ok(())
-            }
+            Peak::Null => self.known_null(),
             _ => Err(self.wrong_type(JsonType::Null, peak)),
         }
+    }
+
+    pub fn known_null(&mut self) -> JiterResult<()> {
+        self.parser.consume_null()?;
+        Ok(())
     }
 
     pub fn next_bool(&mut self) -> JiterResult<bool> {
@@ -159,11 +165,15 @@ impl<'j> Jiter<'j> {
 
     pub fn next_object(&mut self) -> JiterResult<Option<&str>> {
         let peak = self.peak()?;
-        let strs = match peak {
-            Peak::Object => self.parser.object_first::<StringDecoder>(&mut self.tape)?,
-            _ => return Err(self.wrong_type(JsonType::Object, peak)),
-        };
-        Ok(strs.map(|s| s.as_str()))
+        match peak {
+            Peak::Object => self.known_object(),
+            _ => Err(self.wrong_type(JsonType::Object, peak)),
+        }
+    }
+
+    pub fn known_object(&mut self) -> JiterResult<Option<&str>> {
+        let op_str = self.parser.object_first::<StringDecoder>(&mut self.tape)?;
+        Ok(op_str.map(|s| s.as_str()))
     }
 
     pub fn next_object_bytes(&mut self) -> JiterResult<Option<&[u8]>> {

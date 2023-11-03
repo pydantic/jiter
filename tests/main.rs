@@ -7,47 +7,46 @@ use num_bigint::BigInt;
 use smallvec::smallvec;
 
 use jiter::{
-    FilePosition, Jiter, JiterErrorType, JsonErrorType, JsonResult, JsonType, JsonValue, LazyIndexMap, NumberAny,
-    NumberInt, Parser, Peak, StringDecoder, StringDecoderRange,
+    FilePosition, Jiter, JiterErrorType, JiterResult, JsonErrorType, JsonType, JsonValue, LazyIndexMap, NumberAny,
+    NumberInt, Peak,
 };
 
-fn json_vec(parser: &mut Parser, peak: Option<Peak>) -> JsonResult<Vec<String>> {
+fn json_vec(jiter: &mut Jiter, peak: Option<Peak>) -> JiterResult<Vec<String>> {
     let mut v = Vec::new();
-    let mut tape: Vec<u8> = Vec::new();
     let peak = match peak {
         Some(peak) => peak,
-        None => parser.peak()?,
+        None => jiter.peak()?,
     };
 
-    let position = parser.current_position().short();
+    let position = jiter.current_position().short();
     match peak {
         Peak::True => {
-            parser.consume_true()?;
+            jiter.known_bool(peak)?;
             v.push(format!("true @ {position}"));
         }
         Peak::False => {
-            parser.consume_false()?;
+            jiter.known_bool(peak)?;
             v.push(format!("false @ {position}"));
         }
         Peak::Null => {
-            parser.consume_null()?;
+            jiter.known_null()?;
             v.push(format!("null @ {position}"));
         }
         Peak::String => {
-            let range = parser.consume_string::<StringDecoderRange>(&mut tape)?;
-            v.push(format!("String({range:?}) @ {position}"));
+            let str = jiter.known_str()?;
+            v.push(format!("String({str}) @ {position}"));
         }
         Peak::Num(first) => {
-            let s = display_number(first, parser)?;
+            let s = display_number(first, jiter)?;
             v.push(s);
         }
         Peak::Array => {
             v.push(format!("[ @ {position}"));
-            if let Some(peak) = parser.array_first()? {
-                let el_vec = json_vec(parser, Some(peak))?;
+            if let Some(peak) = jiter.array_first()? {
+                let el_vec = json_vec(jiter, Some(peak))?;
                 v.extend(el_vec);
-                while let Some(peak) = parser.array_step()? {
-                    let el_vec = json_vec(parser, Some(peak))?;
+                while let Some(peak) = jiter.array_step()? {
+                    let el_vec = json_vec(jiter, Some(peak))?;
                     v.extend(el_vec);
                 }
             }
@@ -55,13 +54,13 @@ fn json_vec(parser: &mut Parser, peak: Option<Peak>) -> JsonResult<Vec<String>> 
         }
         Peak::Object => {
             v.push(format!("{{ @ {position}"));
-            if let Some(key) = parser.object_first::<StringDecoderRange>(&mut tape)? {
-                v.push(format!("Key({key:?})"));
-                let value_vec = json_vec(parser, None)?;
+            if let Some(key) = jiter.known_object()? {
+                v.push(format!("Key({key})"));
+                let value_vec = json_vec(jiter, None)?;
                 v.extend(value_vec);
-                while let Some(key) = parser.object_step::<StringDecoderRange>(&mut tape)? {
-                    v.push(format!("Key({key:?}"));
-                    let value_vec = json_vec(parser, None)?;
+                while let Some(key) = jiter.next_key()? {
+                    v.push(format!("Key({key}"));
+                    let value_vec = json_vec(jiter, None)?;
                     v.extend(value_vec);
                 }
             }
@@ -71,9 +70,9 @@ fn json_vec(parser: &mut Parser, peak: Option<Peak>) -> JsonResult<Vec<String>> 
     Ok(v)
 }
 
-fn display_number(first: u8, parser: &mut Parser) -> JsonResult<String> {
-    let position = parser.current_position().short();
-    let number = parser.consume_number::<NumberAny>(first)?;
+fn display_number(first: u8, jiter: &mut Jiter) -> JiterResult<String> {
+    let position = jiter.current_position().short();
+    let number = jiter.known_number(first)?;
     let s = match number {
         NumberAny::Int(NumberInt::Int(int)) => {
             format!("Int({int}) @ {position}")
@@ -94,10 +93,10 @@ macro_rules! single_expect_ok_or_error {
             #[allow(non_snake_case)]
             #[test]
             fn [< single_element_ok__ $name >]() {
-                let mut parser = Parser::new($json.as_bytes());
-                let elements = json_vec(&mut parser, None).unwrap().join(", ");
+                let mut jiter = Jiter::new($json.as_bytes());
+                let elements = json_vec(&mut jiter, None).unwrap().join(", ");
                 assert_eq!(elements, $expected);
-                parser.finish().unwrap();
+                jiter.finish().unwrap();
             }
         }
     };
@@ -107,13 +106,18 @@ macro_rules! single_expect_ok_or_error {
             #[allow(non_snake_case)]
             #[test]
             fn [< single_element_xerror__ $name >]() {
-                let mut parser = Parser::new($json.as_bytes());
-                let result = json_vec(&mut parser, None);
+                let mut jiter = Jiter::new($json.as_bytes());
+                let result = json_vec(&mut jiter, None);
                 let first_value = match result {
                     Ok(v) => v,
                     Err(e) => {
-                        let position = parser.error_position(e.index);
-                        let actual_error = format!("{:?} @ {}", e.error_type, position.short());
+                        let position = jiter.error_position(e.index);
+                        // no wrong type errors, so unwrap the json error
+                        let error_type = match e.error_type {
+                            JiterErrorType::JsonError(e) => e,
+                            _ => panic!("unexpected error type: {:?}", e.error_type),
+                        };
+                        let actual_error = format!("{:?} @ {}", error_type, position.short());
                         assert_eq!(actual_error, $expected_error);
 
                         let full_error = format!("{} at {}", e.error_type, position);
@@ -122,14 +126,19 @@ macro_rules! single_expect_ok_or_error {
                         return
                     },
                 };
-                let result = parser.finish();
+                let result = jiter.finish();
                 match result {
                     Ok(_) => panic!("unexpectedly valid at finish: {:?} -> {:?}", $json, first_value),
                     Err(e) => {
                         // to check to_string works, and for coverage
                         e.to_string();
-                        let position = parser.error_position(e.index);
-                        let actual_error = format!("{:?} @ {}", e.error_type, position.short());
+                        let position = jiter.error_position(e.index);
+                        // no wrong type errors, so unwrap the json error
+                        let error_type = match e.error_type {
+                            JiterErrorType::JsonError(e) => e,
+                            _ => panic!("unexpected error type: {:?}", e.error_type),
+                        };
+                        let actual_error = format!("{:?} @ {}", error_type, position.short());
                         assert_eq!(actual_error, $expected_error);
                         return
                     },
@@ -148,7 +157,7 @@ macro_rules! single_tests {
 }
 
 single_tests! {
-    string: ok => r#""foobar""#, "String(1..7) @ 1:1";
+    string: ok => r#""foobar""#, "String(foobar) @ 1:1";
     int_pos: ok => "1234", "Int(1234) @ 1:1";
     int_zero: ok => "0", "Int(0) @ 1:1";
     int_zero_space: ok => "0 ", "Int(0) @ 1:1";
@@ -200,10 +209,10 @@ single_tests! {
     eof_while_parsing_object: err => r#"{"foo": 1"#, "EofWhileParsingObject @ 1:9";
     expected_colon: err => r#"{"foo"1"#, "ExpectedColon @ 1:7";
     array_bool: ok => "[true, false]", "[ @ 1:1, true @ 1:2, false @ 1:8, ]";
-    object_string: ok => r#"{"foo": "ba"}"#, "{ @ 1:1, Key(2..5), String(9..11) @ 1:9, }";
-    object_null: ok => r#"{"foo": null}"#, "{ @ 1:1, Key(2..5), null @ 1:9, }";
-    object_bool_compact: ok => r#"{"foo":true}"#, "{ @ 1:1, Key(2..5), true @ 1:8, }";
-    deep_array: ok => r#"[["Not too deep"]]"#, "[ @ 1:1, [ @ 1:2, String(3..15) @ 1:3, ], ]";
+    object_string: ok => r#"{"foo": "ba"}"#, "{ @ 1:1, Key(foo), String(ba) @ 1:9, }";
+    object_null: ok => r#"{"foo": null}"#, "{ @ 1:1, Key(foo), null @ 1:9, }";
+    object_bool_compact: ok => r#"{"foo":true}"#, "{ @ 1:1, Key(foo), true @ 1:8, }";
+    deep_array: ok => r#"[["Not too deep"]]"#, "[ @ 1:1, [ @ 1:2, String(Not too deep) @ 1:3, ], ]";
     object_key_int: err => r#"{4: 4}"#, "KeyMustBeAString @ 1:2";
     array_no_close: err => r#"["#, "EofWhileParsingList @ 1:1";
     array_double_close: err => "[1]]", "TrailingCharacters @ 1:4";
@@ -223,15 +232,15 @@ single_tests! {
 #[test]
 fn invalid_string_controls() {
     let json = "\"123\x08\x0c\n\r\t\"";
-    let mut tape: Vec<u8> = Vec::new();
     let b = json.as_bytes();
-    let mut parser = Parser::new(b);
-    let peak = parser.peak().unwrap();
-    assert!(matches!(peak, Peak::String));
-    let e = parser.consume_string::<StringDecoder>(&mut tape).unwrap_err();
-    assert_eq!(e.error_type, JsonErrorType::ControlCharacterWhileParsingString);
+    let mut jiter = Jiter::new(b);
+    let e = jiter.next_str().unwrap_err();
+    assert_eq!(
+        e.error_type,
+        JiterErrorType::JsonError(JsonErrorType::ControlCharacterWhileParsingString)
+    );
     assert_eq!(e.index, 4);
-    assert_eq!(parser.error_position(e.index), FilePosition::new(1, 5));
+    assert_eq!(jiter.error_position(e.index), FilePosition::new(1, 5));
     assert_eq!(
         e.to_string(),
         "control character (\\u0000-\\u001F) found while parsing a string at index 4"
@@ -241,17 +250,15 @@ fn invalid_string_controls() {
 #[test]
 fn json_parse_str() {
     let json = r#" "foobar" "#;
-    let mut tape: Vec<u8> = Vec::new();
     let data = json.as_bytes();
-    let mut parser = Parser::new(data);
-    let peak = parser.peak().unwrap();
+    let mut jiter = Jiter::new(data);
+    let peak = jiter.peak().unwrap();
     assert_eq!(peak, Peak::String);
-    assert_eq!(parser.index, 1);
-    assert_eq!(parser.current_position(), FilePosition::new(1, 2));
+    assert_eq!(jiter.current_position(), FilePosition::new(1, 2));
 
-    let result_string = parser.consume_string::<StringDecoder>(&mut tape).unwrap();
-    assert_eq!(result_string.as_str(), "foobar");
-    parser.finish().unwrap();
+    let result_string = jiter.known_str().unwrap();
+    assert_eq!(result_string, "foobar");
+    jiter.finish().unwrap();
 }
 
 macro_rules! string_tests {
@@ -261,13 +268,10 @@ macro_rules! string_tests {
                 #[test]
                 fn [< string_parsing_ $name >]() {
                     let data = $json.as_bytes();
-                    let mut tape: Vec<u8> = Vec::new();
-                    let mut parser = Parser::new(data);
-                    let peak = parser.peak().unwrap();
-                    assert!(matches!(peak, Peak::String));
-                    let strs = parser.consume_string::<StringDecoder>(&mut tape).unwrap();
-                    assert_eq!(strs.as_str(), $expected);
-                    parser.finish().unwrap();
+                    let mut jiter = Jiter::new(data);
+                    let str = jiter.next_str().unwrap();
+                    assert_eq!(str, $expected);
+                    jiter.finish().unwrap();
                 }
             }
         )*
@@ -291,17 +295,18 @@ macro_rules! string_test_errors {
                 #[test]
                 fn [< string_parsing_errors_ $name >]() {
                     let data = $json.as_bytes();
-                    let mut tape: Vec<u8> = Vec::new();
-                    let mut parser = Parser::new(data);
-                    let peak = parser.peak().unwrap();
-                    assert_eq!(peak, Peak::String);
-                    match parser.consume_string::<StringDecoder>(&mut tape) {
+                    let mut jiter = Jiter::new(data);
+                    match jiter.next_str() {
                         Ok(t) => panic!("unexpectedly valid: {:?} -> {:?}", $json, t),
                         Err(e) => {
                             // to check to_string works, and for coverage
                             e.to_string();
-                            let position = parser.error_position(e.index);
-                            let actual_error = format!("{:?} @ {} - {}", e.error_type, e.index, position.short());
+                            let error_type = match e.error_type {
+                                JiterErrorType::JsonError(e) => e,
+                                _ => panic!("unexpected error type: {:?}", e.error_type),
+                            };
+                            let position = jiter.error_position(e.index);
+                            let actual_error = format!("{:?} @ {} - {}", error_type, e.index, position.short());
                             assert_eq!(actual_error, $expected_error);
                         }
                     }
@@ -327,51 +332,34 @@ string_test_errors! {
 fn invalid_unicode_code() {
     let json = vec![34, 92, 34, 206, 44, 163, 34];
     // dbg!(json.iter().map(|b| *b as char).collect::<Vec<_>>());
-    let mut tape: Vec<u8> = Vec::new();
-    let mut parser = Parser::new(&json);
-    let p = parser.peak().unwrap();
-    assert!(matches!(p, Peak::String));
-    let e = parser.consume_string::<StringDecoder>(&mut tape).unwrap_err();
-    assert_eq!(e.error_type, JsonErrorType::InvalidUnicodeCodePoint);
+    let mut jiter = Jiter::new(&json);
+    let e = jiter.next_str().unwrap_err();
+    assert_eq!(
+        e.error_type,
+        JiterErrorType::JsonError(JsonErrorType::InvalidUnicodeCodePoint)
+    );
     assert_eq!(e.index, 3);
-    assert_eq!(parser.error_position(e.index), FilePosition::new(1, 4));
+    assert_eq!(jiter.error_position(e.index), FilePosition::new(1, 4));
 }
 
 #[test]
 fn test_key_str() {
     let json = r#"{"foo": "bar"}"#;
-    let mut tape: Vec<u8> = Vec::new();
-    let mut parser = Parser::new(json.as_bytes());
-    let p = parser.peak().unwrap();
-    assert!(matches!(p, Peak::Object));
-    let k = parser.object_first::<StringDecoder>(&mut tape).unwrap().unwrap();
-    assert_eq!(k.as_str(), "foo");
-    let p = parser.peak().unwrap();
-    assert!(matches!(p, Peak::String));
-    let v = parser.consume_string::<StringDecoder>(&mut tape).unwrap();
-    assert_eq!(v.to_string(), "bar".to_string());
-    assert_eq!(v.as_str(), "bar");
-    let next_key = parser.object_step::<StringDecoder>(&mut tape).unwrap();
-    assert!(next_key.is_none());
-    parser.finish().unwrap();
+    let mut jiter = Jiter::new(json.as_bytes());
+    assert_eq!(jiter.next_object().unwrap().unwrap(), "foo");
+    assert_eq!(jiter.next_str().unwrap(), "bar");
+    assert!(jiter.next_key().unwrap().is_none());
+    jiter.finish().unwrap();
 }
 
 #[test]
 fn test_key_bytes() {
     let json = r#"{"foo": "bar"}"#.as_bytes();
-    let mut tape: Vec<u8> = Vec::new();
-    let mut parser = Parser::new(json);
-    let p = parser.peak().unwrap();
-    assert!(matches!(p, Peak::Object));
-    let k = parser.object_first::<StringDecoderRange>(&mut tape).unwrap().unwrap();
-    assert_eq!(json[k], *b"foo");
-    let p = parser.peak().unwrap();
-    assert!(matches!(p, Peak::String));
-    let v = parser.consume_string::<StringDecoderRange>(&mut tape).unwrap();
-    assert_eq!(json[v], *b"bar");
-    let next_key = parser.object_step::<StringDecoder>(&mut tape).unwrap();
-    assert!(next_key.is_none());
-    parser.finish().unwrap();
+    let mut jiter = Jiter::new(json);
+    assert_eq!(jiter.next_object_bytes().unwrap().unwrap(), b"foo");
+    assert_eq!(jiter.next_bytes().unwrap(), *b"bar");
+    assert!(jiter.next_key().unwrap().is_none());
+    jiter.finish().unwrap();
 }
 
 macro_rules! test_position {
@@ -624,7 +612,7 @@ fn jiter_bytes_u_escape() {
         e.error_type,
         JiterErrorType::JsonError(JsonErrorType::StringEscapeNotSupported)
     );
-    assert_eq!(jiter.error_position(&e), FilePosition::new(1, 14));
+    assert_eq!(jiter.error_position(e.index), FilePosition::new(1, 14));
     assert_eq!(
         e.with_position(&jiter).to_string(),
         "string escape sequences are not supported at line 1 column 14"
@@ -649,7 +637,7 @@ fn jiter_trailing_bracket() {
         e.error_type,
         JiterErrorType::JsonError(JsonErrorType::TrailingCharacters)
     );
-    assert_eq!(jiter.error_position(&e), FilePosition::new(1, 4));
+    assert_eq!(jiter.error_position(e.index), FilePosition::new(1, 4));
 }
 
 #[test]
@@ -664,7 +652,7 @@ fn jiter_wrong_type() {
         }
     );
     assert_eq!(e.index, 1);
-    assert_eq!(jiter.error_position(&e), FilePosition::new(1, 2));
+    assert_eq!(jiter.error_position(e.index), FilePosition::new(1, 2));
     assert_eq!(e.to_string(), "expected string but found int at index 1");
     assert_eq!(
         e.with_position(&jiter).to_string(),

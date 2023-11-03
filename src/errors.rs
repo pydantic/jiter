@@ -1,6 +1,6 @@
 use std::fmt;
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum JsonErrorType {
     /// string escape sequences are not supported in this method, usize here is the position within the string
     /// that is invalid
@@ -217,7 +217,7 @@ impl JiterError {
         Self {
             error_type: self.error_type.clone(),
             index: self.index,
-            position: Some(jiter.error_position(self)),
+            position: Some(jiter.error_position(self.index)),
         }
     }
 

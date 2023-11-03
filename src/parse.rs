@@ -63,10 +63,6 @@ impl<'j> Parser<'j> {
         FilePosition::find(self.data, self.index)
     }
 
-    pub fn error_position(&self, index: usize) -> FilePosition {
-        FilePosition::find(self.data, index)
-    }
-
     pub fn peak(&mut self) -> JsonResult<Peak> {
         if let Some(next) = self.eat_whitespace() {
             match Peak::new(next) {
