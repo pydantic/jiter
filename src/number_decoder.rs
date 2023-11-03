@@ -5,7 +5,6 @@ use std::ops::Range;
 use lexical_core::{format as lexical_format, parse_partial_with_options, ParseFloatOptions};
 
 use crate::errors::{json_err, JsonResult};
-use crate::parse::consume_infinity;
 
 pub trait AbstractNumberDecoder {
     type Output;
@@ -67,7 +66,11 @@ impl AbstractNumberDecoder for NumberFloat {
     fn decode(data: &[u8], mut index: usize, first: u8, allow_inf_nan: bool) -> JsonResult<(Self::Output, usize)> {
         let start = index;
 
-        let positive = first != b'-';
+        let positive = match first {
+            b'N' => return consume_nan(data, index, allow_inf_nan),
+            b'-' => false,
+            _ => true,
+        };
         if !positive {
             // we started with a minus sign, so the first digit is at index + 1
             index += 1;
@@ -75,7 +78,7 @@ impl AbstractNumberDecoder for NumberFloat {
         let first2 = if positive { Some(&first) } else { data.get(index) };
 
         match first2 {
-            Some(b'I') => parse_inf(data, index, positive, allow_inf_nan),
+            Some(b'I') => consume_inf(data, index, positive, allow_inf_nan),
             Some(digit) if digit.is_ascii_digit() => {
                 const JSON: u128 = lexical_format::JSON;
                 let options = ParseFloatOptions::new();
@@ -133,15 +136,16 @@ impl AbstractNumberDecoder for NumberAny {
                 NumberFloat::decode(data, start, first, allow_inf_nan).map(|(f, index)| (Self::Float(f), index))
             }
             IntParse::FloatInf(positive) => {
-                parse_inf(data, index, positive, allow_inf_nan).map(|(f, index)| (Self::Float(f), index))
+                consume_inf(data, index, positive, allow_inf_nan).map(|(f, index)| (Self::Float(f), index))
             }
+            IntParse::FloatNaN => consume_nan(data, index, allow_inf_nan).map(|(f, index)| (Self::Float(f), index)),
         }
     }
 }
 
-fn parse_inf(data: &[u8], index: usize, positive: bool, allow_inf_nan: bool) -> JsonResult<(f64, usize)> {
+fn consume_inf(data: &[u8], index: usize, positive: bool, allow_inf_nan: bool) -> JsonResult<(f64, usize)> {
     if allow_inf_nan {
-        let end = consume_infinity(data, index)?;
+        let end = crate::parse::consume_infinity(data, index)?;
         if positive {
             Ok((f64::INFINITY, end))
         } else {
@@ -154,11 +158,21 @@ fn parse_inf(data: &[u8], index: usize, positive: bool, allow_inf_nan: bool) -> 
     }
 }
 
+fn consume_nan(data: &[u8], index: usize, allow_inf_nan: bool) -> JsonResult<(f64, usize)> {
+    if allow_inf_nan {
+        let end = crate::parse::consume_nan(data, index)?;
+        Ok((f64::NAN, end))
+    } else {
+        json_err!(ExpectedSomeValue, index)
+    }
+}
+
 #[derive(Debug)]
 enum IntParse {
     Int(bool, NumberInt),
     Float,
     FloatInf(bool),
+    FloatNaN,
 }
 
 impl IntParse {
@@ -166,7 +180,11 @@ impl IntParse {
     /// https://github.com/Alexhuszagh/rust-lexical/blob/main/lexical-parse-integer/docs/Algorithm.md
     /// for some context
     fn parse(data: &[u8], mut index: usize, first: u8) -> JsonResult<(Self, usize)> {
-        let positive = first != b'-';
+        let positive = match first {
+            b'N' => return Ok((Self::FloatNaN, index)),
+            b'-' => false,
+            _ => true,
+        };
         if !positive {
             // we started with a minus sign, so the first digit is at index + 1
             index += 1;
@@ -237,7 +255,15 @@ impl AbstractNumberDecoder for NumberRange {
 
     fn decode(data: &[u8], mut index: usize, first: u8, allow_inf_nan: bool) -> JsonResult<(Self::Output, usize)> {
         let start = index;
-        let positive = first != b'-';
+
+        let positive = match first {
+            b'N' => {
+                let (_, end) = consume_nan(data, index, allow_inf_nan)?;
+                return Ok((start..end, end));
+            }
+            b'-' => false,
+            _ => true,
+        };
         if !positive {
             // we started with a minus sign, so the first digit is at index + 1
             index += 1;
@@ -263,14 +289,8 @@ impl AbstractNumberDecoder for NumberRange {
                 };
             }
             Some(b'I') => {
-                return if allow_inf_nan {
-                    let end = consume_infinity(data, index)?;
-                    Ok((start..end, end))
-                } else if positive {
-                    json_err!(ExpectedSomeValue, index)
-                } else {
-                    json_err!(InvalidNumber, index)
-                }
+                let (_, end) = consume_inf(data, index, positive, allow_inf_nan)?;
+                return Ok((start..end, end));
             }
             Some(digit) if (b'1'..=b'9').contains(digit) => (),
             Some(_) => return json_err!(InvalidNumber, index),

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use num_bigint::BigInt;
 use smallvec::SmallVec;
 
-use crate::errors::{json_err, FilePosition, JsonError, JsonResult, JsonValueError, DEFAULT_RECURSION_LIMIT};
+use crate::errors::{FilePosition, JsonError, JsonResult, JsonValueError, DEFAULT_RECURSION_LIMIT};
 use crate::lazy_index_map::LazyIndexMap;
 use crate::number_decoder::{NumberAny, NumberInt};
 use crate::parse::{Parser, Peak};
@@ -98,11 +98,6 @@ pub(crate) fn take_value(
             parser.consume_null()?;
             Ok(JsonValue::Null)
         }
-        Peak::NaN if allow_inf_nan => {
-            parser.consume_nan()?;
-            Ok(JsonValue::Float(f64::NAN))
-        }
-        Peak::NaN => json_err!(ExpectedSomeValue, parser.index),
         Peak::String => {
             let s = parser.consume_string::<StringDecoder>(tape)?;
             Ok(JsonValue::Str(s.to_string()))

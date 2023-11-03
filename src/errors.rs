@@ -153,7 +153,6 @@ pub(crate) const DEFAULT_RECURSION_LIMIT: u8 = 200;
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum JsonType {
     Null,
-    NaN,
     Bool,
     Int,
     Float,
@@ -166,7 +165,6 @@ impl std::fmt::Display for JsonType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Null => f.write_str("null"),
-            Self::NaN => f.write_str("NaN"),
             Self::Bool => f.write_str("bool"),
             Self::Int => f.write_str("int"),
             Self::Float => f.write_str("float"),

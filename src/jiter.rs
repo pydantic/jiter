@@ -1,4 +1,4 @@
-use crate::errors::{json_error, FilePosition, JiterError, JsonType, DEFAULT_RECURSION_LIMIT};
+use crate::errors::{FilePosition, JiterError, JsonType, DEFAULT_RECURSION_LIMIT};
 use crate::number_decoder::{NumberAny, NumberFloat, NumberInt, NumberRange};
 use crate::parse::{Parser, Peak};
 use crate::string_decoder::{StringDecoder, StringDecoderRange, Tape};
@@ -60,29 +60,6 @@ impl<'j> Jiter<'j> {
     pub fn known_null(&mut self) -> JiterResult<()> {
         self.parser.consume_null()?;
         Ok(())
-    }
-
-    /// Assuming the next value is `NaN` (not a number), consume it. Error if it is not `NaN`, or is invalid JSON.
-    ///
-    /// Calls [known_nan].
-    pub fn next_nan(&mut self) -> JiterResult<()> {
-        let peak = self.peak()?;
-        match peak {
-            Peak::NaN => self.known_nan(),
-            _ => Err(self.wrong_type(JsonType::Null, peak)),
-        }
-    }
-
-    /// Knowing the next value is `NaN`, consume it.
-    ///
-    /// If `allow_inf_nan=false` was set when constructing the `Jiter`, this will raise a `ExpectedSomeValue` error.
-    pub fn known_nan(&mut self) -> JiterResult<()> {
-        if self.allow_inf_nan {
-            self.parser.consume_nan()?;
-            Ok(())
-        } else {
-            Err(json_error!(ExpectedSomeValue, self.parser.index).into())
-        }
     }
 
     /// Assuming the next value is `true` or `false`, consume it. Error if it is not a boolean, or is invalid JSON.
@@ -300,8 +277,6 @@ impl<'j> Jiter<'j> {
         match peak {
             Peak::True | Peak::False => JiterError::wrong_type(expected, JsonType::Bool, self.parser.index),
             Peak::Null => JiterError::wrong_type(expected, JsonType::Null, self.parser.index),
-            Peak::NaN if self.allow_inf_nan => JiterError::wrong_type(expected, JsonType::NaN, self.parser.index),
-            Peak::NaN => json_error!(ExpectedSomeValue, self.parser.index).into(),
             Peak::String => JiterError::wrong_type(expected, JsonType::String, self.parser.index),
             Peak::Num(first) => self.wrong_num(first, expected),
             Peak::Array => JiterError::wrong_type(expected, JsonType::Array, self.parser.index),

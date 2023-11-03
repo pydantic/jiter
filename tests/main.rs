@@ -32,10 +32,6 @@ fn json_vec(jiter: &mut Jiter, peak: Option<Peak>) -> JiterResult<Vec<String>> {
             jiter.known_null()?;
             v.push(format!("null @ {position}"));
         }
-        Peak::NaN => {
-            jiter.known_nan()?;
-            v.push(format!("NaN @ {position}"));
-        }
         Peak::String => {
             let str = jiter.known_str()?;
             v.push(format!("String({str}) @ {position}"));
@@ -191,7 +187,7 @@ single_tests! {
     null: ok => "null", "null @ 1:1";
     v_true: ok => "true", "true @ 1:1";
     v_false: ok => "false", "false @ 1:1";
-    nan: ok => "NaN", "NaN @ 1:1";
+    nan: ok => "NaN", "Float(NaN) @ 1:1";
     infinity: ok => "Infinity", "Float(inf) @ 1:1";
     neg_infinity: ok => "-Infinity", "Float(-inf) @ 1:1";
     offset_true: ok => "  true", "true @ 1:3";
@@ -353,8 +349,8 @@ fn invalid_unicode_code() {
 fn nan_disallowed() {
     let json = r#"[NaN]"#;
     let mut jiter = Jiter::new(json.as_bytes(), false);
-    assert_eq!(jiter.next_array().unwrap().unwrap(), Peak::NaN);
-    let e = jiter.next_nan().unwrap_err();
+    assert_eq!(jiter.next_array().unwrap().unwrap(), Peak::Num(b'N'));
+    let e = jiter.next_number().unwrap_err();
     assert_eq!(
         e.error_type,
         JiterErrorType::JsonError(JsonErrorType::ExpectedSomeValue)
@@ -368,7 +364,7 @@ fn inf_disallowed() {
     let json = r#"[Infinity]"#;
     let mut jiter = Jiter::new(json.as_bytes(), false);
     assert_eq!(jiter.next_array().unwrap().unwrap(), Peak::Num(b'I'));
-    let e = jiter.next_nan().unwrap_err();
+    let e = jiter.next_number().unwrap_err();
     assert_eq!(
         e.error_type,
         JiterErrorType::JsonError(JsonErrorType::ExpectedSomeValue)
@@ -382,7 +378,7 @@ fn inf_neg_disallowed() {
     let json = r#"[-Infinity]"#;
     let mut jiter = Jiter::new(json.as_bytes(), false);
     assert_eq!(jiter.next_array().unwrap().unwrap(), Peak::Num(b'-'));
-    let e = jiter.next_nan().unwrap_err();
+    let e = jiter.next_number().unwrap_err();
     assert_eq!(e.error_type, JiterErrorType::JsonError(JsonErrorType::InvalidNumber));
     assert_eq!(e.index, 2);
     assert_eq!(jiter.error_position(e.index), FilePosition::new(1, 3));
@@ -392,7 +388,7 @@ fn inf_neg_disallowed() {
 fn nan_disallowed_wrong_type() {
     let json = r#"[NaN]"#;
     let mut jiter = Jiter::new(json.as_bytes(), false);
-    assert_eq!(jiter.next_array().unwrap().unwrap(), Peak::NaN);
+    assert_eq!(jiter.next_array().unwrap().unwrap(), Peak::Num(b'N'));
     let e = jiter.next_str().unwrap_err();
     assert_eq!(
         e.error_type,
@@ -647,11 +643,13 @@ fn jiter_object() {
 
 #[test]
 fn jiter_inf() {
-    let mut jiter = Jiter::new(b"[Infinity, -Infinity]", true);
+    let mut jiter = Jiter::new(b"[Infinity, -Infinity, NaN]", true);
     assert_eq!(jiter.next_array().unwrap(), Some(Peak::Num(b'I')));
     assert_eq!(jiter.next_float().unwrap(), f64::INFINITY);
     assert_eq!(jiter.array_step().unwrap(), Some(Peak::Num(b'-')));
     assert_eq!(jiter.next_float().unwrap(), f64::NEG_INFINITY);
+    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Num(b'N')));
+    assert_eq!(jiter.next_float().unwrap().to_string(), "NaN");
     assert_eq!(jiter.array_step().unwrap(), None);
     jiter.finish().unwrap();
 }
@@ -679,6 +677,7 @@ fn jiter_bytes() {
     assert_eq!(jiter.next_key_bytes().unwrap(), None);
     jiter.finish().unwrap();
 }
+
 #[test]
 fn jiter_number() {
     let mut jiter = Jiter::new(br#"  [1, 2.2, 3, 4.1, 5.67]"#, false);

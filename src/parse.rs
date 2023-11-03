@@ -8,7 +8,6 @@ pub enum Peak {
     Null,
     True,
     False,
-    NaN,
     // we keep the first character of the number as we'll need it when decoding
     Num(u8),
     String,
@@ -25,11 +24,9 @@ impl Peak {
             b't' => Some(Self::True),
             b'f' => Some(Self::False),
             b'n' => Some(Self::Null),
-            b'N' => Some(Self::NaN),
             b'0'..=b'9' => Some(Self::Num(next)),
-            b'-' => Some(Self::Num(next)),
-            // For `Infinity`
-            b'I' => Some(Self::Num(next)),
+            // `-` negative, `I` Infinity, `N` NaN
+            b'-' | b'I' | b'N' => Some(Self::Num(next)),
             _ => None,
         }
     }
@@ -174,10 +171,6 @@ impl<'j> Parser<'j> {
         self.consume_ident(NULL_REST)
     }
 
-    pub fn consume_nan(&mut self) -> JsonResult<()> {
-        self.consume_ident(NAN_REST)
-    }
-
     pub fn consume_string<'t, D: AbstractStringDecoder<'t, 'j>>(&mut self, tape: &'t mut Tape) -> JsonResult<D::Output>
     where
         'j: 't,
@@ -252,6 +245,10 @@ impl<'j> Parser<'j> {
 
 pub(crate) fn consume_infinity(data: &[u8], index: usize) -> JsonResult<usize> {
     consume_ident(data, index, INFINITY_REST)
+}
+
+pub(crate) fn consume_nan(data: &[u8], index: usize) -> JsonResult<usize> {
+    consume_ident(data, index, NAN_REST)
 }
 
 fn consume_ident<const SIZE: usize>(data: &[u8], mut index: usize, expected: [u8; SIZE]) -> JsonResult<usize> {

@@ -60,11 +60,6 @@ impl<'j> PythonParser<'j> {
                 self.parser.consume_null().map_err(mje)?;
                 Ok(py.None())
             }
-            Peak::NaN if self.allow_inf_nan => {
-                self.parser.consume_nan().map_err(mje)?;
-                Ok(f64::NAN.to_object(py))
-            }
-            Peak::NaN => Err(mje(json_error!(ExpectedSomeValue, self.parser.index))),
             Peak::String => {
                 let s = self
                     .parser
