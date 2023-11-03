@@ -630,18 +630,29 @@ fn pass1_to_value() {
 
 #[test]
 fn jiter_object() {
-    let mut jiter = Jiter::new(br#"{"foo": "bar", "spam": [   1, 2, "x"]}"#, false);
+    let mut jiter = Jiter::new(br#"{"foo": "bar", "spam": [   1, -2, "x"]}"#, false);
     assert_eq!(jiter.next_object().unwrap(), Some("foo"));
     assert_eq!(jiter.next_str().unwrap(), "bar");
     assert_eq!(jiter.next_key().unwrap(), Some("spam"));
     assert_eq!(jiter.next_array().unwrap(), Some(Peak::Num(b'1')));
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(1));
-    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Num(b'2')));
-    assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(2));
+    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Num(b'-')));
+    assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(-2));
     assert_eq!(jiter.array_step().unwrap(), Some(Peak::String));
     assert_eq!(jiter.next_bytes().unwrap(), b"x");
     assert!(jiter.array_step().unwrap().is_none());
     assert_eq!(jiter.next_key().unwrap(), None);
+    jiter.finish().unwrap();
+}
+
+#[test]
+fn jiter_inf() {
+    let mut jiter = Jiter::new(b"[Infinity, -Infinity]", true);
+    assert_eq!(jiter.next_array().unwrap(), Some(Peak::Num(b'I')));
+    assert_eq!(jiter.next_float().unwrap(), f64::INFINITY);
+    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Num(b'-')));
+    assert_eq!(jiter.next_float().unwrap(), f64::NEG_INFINITY);
+    assert_eq!(jiter.array_step().unwrap(), None);
     jiter.finish().unwrap();
 }
 
@@ -676,7 +687,12 @@ fn jiter_number() {
     assert_eq!(jiter.array_step().unwrap(), Some(Peak::Num(b'2')));
     assert_eq!(jiter.next_float().unwrap(), 2.2);
     assert_eq!(jiter.array_step().unwrap(), Some(Peak::Num(b'3')));
-    assert_eq!(jiter.next_number().unwrap(), NumberAny::Int(NumberInt::Int(3)));
+
+    let n = jiter.next_number().unwrap();
+    assert_eq!(n, NumberAny::Int(NumberInt::Int(3)));
+    let n_float: f64 = n.into();
+    assert_eq!(n_float, 3.0);
+
     assert_eq!(jiter.array_step().unwrap(), Some(Peak::Num(b'4')));
     assert_eq!(jiter.next_number().unwrap(), NumberAny::Float(4.1));
     assert_eq!(jiter.array_step().unwrap(), Some(Peak::Num(b'5')));
