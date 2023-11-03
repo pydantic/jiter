@@ -1,16 +1,15 @@
-#![feature(test)]
+#[macro_use]
+extern crate bencher;
 
-extern crate test;
+use bencher::{black_box, Bencher};
 
 use jiter::python_parse;
 use std::fs::File;
 use std::io::Read;
-use test::{black_box, Bencher};
 
 use pyo3::Python;
 
-#[bench]
-fn bench_python_parse_numeric(bench: &mut Bencher) {
+fn python_parse_numeric(bench: &mut Bencher) {
     Python::with_gil(|py| {
         bench.iter(|| {
             // Clear PyO3 memory on each loop iteration to avoid long GC traversal overheads.
@@ -24,8 +23,7 @@ fn bench_python_parse_numeric(bench: &mut Bencher) {
     })
 }
 
-#[bench]
-fn test_python_parse_other(bench: &mut Bencher) {
+fn python_parse_other(bench: &mut Bencher) {
     Python::with_gil(|py| {
         bench.iter(|| {
             // Clear PyO3 memory on each loop iteration to avoid long GC traversal overheads.
@@ -35,8 +33,7 @@ fn test_python_parse_other(bench: &mut Bencher) {
     })
 }
 
-#[bench]
-fn test_python_parse_medium_response(bench: &mut Bencher) {
+fn python_parse_medium_response(bench: &mut Bencher) {
     let mut file = File::open("./benches/medium_response.json").unwrap();
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
@@ -51,8 +48,7 @@ fn test_python_parse_medium_response(bench: &mut Bencher) {
     })
 }
 
-#[bench]
-fn bench_python_parse_true_object(bench: &mut Bencher) {
+fn python_parse_true_object(bench: &mut Bencher) {
     let mut file = File::open("./benches/true_object.json").unwrap();
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
@@ -66,3 +62,12 @@ fn bench_python_parse_true_object(bench: &mut Bencher) {
         });
     })
 }
+
+benchmark_group!(
+    benches,
+    python_parse_numeric,
+    python_parse_other,
+    python_parse_medium_response,
+    python_parse_true_object
+);
+benchmark_main!(benches);
