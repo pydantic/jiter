@@ -8,6 +8,7 @@ pub enum Peak {
     Null,
     True,
     False,
+    NaN,
     // we keep the first character of the number as we'll need it when decoding
     Num(u8),
     String,
@@ -24,21 +25,10 @@ impl Peak {
             b't' => Some(Self::True),
             b'f' => Some(Self::False),
             b'n' => Some(Self::Null),
+            b'N' => Some(Self::NaN),
             b'0'..=b'9' => Some(Self::Num(next)),
             b'-' => Some(Self::Num(next)),
             _ => None,
-        }
-    }
-
-    pub fn display_type(&self) -> &'static str {
-        match self {
-            Self::Null => "a null",
-            Self::True => "a true",
-            Self::False => "a false",
-            Self::Num(_) => "a number",
-            Self::String => "a string",
-            Self::Array => "an array",
-            Self::Object => "an object",
         }
     }
 }
@@ -46,6 +36,7 @@ impl Peak {
 static TRUE_REST: [u8; 3] = [b'r', b'u', b'e'];
 static FALSE_REST: [u8; 4] = [b'a', b'l', b's', b'e'];
 static NULL_REST: [u8; 3] = [b'u', b'l', b'l'];
+static NAN_REST: [u8; 2] = [b'a', b'N'];
 
 #[derive(Debug, Clone)]
 pub struct Parser<'j> {
@@ -178,6 +169,10 @@ impl<'j> Parser<'j> {
 
     pub fn consume_null(&mut self) -> JsonResult<()> {
         self.consume_ident(NULL_REST)
+    }
+
+    pub fn consume_nan(&mut self) -> JsonResult<()> {
+        self.consume_ident(NAN_REST)
     }
 
     pub fn consume_string<'t, D: AbstractStringDecoder<'t, 'j>>(&mut self, tape: &'t mut Tape) -> JsonResult<D::Output>

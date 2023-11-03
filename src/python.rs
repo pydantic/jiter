@@ -53,6 +53,10 @@ impl<'j> PythonParser<'j> {
                 self.parser.consume_null().map_err(mje)?;
                 Ok(py.None())
             }
+            Peak::NaN => {
+                self.parser.consume_nan().map_err(mje)?;
+                Ok(f64::NAN.to_object(py))
+            }
             Peak::String => {
                 let s = self
                     .parser
