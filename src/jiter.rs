@@ -11,6 +11,7 @@ pub struct Jiter<'j> {
     data: &'j [u8],
     parser: Parser<'j>,
     tape: Tape,
+    allow_inf_nan: bool,
 }
 
 impl<'j> Jiter<'j> {
@@ -18,11 +19,13 @@ impl<'j> Jiter<'j> {
     ///
     /// # Arguments
     /// - `data`: The JSON data to be parsed.
-    pub fn new(data: &'j [u8]) -> Self {
+    /// - `allow_inf_nan`: Whether to allow `NaN`, `Infinity` and `-Infinity` as numbers.
+    pub fn new(data: &'j [u8], allow_inf_nan: bool) -> Self {
         Self {
             data,
             parser: Parser::new(data),
             tape: Tape::default(),
+            allow_inf_nan,
         }
     }
 
@@ -89,15 +92,18 @@ impl<'j> Jiter<'j> {
     /// A [NumberAny] representing the number.
     pub fn next_number(&mut self) -> JiterResult<NumberAny> {
         let peak = self.peak()?;
-        match peak {
-            Peak::Num(first) => self.known_number(first),
-            _ => Err(self.wrong_type(JsonType::Int, peak)),
-        }
+        self.known_number(peak)
     }
 
     /// Knowing the next value is a number, parse it.
-    pub fn known_number(&mut self, first: u8) -> JiterResult<NumberAny> {
-        self.parser.consume_number::<NumberAny>(first).map_err(Into::into)
+    pub fn known_number(&mut self, peak: Peak) -> JiterResult<NumberAny> {
+        match peak {
+            Peak::Num(first) => self
+                .parser
+                .consume_number::<NumberAny>(first, self.allow_inf_nan)
+                .map_err(Into::into),
+            _ => Err(self.wrong_type(JsonType::Int, peak)),
+        }
     }
 
     /// Assuming the next value is an integer, consume it. Error if it is not an integer, or is invalid JSON.
@@ -109,7 +115,10 @@ impl<'j> Jiter<'j> {
     /// Knowing the next value is an integer, parse it.
     pub fn known_int(&mut self, peak: Peak) -> JiterResult<NumberInt> {
         match peak {
-            Peak::Num(first) => self.parser.consume_number::<NumberInt>(first).map_err(Into::into),
+            Peak::Num(first) => self
+                .parser
+                .consume_number::<NumberInt>(first, self.allow_inf_nan)
+                .map_err(Into::into),
             _ => Err(self.wrong_type(JsonType::Int, peak)),
         }
     }
@@ -123,7 +132,10 @@ impl<'j> Jiter<'j> {
     /// Knowing the next value is a float, parse it.
     pub fn known_float(&mut self, peak: Peak) -> JiterResult<f64> {
         match peak {
-            Peak::Num(first) => self.parser.consume_number::<NumberFloat>(first).map_err(Into::into),
+            Peak::Num(first) => self
+                .parser
+                .consume_number::<NumberFloat>(first, self.allow_inf_nan)
+                .map_err(Into::into),
             _ => Err(self.wrong_type(JsonType::Int, peak)),
         }
     }
@@ -133,7 +145,7 @@ impl<'j> Jiter<'j> {
         let peak = self.peak()?;
         match peak {
             Peak::Num(first) => {
-                let range = self.parser.consume_number::<NumberRange>(first)?;
+                let range = self.parser.consume_number::<NumberRange>(first, self.allow_inf_nan)?;
                 Ok(&self.data[range])
             }
             _ => Err(self.wrong_type(JsonType::Float, peak)),
@@ -180,7 +192,14 @@ impl<'j> Jiter<'j> {
     /// # Arguments
     /// - `peak`: The [Peak] of the next JSON value.
     pub fn known_value(&mut self, peak: Peak) -> JiterResult<JsonValue> {
-        take_value(peak, &mut self.parser, &mut self.tape, DEFAULT_RECURSION_LIMIT).map_err(Into::into)
+        take_value(
+            peak,
+            &mut self.parser,
+            &mut self.tape,
+            DEFAULT_RECURSION_LIMIT,
+            self.allow_inf_nan,
+        )
+        .map_err(Into::into)
     }
 
     /// Assuming the next value is an array, peak at the first value.
@@ -267,7 +286,7 @@ impl<'j> Jiter<'j> {
 
     fn wrong_num(&self, first: u8, expected: JsonType) -> JiterError {
         let mut parser2 = self.parser.clone();
-        let actual = match parser2.consume_number::<NumberAny>(first) {
+        let actual = match parser2.consume_number::<NumberAny>(first, self.allow_inf_nan) {
             Ok(NumberAny::Int { .. }) => JsonType::Int,
             Ok(NumberAny::Float { .. }) => JsonType::Float,
             Err(e) => return e.into(),

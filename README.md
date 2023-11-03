@@ -10,7 +10,9 @@ jiter has two interfaces:
 * [Jiter] an iterator over JSON data
 * [python_parse] which parses a JSON string into a Python object
 
-## JsonValue
+## JsonValue Example
+
+See [the docs][JsonValue] for more details.
 
 ```rust
 use jiter::JsonValue;
@@ -25,7 +27,7 @@ fn main() {
                 "+44 2345678"
             ]
         }"#;
-    let json_value = JsonValue::parse(json_data.as_bytes()).unwrap();
+    let json_value = JsonValue::parse(json_data.as_bytes(), true).unwrap();
     println!("{:#?}", json_value);
 }
 ```
@@ -47,9 +49,9 @@ Object(
 )
 ```
 
-## Jiter
+## Jiter Example
 
-To use `Jiter`, you need to know what schema you're expecting:
+To use [Jiter], you need to know what schema you're expecting:
 
 ```rust
 use jiter::{Jiter, NumberInt, Peak};
@@ -64,7 +66,7 @@ fn main() {
                 "+44 2345678"
             ]
         }"#;
-    let mut jiter = Jiter::new(json_data.as_bytes());
+    let mut jiter = Jiter::new(json_data.as_bytes(), true);
     assert_eq!(jiter.next_object().unwrap(), Some("name"));
     assert_eq!(jiter.next_str().unwrap(), "John Doe");
     assert_eq!(jiter.next_key().unwrap(), Some("age"));

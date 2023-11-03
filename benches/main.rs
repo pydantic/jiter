@@ -18,7 +18,7 @@ fn jiter_value(path: &str, bench: &mut Bencher) {
     let json = read_file(path);
     let json_data = json.as_bytes();
     bench.iter(|| {
-        let v = JsonValue::parse(black_box(json_data)).unwrap();
+        let v = JsonValue::parse(black_box(json_data), false).unwrap();
         black_box(v)
     })
 }
@@ -27,7 +27,7 @@ fn jiter_iter_big(path: &str, bench: &mut Bencher) {
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
     bench.iter(|| {
-        let mut jiter = Jiter::new(json_data);
+        let mut jiter = Jiter::new(json_data, false);
         let mut v_outer = Vec::new();
         jiter.next_array().unwrap();
 
@@ -68,7 +68,7 @@ fn jiter_iter_pass2(path: &str, bench: &mut Bencher) {
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
     bench.iter(|| {
-        let mut jiter = Jiter::new(json_data);
+        let mut jiter = Jiter::new(json_data, false);
         let string = find_string(&mut jiter);
         jiter.finish().unwrap();
         black_box(string)
@@ -79,7 +79,7 @@ fn jiter_iter_string_array(path: &str, bench: &mut Bencher) {
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
     bench.iter(|| {
-        let mut jiter = Jiter::new(json_data);
+        let mut jiter = Jiter::new(json_data, false);
         let mut v = Vec::new();
         jiter.next_array().unwrap();
         let i = jiter.known_str().unwrap();
@@ -98,7 +98,7 @@ fn jiter_iter_true_array(path: &str, bench: &mut Bencher) {
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
     bench.iter(|| {
-        let mut jiter = Jiter::new(json_data);
+        let mut jiter = Jiter::new(json_data, false);
         let mut v = Vec::new();
         let first_peak = jiter.next_array().unwrap().unwrap();
         let i = jiter.known_bool(first_peak).unwrap();
@@ -115,7 +115,7 @@ fn jiter_iter_true_object(path: &str, bench: &mut Bencher) {
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
     bench.iter(|| {
-        let mut jiter = Jiter::new(json_data);
+        let mut jiter = Jiter::new(json_data, false);
         let mut v = Vec::new();
         if let Some(first_key) = jiter.next_object().unwrap() {
             let first_key = first_key.to_string();
@@ -135,7 +135,7 @@ fn jiter_iter_ints_array(path: &str, bench: &mut Bencher) {
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
     bench.iter(|| {
-        let mut jiter = Jiter::new(json_data);
+        let mut jiter = Jiter::new(json_data, false);
         let mut v = Vec::new();
         let first_peak = jiter.next_array().unwrap().unwrap();
         let i = jiter.known_int(first_peak).unwrap();
@@ -152,7 +152,7 @@ fn jiter_iter_floats_array(path: &str, bench: &mut Bencher) {
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
     bench.iter(|| {
-        let mut jiter = Jiter::new(json_data);
+        let mut jiter = Jiter::new(json_data, false);
         let mut v = Vec::new();
         let first_peak = jiter.next_array().unwrap().unwrap();
         let i = jiter.known_float(first_peak).unwrap();

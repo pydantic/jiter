@@ -49,7 +49,7 @@ impl pyo3::ToPyObject for JsonValue {
 
 impl JsonValue {
     /// Parse a JSON value from a byte slice.
-    pub fn parse(data: &[u8]) -> Result<Self, JsonValueError> {
+    pub fn parse(data: &[u8], allow_inf_nan: bool) -> Result<Self, JsonValueError> {
         let mut parser = Parser::new(data);
 
         let map_err = |e: JsonError| {
@@ -59,7 +59,7 @@ impl JsonValue {
 
         let mut tape = Tape::default();
         let peak = parser.peak().map_err(map_err)?;
-        let v = take_value(peak, &mut parser, &mut tape, DEFAULT_RECURSION_LIMIT).map_err(map_err)?;
+        let v = take_value(peak, &mut parser, &mut tape, DEFAULT_RECURSION_LIMIT, allow_inf_nan).map_err(map_err)?;
         parser.finish().map_err(map_err)?;
         Ok(v)
     }
@@ -83,6 +83,7 @@ pub(crate) fn take_value(
     parser: &mut Parser,
     tape: &mut Tape,
     mut recursion_limit: u8,
+    allow_inf_nan: bool,
 ) -> JsonResult<JsonValue> {
     match peak {
         Peak::True => {
@@ -102,7 +103,7 @@ pub(crate) fn take_value(
             Ok(JsonValue::Str(s.to_string()))
         }
         Peak::Num(first) => {
-            let n = parser.consume_number::<NumberAny>(first)?;
+            let n = parser.consume_number::<NumberAny>(first, allow_inf_nan)?;
             match n {
                 NumberAny::Int(NumberInt::Int(int)) => Ok(JsonValue::Int(int)),
                 NumberAny::Int(NumberInt::BigInt(big_int)) => Ok(JsonValue::BigInt(big_int)),
@@ -114,12 +115,12 @@ pub(crate) fn take_value(
             let mut array: SmallVec<[JsonValue; 8]> = SmallVec::new();
             if let Some(peak_first) = parser.array_first()? {
                 check_recursion!(recursion_limit, parser.index,
-                    let v = take_value(peak_first, parser, tape, recursion_limit)?;
+                    let v = take_value(peak_first, parser, tape, recursion_limit, allow_inf_nan)?;
                 );
                 array.push(v);
                 while let Some(peak) = parser.array_step()? {
                     check_recursion!(recursion_limit, parser.index,
-                        let v = take_value(peak, parser, tape, recursion_limit)?;
+                        let v = take_value(peak, parser, tape, recursion_limit, allow_inf_nan)?;
                     );
                     array.push(v);
                 }
@@ -133,14 +134,14 @@ pub(crate) fn take_value(
                 let first_key = first_key.to_string();
                 let peak = parser.peak()?;
                 check_recursion!(recursion_limit, parser.index,
-                    let first_value = take_value(peak, parser, tape, recursion_limit)?;
+                    let first_value = take_value(peak, parser, tape, recursion_limit, allow_inf_nan)?;
                 );
                 object.insert(first_key, first_value);
                 while let Some(key) = parser.object_step::<StringDecoder>(tape)? {
                     let key = key.to_string();
                     let peak = parser.peak()?;
                     check_recursion!(recursion_limit, parser.index,
-                        let value = take_value(peak, parser, tape, recursion_limit)?;
+                        let value = take_value(peak, parser, tape, recursion_limit, allow_inf_nan)?;
                     );
                     object.insert(key, value);
                 }
