@@ -86,8 +86,7 @@ jobs:
     - uses: moonrepo/setup-rust@v0
       with:
         channel: stable
-        cache-target: release
-        bins: rustfmt, clippy
+        components: rustfmt, clippy
 
     - uses: pre-commit/action@v3.0.0
       with:
