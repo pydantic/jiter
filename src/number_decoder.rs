@@ -12,6 +12,7 @@ pub trait AbstractNumberDecoder {
     fn decode(data: &[u8], index: usize, first: u8) -> JsonResult<(Self::Output, usize)>;
 }
 
+/// A number that can be either an [i64] or a [BigInt](num_bigint::BigInt)
 #[derive(Debug, Clone, PartialEq)]
 pub enum NumberInt {
     Int(i64),
@@ -81,6 +82,7 @@ impl AbstractNumberDecoder for NumberFloat {
     }
 }
 
+/// A number that can be either a [NumberInt] or an [f64]
 #[derive(Debug, Clone, PartialEq)]
 pub enum NumberAny {
     Int(NumberInt),

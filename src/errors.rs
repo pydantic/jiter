@@ -1,6 +1,10 @@
 use std::fmt;
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+/// Enum representing all possible errors in JSON syntax.
+///
+/// Almost all of `JsonErrorType` is copied from [serde_json](https://github.com/serde-rs) so errors match
+/// those expected from `serde_json`.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum JsonErrorType {
     /// string escape sequences are not supported in this method, usize here is the position within the string
     /// that is invalid
@@ -145,6 +149,7 @@ pub(crate) use json_err;
 
 pub(crate) const DEFAULT_RECURSION_LIMIT: u8 = 200;
 
+/// Enum representing all JSON types.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum JsonType {
     Null,
@@ -170,6 +175,7 @@ impl std::fmt::Display for JsonType {
     }
 }
 
+/// Enum representing either a [JsonErrorType] or a WrongType error.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum JiterErrorType {
     JsonError(JsonErrorType),
@@ -187,6 +193,7 @@ impl std::fmt::Display for JiterErrorType {
     }
 }
 
+/// An error from the Jiter iterator.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct JiterError {
     pub error_type: JiterErrorType,
@@ -217,7 +224,7 @@ impl JiterError {
         Self {
             error_type: self.error_type.clone(),
             index: self.index,
-            position: Some(jiter.error_position(self)),
+            position: Some(jiter.error_position(self.index)),
         }
     }
 
@@ -236,10 +243,14 @@ impl From<JsonError> for JiterError {
     }
 }
 
+/// An error from the [crate::JsonValue::parse] method.
 #[derive(Debug, Clone)]
 pub struct JsonValueError {
+    /// The type of error.
     pub error_type: JsonErrorType,
+    /// The index in the data where the error occurred.
     pub index: usize,
+    /// The line and column in the data where the error occurred.
     pub position: FilePosition,
 }
 
@@ -259,9 +270,12 @@ impl JsonValueError {
     }
 }
 
+/// Represents a line and column in a file, used for both errors and value positions.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FilePosition {
+    /// Line number, starting at 1.
     pub line: usize,
+    /// Column number, starting at 1.
     pub column: usize,
 }
 

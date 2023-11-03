@@ -4,10 +4,16 @@ use pyo3::types::{PyDict, PyList, PyString};
 
 use smallvec::SmallVec;
 
-use crate::errors::{json_error, DEFAULT_RECURSION_LIMIT};
-use crate::string_decoder::Tape;
-use crate::{FilePosition, JsonError, NumberAny, NumberInt, Parser, Peak, StringDecoder};
+use crate::errors::{json_error, FilePosition, JsonError, DEFAULT_RECURSION_LIMIT};
+use crate::number_decoder::{NumberAny, NumberInt};
+use crate::parse::{Parser, Peak};
+use crate::string_decoder::{StringDecoder, Tape};
 
+/// Parse a JSON value from a byte slice and return a Python object.
+///
+/// # Returns
+///
+/// A [PyObject](https://docs.rs/pyo3/latest/pyo3/type.PyObject.html) representing the parsed JSON value.
 pub fn python_parse(py: Python, data: &[u8]) -> PyResult<PyObject> {
     let mut python_parser = PythonParser {
         parser: Parser::new(data),
