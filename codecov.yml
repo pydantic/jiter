@@ -1,0 +1,8 @@
+comment:
+  layout: 'header, diff, flags, files, footer'
+coverage:
+  precision: 2
+  status:
+    project:
+      default:
+        threshold: 80%
