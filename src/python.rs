@@ -157,29 +157,33 @@ trait StringMaybeCache<'py> {
     fn get(&mut self, py: Python, json_str: &str) -> PyObject;
 }
 
-static STRINGS_CACHE: GILOnceCell<GILProtected<RefCell<AHashMap<String, PyObject>>>> = GILOnceCell::new();
-
-struct StringCache<'py>(RefMut<'py, AHashMap<String, PyObject>>);
+struct StringCache<'py>;
 
 impl<'py> StringMaybeCache<'py> for StringCache<'py> {
     fn new(py: Python<'py>) -> Self {
-        let protected_cache = STRINGS_CACHE.get_or_init(py, || GILProtected::new(RefCell::new(AHashMap::new())));
-        let strings_cache: RefMut<AHashMap<String, PyObject>> = protected_cache.get(py).borrow_mut();
-        Self(strings_cache)
+        Self
     }
 
     fn get(&mut self, py: Python, json_str: &str) -> PyObject {
+        static STRINGS_CACHE: GILOnceCell<GILProtected<RefCell<AHashMap<String, PyObject>>>> = GILOnceCell::new();
+
         if json_str.len() < 64 {
-            match self.0.get(json_str) {
-                Some(key) => key.clone_ref(py),
+            let cache = STRINGS_CACHE
+                .get_or_init(py, || GILProtected::new(RefCell::new(AHashMap::new())))
+                .get();
+            // Finish the borrow before matching, so that the RefCell isn't borrowed for the
+            // whole match.
+            let key = cache.borrow().get(json_str).map(|key| key.clone_ref(py));
+
+            match key {
+                Some(key) => key,
                 None => {
-                    if self.0.len() > 100_000 {
-                        self.0.clear();
-                    }
                     let key_object = PyString::new(py, json_str).to_object(py);
-                    // shame we have to cache the key again here, is there way to use `entry()`
-                    // without calling `.to_string()` in the case where the key is already cached?
-                    self.0.insert(json_str.to_string(), key_object.clone_ref(py));
+                    let cache_writable = cache.borrow_mut();
+                    if cache_writable.len() > 100_000 {
+                        cache_writable.clear();
+                    }
+                    cache_writable.insert(json_str.to_string(), key_object.clone_ref(py));
                     key_object
                 }
             }
