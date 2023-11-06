@@ -47,3 +47,7 @@ harness = false
 name = "python"
 required-features = ["python"]
 harness = false
+
+# get docs.rs to include python docs
+[package.metadata.docs.rs]
+all-features = true
