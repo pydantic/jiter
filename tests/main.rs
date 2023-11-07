@@ -909,3 +909,28 @@ fn readme_jiter() {
     // and we check there's nothing else in the input
     jiter.finish().unwrap();
 }
+
+#[test]
+fn jiter_clone() {
+    let json = r#"[1, 2]"#;
+    let mut jiter1 = Jiter::new(json.as_bytes(), false);
+    assert_eq!(jiter1.next_array().unwrap().unwrap(), Peak::Num(b'1'));
+    let n = jiter1.next_number().unwrap();
+    assert_eq!(n, NumberAny::Int(NumberInt::Int(1)));
+
+    let mut jiter2 = jiter1.clone();
+
+    assert_eq!(jiter1.array_step().unwrap().unwrap(), Peak::Num(b'2'));
+    let n = jiter1.next_number().unwrap();
+    assert_eq!(n, NumberAny::Int(NumberInt::Int(2)));
+
+    assert_eq!(jiter2.array_step().unwrap().unwrap(), Peak::Num(b'2'));
+    let n = jiter2.next_number().unwrap();
+    assert_eq!(n, NumberAny::Int(NumberInt::Int(2)));
+
+    assert_eq!(jiter1.array_step().unwrap(), None);
+    assert_eq!(jiter2.array_step().unwrap(), None);
+
+    jiter1.finish().unwrap();
+    jiter2.finish().unwrap();
+}
