@@ -7,11 +7,24 @@ use crate::value::{take_value, JsonValue};
 pub type JiterResult<T> = Result<T, JiterError>;
 
 /// A JSON iterator.
+#[derive(Debug)]
 pub struct Jiter<'j> {
     data: &'j [u8],
     parser: Parser<'j>,
     tape: Tape,
     allow_inf_nan: bool,
+}
+
+impl Clone for Jiter<'_> {
+    /// Clone a `Jiter`. Like the default implementation, but a new empty `tape` is used.
+    fn clone(&self) -> Self {
+        Self {
+            data: self.data,
+            parser: self.parser.clone(),
+            tape: Tape::default(),
+            allow_inf_nan: self.allow_inf_nan,
+        }
+    }
 }
 
 impl<'j> Jiter<'j> {
@@ -143,6 +156,11 @@ impl<'j> Jiter<'j> {
     /// Assuming the next value is a number, consume it and return bytes from the original JSON data.
     pub fn next_number_bytes(&mut self) -> JiterResult<&[u8]> {
         let peak = self.peak()?;
+        self.known_number_bytes(peak)
+    }
+
+    /// Knowing the next value is a number, parse it and return bytes from the original JSON data.
+    fn known_number_bytes(&mut self, peak: Peak) -> JiterResult<&[u8]> {
         match peak {
             Peak::Num(first) => {
                 let range = self.parser.consume_number::<NumberRange>(first, self.allow_inf_nan)?;
@@ -173,12 +191,15 @@ impl<'j> Jiter<'j> {
     pub fn next_bytes(&mut self) -> JiterResult<&[u8]> {
         let peak = self.peak()?;
         match peak {
-            Peak::String => {
-                let range = self.parser.consume_string::<StringDecoderRange>(&mut self.tape)?;
-                Ok(&self.data[range])
-            }
+            Peak::String => self.known_bytes(),
             _ => Err(self.wrong_type(JsonType::String, peak)),
         }
+    }
+
+    /// Knowing the next value is a string, parse it and return bytes from the original JSON data.
+    pub fn known_bytes(&mut self) -> JiterResult<&[u8]> {
+        let range = self.parser.consume_string::<StringDecoderRange>(&mut self.tape)?;
+        Ok(&self.data[range])
     }
 
     /// Parse the next JSON value and return it as a [JsonValue]. Error if it is invalid JSON.
