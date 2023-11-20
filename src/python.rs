@@ -1,10 +1,10 @@
 use std::cell::RefCell;
 
 use pyo3::exceptions::PyValueError;
+use pyo3::ffi;
 use pyo3::prelude::*;
 use pyo3::sync::{GILOnceCell, GILProtected};
 use pyo3::types::{PyDict, PyList, PyString};
-use pyo3::{ffi, AsPyPointer};
 
 use ahash::AHashMap;
 use smallvec::SmallVec;
@@ -26,7 +26,12 @@ use crate::string_decoder::{StringDecoder, Tape};
 /// # Returns
 ///
 /// A [PyObject](https://docs.rs/pyo3/latest/pyo3/type.PyObject.html) representing the parsed JSON value.
-pub fn python_parse(py: Python, json_data: &[u8], allow_inf_nan: bool, cache_strings: bool) -> JsonResult<PyObject> {
+pub fn python_parse<'py>(
+    py: Python<'py>,
+    json_data: &[u8],
+    allow_inf_nan: bool,
+    cache_strings: bool,
+) -> JsonResult<Py2<'py, PyAny>> {
     let mut python_parser = PythonParser {
         parser: Parser::new(json_data),
         tape: Tape::default(),
@@ -57,19 +62,23 @@ struct PythonParser<'j> {
 }
 
 impl<'j> PythonParser<'j> {
-    fn py_take_value<StringCache: StringMaybeCache>(&mut self, py: Python, peak: Peak) -> JsonResult<PyObject> {
+    fn py_take_value<'py, StringCache: StringMaybeCache>(
+        &mut self,
+        py: Python<'py>,
+        peak: Peak,
+    ) -> JsonResult<Py2<'py, PyAny>> {
         match peak {
             Peak::True => {
                 self.parser.consume_true()?;
-                Ok(true.to_object(py))
+                Ok(true.to_object(py).attach_into(py))
             }
             Peak::False => {
                 self.parser.consume_false()?;
-                Ok(false.to_object(py))
+                Ok(false.to_object(py).attach_into(py))
             }
             Peak::Null => {
                 self.parser.consume_null()?;
-                Ok(py.None())
+                Ok(py.None().to_object(py).attach_into(py))
             }
             Peak::String => {
                 let s = self.parser.consume_string::<StringDecoder>(&mut self.tape)?;
@@ -78,30 +87,30 @@ impl<'j> PythonParser<'j> {
             Peak::Num(first) => {
                 let n = self.parser.consume_number::<NumberAny>(first, self.allow_inf_nan)?;
                 match n {
-                    NumberAny::Int(NumberInt::Int(int)) => Ok(int.to_object(py)),
-                    NumberAny::Int(NumberInt::BigInt(big_int)) => Ok(big_int.to_object(py)),
-                    NumberAny::Float(float) => Ok(float.to_object(py)),
+                    NumberAny::Int(NumberInt::Int(int)) => Ok(int.to_object(py).attach_into(py)),
+                    NumberAny::Int(NumberInt::BigInt(big_int)) => Ok(big_int.to_object(py).attach_into(py)),
+                    NumberAny::Float(float) => Ok(float.to_object(py).attach_into(py)),
                 }
             }
             Peak::Array => {
                 let list = if let Some(peak_first) = self.parser.array_first()? {
-                    let mut vec: SmallVec<[PyObject; 8]> = SmallVec::with_capacity(8);
+                    let mut vec: SmallVec<[Py2<'_, PyAny>; 8]> = SmallVec::with_capacity(8);
                     let v = self._check_take_value::<StringCache>(py, peak_first)?;
                     vec.push(v);
                     while let Some(peak) = self.parser.array_step()? {
                         let v = self._check_take_value::<StringCache>(py, peak)?;
                         vec.push(v);
                     }
-                    PyList::new(py, vec)
+                    PyList::new2(py, vec)
                 } else {
-                    PyList::empty(py)
+                    PyList::empty2(py)
                 };
-                Ok(list.to_object(py))
+                Ok(list.to_object(py).attach_into(py))
             }
             Peak::Object => {
-                let dict = PyDict::new(py);
+                let dict = PyDict::new2(py);
 
-                let set_item = |key: PyObject, value: PyObject| {
+                let set_item = |key: Py2<'py, PyAny>, value: Py2<'py, PyAny>| {
                     let r = unsafe { ffi::PyDict_SetItem(dict.as_ptr(), key.as_ptr(), value.as_ptr()) };
                     // AFAIK this shouldn't happen since the key will always be a string  which is hashable
                     // we panic here rather than returning a result and using `?` below as it's up to 14% faster
@@ -123,12 +132,16 @@ impl<'j> PythonParser<'j> {
                         set_item(key, value);
                     }
                 }
-                Ok(dict.to_object(py))
+                Ok(dict.to_object(py).attach_into(py))
             }
         }
     }
 
-    fn _check_take_value<StringCache: StringMaybeCache>(&mut self, py: Python, peak: Peak) -> JsonResult<PyObject> {
+    fn _check_take_value<'py, StringCache: StringMaybeCache>(
+        &mut self,
+        py: Python<'py>,
+        peak: Peak,
+    ) -> JsonResult<Py2<'py, PyAny>> {
         self.recursion_limit = match self.recursion_limit.checked_sub(1) {
             Some(limit) => limit,
             None => return json_err!(RecursionLimitExceeded, self.parser.index),
@@ -142,13 +155,13 @@ impl<'j> PythonParser<'j> {
 }
 
 trait StringMaybeCache {
-    fn get(py: Python, json_str: &str) -> PyObject;
+    fn get<'py>(py: Python<'py>, json_str: &str) -> Py2<'py, PyAny>;
 }
 
 struct StringCache;
 
 impl StringMaybeCache for StringCache {
-    fn get(py: Python, json_str: &str) -> PyObject {
+    fn get<'py>(py: Python<'py>, json_str: &str) -> Py2<'py, PyAny> {
         static STRINGS_CACHE: GILOnceCell<GILProtected<RefCell<AHashMap<String, PyObject>>>> = GILOnceCell::new();
 
         // from tests, 0 and 1 character strings are faster not cached
@@ -161,21 +174,20 @@ impl StringMaybeCache for StringCache {
             let key = cache.borrow().get(json_str).map(|key| key.clone_ref(py));
 
             match key {
-                Some(key) => key,
+                Some(key) => key.attach_into(py),
                 None => {
-                    let key_object = PyString::new(py, json_str).to_object(py);
+                    let py_key = PyString::new2(py, json_str);
                     let mut cache_writable = cache.borrow_mut();
                     // 500k limit means 1m keys + values, 1m 64 byte strings is ~64mb
                     if cache_writable.len() > 500_000 {
                         cache_writable.clear();
                     }
-                    cache_writable.insert(json_str.to_owned(), key_object.clone_ref(py));
-                    key_object
+                    cache_writable.insert(json_str.to_owned(), py_key.to_object(py));
+                    py_key.into_any()
                 }
             }
         } else {
-            let key = PyString::new(py, json_str);
-            key.to_object(py)
+            PyString::new2(py, json_str).into_any()
         }
     }
 }
@@ -183,7 +195,7 @@ impl StringMaybeCache for StringCache {
 struct StringNoCache;
 
 impl StringMaybeCache for StringNoCache {
-    fn get(py: Python, json_str: &str) -> PyObject {
-        PyString::new(py, json_str).to_object(py)
+    fn get<'py>(py: Python<'py>, json_str: &str) -> Py2<'py, PyAny> {
+        PyString::new2(py, json_str).into_any()
     }
 }
