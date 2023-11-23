@@ -2,8 +2,6 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyString};
 
-use smallvec::SmallVec;
-
 use crate::errors::{json_error, FilePosition, JsonError, DEFAULT_RECURSION_LIMIT};
 use crate::number_decoder::{NumberAny, NumberInt};
 use crate::parse::{Parser, Peak};
@@ -80,7 +78,7 @@ impl<'j> PythonParser<'j> {
             }
             Peak::Array => {
                 let list = if let Some(peak_first) = self.parser.array_first().map_err(mje)? {
-                    let mut vec: SmallVec<[PyObject; 8]> = SmallVec::with_capacity(8);
+                    let mut vec: Vec<PyObject> = Vec::new();
                     let v = self._check_take_value(py, peak_first)?;
                     vec.push(v);
                     while let Some(peak) = self.parser.array_step().map_err(mje)? {

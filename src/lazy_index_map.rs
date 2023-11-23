@@ -6,12 +6,11 @@ use std::slice::Iter as SliceIter;
 use std::sync::OnceLock;
 
 use ahash::AHashMap;
-use smallvec::SmallVec;
 
 /// Like [IndexMap](https://docs.rs/indexmap/latest/indexmap/) but only builds the lookup map when it's needed.
 #[derive(Clone, Default)]
 pub struct LazyIndexMap<K, V> {
-    vec: SmallVec<[(K, V); 8]>,
+    vec: Vec<(K, V)>,
     map: OnceLock<AHashMap<K, usize>>,
 }
 
@@ -33,7 +32,7 @@ where
 {
     pub fn new() -> Self {
         Self {
-            vec: SmallVec::new(),
+            vec: Vec::new(),
             map: OnceLock::new(),
         }
     }
@@ -102,7 +101,7 @@ impl<K: PartialEq, V: PartialEq> PartialEq for LazyIndexMap<K, V> {
 }
 
 struct IterUnique<'a, K, V> {
-    vec: &'a SmallVec<[(K, V); 8]>,
+    vec: &'a Vec<(K, V)>,
     map: &'a AHashMap<K, usize>,
     index: usize,
 }

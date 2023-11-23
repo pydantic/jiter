@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use num_bigint::BigInt;
-use smallvec::SmallVec;
 
 use crate::errors::{FilePosition, JsonError, JsonResult, JsonValueError, DEFAULT_RECURSION_LIMIT};
 use crate::lazy_index_map::LazyIndexMap;
@@ -22,7 +21,7 @@ pub enum JsonValue {
     Object(JsonObject),
 }
 
-pub type JsonArray = Arc<SmallVec<[JsonValue; 8]>>;
+pub type JsonArray = Arc<Vec<JsonValue>>;
 pub type JsonObject = Arc<LazyIndexMap<String, JsonValue>>;
 
 #[cfg(feature = "python")]
@@ -112,7 +111,7 @@ pub(crate) fn take_value(
         }
         Peak::Array => {
             // we could do something clever about guessing the size of the array
-            let mut array: SmallVec<[JsonValue; 8]> = SmallVec::new();
+            let mut array: Vec<JsonValue> = Vec::new();
             if let Some(peak_first) = parser.array_first()? {
                 check_recursion!(recursion_limit, parser.index,
                     let v = take_value(peak_first, parser, tape, recursion_limit, allow_inf_nan)?;

@@ -4,7 +4,6 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use num_bigint::BigInt;
-use smallvec::smallvec;
 
 use jiter::{
     FilePosition, Jiter, JiterErrorType, JiterResult, JsonErrorType, JsonType, JsonValue, LazyIndexMap, NumberAny,
@@ -402,11 +401,11 @@ fn nan_disallowed_wrong_type() {
 fn value_allow_nan_inf() {
     let json = r#"[1, NaN, Infinity, -Infinity]"#;
     let value = JsonValue::parse(json.as_bytes(), true).unwrap();
-    let expected = JsonValue::Array(Arc::new(smallvec![
+    let expected = JsonValue::Array(Arc::new(vec![
         JsonValue::Int(1),
         JsonValue::Float(f64::NAN),
         JsonValue::Float(f64::INFINITY),
-        JsonValue::Float(f64::NEG_INFINITY)
+        JsonValue::Float(f64::NEG_INFINITY),
     ]));
     // compare debug since `f64::NAN != f64::NAN`
     assert_eq!(format!("{:?}", value), format!("{:?}", expected));
@@ -528,10 +527,10 @@ fn json_value_object() {
     expected.insert("foo".to_string(), JsonValue::Str("bar".to_string()));
     expected.insert(
         "spam".to_string(),
-        JsonValue::Array(Arc::new(smallvec![
+        JsonValue::Array(Arc::new(vec![
             JsonValue::Int(1),
             JsonValue::Null,
-            JsonValue::Bool(true)
+            JsonValue::Bool(true),
         ])),
     );
     assert_eq!(v, JsonValue::Object(Arc::new(expected)));
@@ -542,10 +541,10 @@ fn json_value_string() {
     let json = r#"["foo", "\u00a3", "\""]"#;
     let v = JsonValue::parse(json.as_bytes(), false).unwrap();
 
-    let expected = JsonValue::Array(Arc::new(smallvec![
+    let expected = JsonValue::Array(Arc::new(vec![
         JsonValue::Str("foo".to_string()),
         JsonValue::Str("£".to_string()),
-        JsonValue::Str("\"".to_string())
+        JsonValue::Str("\"".to_string()),
     ]));
     assert_eq!(v, expected);
 }
@@ -556,7 +555,7 @@ fn parse_array_3() {
     let v = JsonValue::parse(json.as_bytes(), false).unwrap();
     assert_eq!(
         v,
-        JsonValue::Array(Arc::new(smallvec![
+        JsonValue::Array(Arc::new(vec![
             JsonValue::Int(1),
             JsonValue::Null,
             JsonValue::Bool(true)
@@ -568,7 +567,7 @@ fn parse_array_3() {
 fn parse_array_empty() {
     let json = r#"[   ]"#;
     let v = JsonValue::parse(json.as_bytes(), false).unwrap();
-    assert_eq!(v, JsonValue::Array(Arc::new(smallvec![])));
+    assert_eq!(v, JsonValue::Array(Arc::new(vec![])));
 }
 
 #[test]
@@ -585,10 +584,10 @@ fn parse_value_nested() {
     let v = JsonValue::parse(json.as_bytes(), false).unwrap();
     assert_eq!(
         v,
-        JsonValue::Array(Arc::new(smallvec![
+        JsonValue::Array(Arc::new(vec![
             JsonValue::Int(1),
             JsonValue::Int(2),
-            JsonValue::Array(Arc::new(smallvec![JsonValue::Int(3), JsonValue::Int(4)])),
+            JsonValue::Array(Arc::new(vec![JsonValue::Int(3), JsonValue::Int(4)])),
             JsonValue::Int(5),
             JsonValue::Int(6),
         ]),)
