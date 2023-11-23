@@ -41,6 +41,7 @@ fn test_python_parse_numeric() {
             py,
             br#"  { "int": 1, "bigint": 123456789012345678901234567890, "float": 1.2}  "#,
             false,
+            true,
         )
         .unwrap();
         assert_eq!(
@@ -51,9 +52,15 @@ fn test_python_parse_numeric() {
 }
 
 #[test]
-fn test_python_parse_other() {
+fn test_python_parse_other_cached() {
     Python::with_gil(|py| {
-        let obj = python_parse(py, br#"["string", true, false, null, NaN, Infinity, -Infinity]"#, true).unwrap();
+        let obj = python_parse(
+            py,
+            br#"["string", true, false, null, NaN, Infinity, -Infinity]"#,
+            true,
+            true,
+        )
+        .unwrap();
         assert_eq!(
             obj.as_ref(py).to_string(),
             "['string', True, False, None, nan, inf, -inf]"
@@ -62,9 +69,17 @@ fn test_python_parse_other() {
 }
 
 #[test]
+fn test_python_parse_other_no_cache() {
+    Python::with_gil(|py| {
+        let obj = python_parse(py, br#"["string", true, false, null]"#, false, false).unwrap();
+        assert_eq!(obj.as_ref(py).to_string(), "['string', True, False, None]");
+    })
+}
+
+#[test]
 fn test_python_disallow_nan() {
     Python::with_gil(|py| {
-        let e = python_parse(py, br#"[NaN]"#, false).unwrap_err();
+        let e = python_parse(py, br#"[NaN]"#, false, true).unwrap_err();
         assert_eq!(e.to_string(), "ValueError: expected value at line 1 column 2");
     })
 }
@@ -72,7 +87,7 @@ fn test_python_disallow_nan() {
 #[test]
 fn test_error() {
     Python::with_gil(|py| {
-        let e = python_parse(py, br#"["string""#, false).unwrap_err();
+        let e = python_parse(py, br#"["string""#, false, true).unwrap_err();
         assert_eq!(e.to_string(), "ValueError: EOF while parsing a list at line 1 column 9");
     })
 }
@@ -82,7 +97,7 @@ fn test_recursion_limit() {
     let json = (0..10_000).map(|_| "[").collect::<String>();
     let bytes = json.as_bytes();
 
-    Python::with_gil(|py| match python_parse(py, bytes, false) {
+    Python::with_gil(|py| match python_parse(py, bytes, false, true) {
         Ok(v) => panic!("unexpectedly valid: {:?}", v),
         Err(e) => {
             assert_eq!(
@@ -100,7 +115,12 @@ fn test_recursion_limit_incr() {
     let bytes = json.as_bytes();
 
     Python::with_gil(|py| {
-        let v = python_parse(py, bytes, false).unwrap();
+        let v = python_parse(py, bytes, false, true).unwrap();
         assert_eq!(v.as_ref(py).len().unwrap(), 2000);
-    })
+    });
+
+    Python::with_gil(|py| {
+        let v = python_parse(py, bytes, false, true).unwrap();
+        assert_eq!(v.as_ref(py).len().unwrap(), 2000);
+    });
 }
