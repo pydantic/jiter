@@ -10,7 +10,7 @@ mod python;
 mod string_decoder;
 mod value;
 
-pub use errors::{FilePosition, JiterError, JiterErrorType, JsonErrorType, JsonResult, JsonType, JsonValueError};
+pub use errors::{JiterErrorType, JsonError, JsonErrorType, JsonResult, JsonType, LinePosition};
 pub use jiter::{Jiter, JiterResult};
 pub use lazy_index_map::LazyIndexMap;
 pub use number_decoder::{NumberAny, NumberInt};

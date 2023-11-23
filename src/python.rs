@@ -9,7 +9,7 @@ use pyo3::{ffi, AsPyPointer};
 use ahash::AHashMap;
 use smallvec::SmallVec;
 
-use crate::errors::{json_err, FilePosition, JsonError, JsonResult, DEFAULT_RECURSION_LIMIT};
+use crate::errors::{json_err, JsonError, JsonResult, DEFAULT_RECURSION_LIMIT};
 use crate::number_decoder::{NumberAny, NumberInt};
 use crate::parse::{Parser, Peak};
 use crate::string_decoder::{StringDecoder, Tape};
@@ -45,11 +45,8 @@ pub fn python_parse(py: Python, json_data: &[u8], allow_inf_nan: bool, cache_str
 }
 
 /// Map a `JsonError` to a `PyErr` which can be raised as an exception in Python as a `ValueError`.
-pub fn map_json_error(json_data: &[u8], json_error: JsonError) -> PyErr {
-    let JsonError { error_type, index } = json_error;
-    let position = FilePosition::find(json_data, index);
-    let msg = format!("{} at {}", error_type, position);
-    PyValueError::new_err(msg)
+pub fn map_json_error(json_data: &[u8], json_error: &JsonError) -> PyErr {
+    PyValueError::new_err(json_error.description(json_data))
 }
 
 struct PythonParser<'j> {

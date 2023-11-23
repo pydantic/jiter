@@ -80,7 +80,7 @@ fn test_python_parse_other_no_cache() {
 fn test_python_disallow_nan() {
     Python::with_gil(|py| {
         let r = python_parse(py, br#"[NaN]"#, false, true);
-        let e = r.map_err(|e| map_json_error(br#"[NaN]"#, e)).unwrap_err();
+        let e = r.map_err(|e| map_json_error(br#"[NaN]"#, &e)).unwrap_err();
         assert_eq!(e.to_string(), "ValueError: expected value at line 1 column 2");
     })
 }
@@ -90,7 +90,7 @@ fn test_error() {
     Python::with_gil(|py| {
         let bytes = br#"["string""#;
         let r = python_parse(py, bytes, false, true);
-        let e = r.map_err(|e| map_json_error(bytes, e)).unwrap_err();
+        let e = r.map_err(|e| map_json_error(bytes, &e)).unwrap_err();
         assert_eq!(e.to_string(), "ValueError: EOF while parsing a list at line 1 column 9");
     })
 }
@@ -102,7 +102,7 @@ fn test_recursion_limit() {
 
     Python::with_gil(|py| {
         let r = python_parse(py, bytes, false, true);
-        let e = r.map_err(|e| map_json_error(bytes, e)).unwrap_err();
+        let e = r.map_err(|e| map_json_error(bytes, &e)).unwrap_err();
         assert_eq!(
             e.to_string(),
             "ValueError: recursion limit exceeded at line 1 column 202"
