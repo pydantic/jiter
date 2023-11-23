@@ -40,7 +40,7 @@ static INFINITY_REST: [u8; 7] = [b'n', b'f', b'i', b'n', b'i', b't', b'y'];
 
 #[derive(Debug, Clone)]
 pub(crate) struct Parser<'j> {
-    data: &'j [u8],
+    pub data: &'j [u8],
     pub index: usize,
 }
 

@@ -76,6 +76,10 @@ fn python_parse_true_array(bench: &mut Bencher) {
     _python_parse_file("./benches/true_array.json", bench, true);
 }
 
+fn python_massive_ints_array(bench: &mut Bencher) {
+    _python_parse_file("./benches/massive_ints_array.json", bench, true);
+}
+
 benchmark_group!(
     benches,
     python_parse_numeric,
@@ -85,5 +89,6 @@ benchmark_group!(
     python_parse_true_object_not_cached,
     python_parse_true_object,
     python_parse_true_array,
+    python_massive_ints_array,
 );
 benchmark_main!(benches);

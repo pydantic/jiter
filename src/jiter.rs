@@ -163,7 +163,7 @@ impl<'j> Jiter<'j> {
     fn known_number_bytes(&mut self, peak: Peak) -> JiterResult<&[u8]> {
         match peak {
             Peak::Num(first) => {
-                let range = self.parser.consume_number::<NumberRange>(first, self.allow_inf_nan)?;
+                let (range, _) = self.parser.consume_number::<NumberRange>(first, self.allow_inf_nan)?;
                 Ok(&self.data[range])
             }
             _ => Err(self.wrong_type(JsonType::Float, peak)),

@@ -250,8 +250,15 @@ impl IntParse {
 
 pub struct NumberRange;
 
+pub enum NumberType {
+    Int,
+    Float,
+    Inf,
+    Nan,
+}
+
 impl AbstractNumberDecoder for NumberRange {
-    type Output = Range<usize>;
+    type Output = (Range<usize>, NumberType);
 
     fn decode(data: &[u8], mut index: usize, first: u8, allow_inf_nan: bool) -> JsonResult<(Self::Output, usize)> {
         let start = index;
@@ -259,7 +266,7 @@ impl AbstractNumberDecoder for NumberRange {
         let positive = match first {
             b'N' => {
                 let (_, end) = consume_nan(data, index, allow_inf_nan)?;
-                return Ok((start..end, end));
+                return Ok(((start..end, NumberType::Nan), end));
             }
             b'-' => false,
             _ => true,
@@ -277,20 +284,20 @@ impl AbstractNumberDecoder for NumberRange {
                     Some(b'.') => {
                         index += 1;
                         let end = consume_decimal(data, index)?;
-                        Ok((start..end, end))
+                        Ok(((start..end, NumberType::Float), end))
                     }
                     Some(b'e') | Some(b'E') => {
                         index += 1;
                         let end = consume_exponential(data, index)?;
-                        Ok((start..end, end))
+                        Ok(((start..end, NumberType::Float), end))
                     }
                     Some(_) => return json_err!(InvalidNumber, index),
-                    None => return Ok((start..index, index)),
+                    None => return Ok(((start..index, NumberType::Int), index)),
                 };
             }
             Some(b'I') => {
                 let (_, end) = consume_inf(data, index, positive, allow_inf_nan)?;
-                return Ok((start..end, end));
+                return Ok(((start..end, NumberType::Inf), end));
             }
             Some(digit) if (b'1'..=b'9').contains(digit) => (),
             Some(_) => return json_err!(InvalidNumber, index),
@@ -304,19 +311,19 @@ impl AbstractNumberDecoder for NumberRange {
                 b'.' => {
                     index += 1;
                     let end = consume_decimal(data, index)?;
-                    return Ok((start..end, end));
+                    return Ok(((start..end, NumberType::Float), end));
                 }
                 b'e' | b'E' => {
                     index += 1;
                     let end = consume_exponential(data, index)?;
-                    return Ok((start..end, end));
+                    return Ok(((start..end, NumberType::Float), end));
                 }
                 _ => break,
             }
             index += 1;
         }
 
-        Ok((start..index, index))
+        Ok(((start..index, NumberType::Int), index))
     }
 }
 

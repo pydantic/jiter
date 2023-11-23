@@ -10,7 +10,7 @@ use ahash::AHashMap;
 use smallvec::SmallVec;
 
 use crate::errors::{json_err, JsonError, JsonResult, DEFAULT_RECURSION_LIMIT};
-use crate::number_decoder::{NumberAny, NumberInt};
+use crate::number_decoder::{NumberAny, NumberInt, NumberRange};
 use crate::parse::{Parser, Peak};
 use crate::string_decoder::{StringDecoder, Tape};
 
@@ -76,11 +76,19 @@ impl<'j> PythonParser<'j> {
                 Ok(StringCache::get(py, s.as_str()))
             }
             Peak::Num(first) => {
-                let n = self.parser.consume_number::<NumberAny>(first, self.allow_inf_nan)?;
-                match n {
-                    NumberAny::Int(NumberInt::Int(int)) => Ok(int.to_object(py)),
-                    NumberAny::Int(NumberInt::BigInt(big_int)) => Ok(big_int.to_object(py)),
-                    NumberAny::Float(float) => Ok(float.to_object(py)),
+                // let n = self.parser.consume_number::<NumberAny>(first, self.allow_inf_nan)?;
+                // match n {
+                //     NumberAny::Int(NumberInt::Int(int)) => Ok(int.to_object(py)),
+                //     NumberAny::Int(NumberInt::BigInt(big_int)) => Ok(big_int.to_object(py)),
+                //     NumberAny::Float(float) => Ok(float.to_object(py)),
+                // }
+                let (range, _) = self.parser.consume_number::<NumberRange>(first, self.allow_inf_nan)?;
+                let number_bytes = &self.parser.data[range];
+                let s = std::ffi::CString::new(number_bytes).unwrap();
+                let sptr = s.as_ptr();
+                unsafe {
+                    let obj_ptr = pyo3::ffi::PyLong_FromString(sptr, std::ptr::null_mut(), 10);
+                    Ok(PyObject::from_owned_ptr(py, obj_ptr))
                 }
             }
             Peak::Array => {
