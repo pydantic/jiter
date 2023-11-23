@@ -1,13 +1,13 @@
 use std::cell::RefCell;
 
 use pyo3::exceptions::PyValueError;
+use pyo3::ffi::Py_ssize_t;
 use pyo3::prelude::*;
 use pyo3::sync::{GILOnceCell, GILProtected};
 use pyo3::types::{PyDict, PyList, PyString};
 use pyo3::{ffi, AsPyPointer};
 
 use ahash::AHashMap;
-use smallvec::SmallVec;
 
 use crate::errors::{json_err, JsonError, JsonResult, DEFAULT_RECURSION_LIMIT};
 use crate::number_decoder::{NumberAny, NumberInt};
@@ -84,18 +84,29 @@ impl<'j> PythonParser<'j> {
                 }
             }
             Peak::Array => {
-                let list = if let Some(peak_first) = self.parser.array_first()? {
-                    let mut vec: SmallVec<[PyObject; 8]> = SmallVec::with_capacity(8);
+                let list = PyList::empty(py);
+                if let Some(peak_first) = self.parser.array_first()? {
                     let v = self._check_take_value::<StringCache>(py, peak_first)?;
-                    vec.push(v);
-                    while let Some(peak) = self.parser.array_step()? {
-                        let v = self._check_take_value::<StringCache>(py, peak)?;
-                        vec.push(v);
+                    list.append(v).expect("list append failed");
+                    for _ in 0..8 {
+                        if let Some(peak) = self.parser.array_step()? {
+                            let v = self._check_take_value::<StringCache>(py, peak)?;
+                            list.append(v).expect("list append failed");
+                        } else {
+                            return Ok(list.to_object(py));
+                        }
                     }
-                    PyList::new(py, vec)
-                } else {
-                    PyList::empty(py)
-                };
+                    if let Some(peak) = self.parser.array_step()? {
+                        let v = self._check_take_value::<StringCache>(py, peak)?;
+                        let mut vec: Vec<PyObject> = vec![v];
+                        while let Some(peak) = self.parser.array_step()? {
+                            let v = self._check_take_value::<StringCache>(py, peak)?;
+                            vec.push(v);
+                        }
+                        let new_list = new_from_iter(py, list, vec);
+                        return Ok(new_list.to_object(py));
+                    }
+                }
                 Ok(list.to_object(py))
             }
             Peak::Object => {
@@ -184,5 +195,42 @@ struct StringNoCache;
 impl StringMaybeCache for StringNoCache {
     fn get(py: Python, json_str: &str) -> PyObject {
         PyString::new(py, json_str).to_object(py)
+    }
+}
+
+pub(crate) fn new_from_iter(py: Python<'_>, short_list: &PyList, vec: Vec<PyObject>) -> Py<PyList> {
+    unsafe {
+        // PyList_New checks for overflow but has a bad error message, so we check ourselves
+        let len = short_list.len() + vec.len();
+        let len: Py_ssize_t = len
+            .try_into()
+            .expect("out of range integral type conversion attempted on `elements.len()`");
+
+        let ptr = ffi::PyList_New(len);
+
+        // We create the  `Py` pointer here for two reasons:
+        // - panics if the ptr is null
+        // - its Drop cleans up the list if user code or the asserts panic.
+        let list: Py<PyList> = Py::from_owned_ptr(py, ptr);
+
+        let mut counter: Py_ssize_t = 0;
+
+        for obj in short_list {
+            #[cfg(not(Py_LIMITED_API))]
+            ffi::PyList_SET_ITEM(ptr, counter, obj.into_ptr());
+            #[cfg(Py_LIMITED_API)]
+            ffi::PyList_SetItem(ptr, counter, obj.into_ptr());
+            counter += 1;
+        }
+
+        for obj in vec {
+            #[cfg(not(Py_LIMITED_API))]
+            ffi::PyList_SET_ITEM(ptr, counter, obj.into_ptr());
+            #[cfg(Py_LIMITED_API)]
+            ffi::PyList_SetItem(ptr, counter, obj.into_ptr());
+            counter += 1;
+        }
+
+        list
     }
 }
