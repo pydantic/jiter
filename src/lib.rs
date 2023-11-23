@@ -18,4 +18,4 @@ pub use parse::Peak;
 pub use value::{JsonArray, JsonObject, JsonValue};
 
 #[cfg(feature = "python")]
-pub use python::python_parse;
+pub use python::{map_json_error, python_parse};

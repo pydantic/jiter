@@ -9,7 +9,7 @@ use pyo3::{ffi, AsPyPointer};
 use ahash::AHashMap;
 use smallvec::SmallVec;
 
-use crate::errors::{json_error, FilePosition, JsonError, DEFAULT_RECURSION_LIMIT};
+use crate::errors::{json_err, FilePosition, JsonError, JsonResult, DEFAULT_RECURSION_LIMIT};
 use crate::number_decoder::{NumberAny, NumberInt};
 use crate::parse::{Parser, Peak};
 use crate::string_decoder::{StringDecoder, Tape};
@@ -26,63 +26,60 @@ use crate::string_decoder::{StringDecoder, Tape};
 /// # Returns
 ///
 /// A [PyObject](https://docs.rs/pyo3/latest/pyo3/type.PyObject.html) representing the parsed JSON value.
-pub fn python_parse(py: Python, json_data: &[u8], allow_inf_nan: bool, cache_strings: bool) -> PyResult<PyObject> {
+pub fn python_parse(py: Python, json_data: &[u8], allow_inf_nan: bool, cache_strings: bool) -> JsonResult<PyObject> {
     let mut python_parser = PythonParser {
         parser: Parser::new(json_data),
         tape: Tape::default(),
-        data: json_data,
         recursion_limit: DEFAULT_RECURSION_LIMIT,
         allow_inf_nan,
     };
 
-    let mje = |e: JsonError| map_json_error(json_data, e);
-
-    let peak = python_parser.parser.peak().map_err(mje)?;
+    let peak = python_parser.parser.peak()?;
     let v = if cache_strings {
         python_parser.py_take_value::<StringCache>(py, peak)?
     } else {
         python_parser.py_take_value::<StringNoCache>(py, peak)?
     };
-    python_parser.parser.finish().map_err(mje)?;
+    python_parser.parser.finish()?;
     Ok(v)
+}
+
+/// Map a `JsonError` to a `PyErr` which can be raised as an exception in Python as a `ValueError`.
+pub fn map_json_error(json_data: &[u8], json_error: JsonError) -> PyErr {
+    let JsonError { error_type, index } = json_error;
+    let position = FilePosition::find(json_data, index);
+    let msg = format!("{} at {}", error_type, position);
+    PyValueError::new_err(msg)
 }
 
 struct PythonParser<'j> {
     parser: Parser<'j>,
     tape: Tape,
-    data: &'j [u8],
     recursion_limit: u8,
     allow_inf_nan: bool,
 }
 
 impl<'j> PythonParser<'j> {
-    fn py_take_value<StringCache: StringMaybeCache>(&mut self, py: Python, peak: Peak) -> PyResult<PyObject> {
-        let mje = |e: JsonError| map_json_error(self.data, e);
+    fn py_take_value<StringCache: StringMaybeCache>(&mut self, py: Python, peak: Peak) -> JsonResult<PyObject> {
         match peak {
             Peak::True => {
-                self.parser.consume_true().map_err(mje)?;
+                self.parser.consume_true()?;
                 Ok(true.to_object(py))
             }
             Peak::False => {
-                self.parser.consume_false().map_err(mje)?;
+                self.parser.consume_false()?;
                 Ok(false.to_object(py))
             }
             Peak::Null => {
-                self.parser.consume_null().map_err(mje)?;
+                self.parser.consume_null()?;
                 Ok(py.None())
             }
             Peak::String => {
-                let s = self
-                    .parser
-                    .consume_string::<StringDecoder>(&mut self.tape)
-                    .map_err(mje)?;
+                let s = self.parser.consume_string::<StringDecoder>(&mut self.tape)?;
                 Ok(StringCache::get(py, s.as_str()))
             }
             Peak::Num(first) => {
-                let n = self
-                    .parser
-                    .consume_number::<NumberAny>(first, self.allow_inf_nan)
-                    .map_err(mje)?;
+                let n = self.parser.consume_number::<NumberAny>(first, self.allow_inf_nan)?;
                 match n {
                     NumberAny::Int(NumberInt::Int(int)) => Ok(int.to_object(py)),
                     NumberAny::Int(NumberInt::BigInt(big_int)) => Ok(big_int.to_object(py)),
@@ -90,11 +87,11 @@ impl<'j> PythonParser<'j> {
                 }
             }
             Peak::Array => {
-                let list = if let Some(peak_first) = self.parser.array_first().map_err(mje)? {
+                let list = if let Some(peak_first) = self.parser.array_first()? {
                     let mut vec: SmallVec<[PyObject; 8]> = SmallVec::with_capacity(8);
                     let v = self._check_take_value::<StringCache>(py, peak_first)?;
                     vec.push(v);
-                    while let Some(peak) = self.parser.array_step().map_err(mje)? {
+                    while let Some(peak) = self.parser.array_step()? {
                         let v = self._check_take_value::<StringCache>(py, peak)?;
                         vec.push(v);
                     }
@@ -117,14 +114,14 @@ impl<'j> PythonParser<'j> {
                     }
                 };
 
-                if let Some(first_key) = self.parser.object_first::<StringDecoder>(&mut self.tape).map_err(mje)? {
+                if let Some(first_key) = self.parser.object_first::<StringDecoder>(&mut self.tape)? {
                     let first_key = StringCache::get(py, first_key.as_str());
-                    let peak = self.parser.peak().map_err(mje)?;
+                    let peak = self.parser.peak()?;
                     let first_value = self._check_take_value::<StringCache>(py, peak)?;
                     set_item(first_key, first_value);
-                    while let Some(key) = self.parser.object_step::<StringDecoder>(&mut self.tape).map_err(mje)? {
+                    while let Some(key) = self.parser.object_step::<StringDecoder>(&mut self.tape)? {
                         let key = StringCache::get(py, key.as_str());
-                        let peak = self.parser.peak().map_err(mje)?;
+                        let peak = self.parser.peak()?;
                         let value = self._check_take_value::<StringCache>(py, peak)?;
                         set_item(key, value);
                     }
@@ -134,15 +131,10 @@ impl<'j> PythonParser<'j> {
         }
     }
 
-    fn _check_take_value<StringCache: StringMaybeCache>(&mut self, py: Python, peak: Peak) -> PyResult<PyObject> {
+    fn _check_take_value<StringCache: StringMaybeCache>(&mut self, py: Python, peak: Peak) -> JsonResult<PyObject> {
         self.recursion_limit = match self.recursion_limit.checked_sub(1) {
             Some(limit) => limit,
-            None => {
-                return Err(map_json_error(
-                    self.data,
-                    json_error!(RecursionLimitExceeded, self.parser.index),
-                ))
-            }
+            None => return json_err!(RecursionLimitExceeded, self.parser.index),
         };
 
         let r = self.py_take_value::<StringCache>(py, peak);
@@ -150,13 +142,6 @@ impl<'j> PythonParser<'j> {
         self.recursion_limit += 1;
         r
     }
-}
-
-fn map_json_error(data: &[u8], json_error: JsonError) -> PyErr {
-    let JsonError { error_type, index } = json_error;
-    let position = FilePosition::find(data, index);
-    let msg = format!("{} at {}", error_type, position);
-    PyValueError::new_err(msg)
 }
 
 trait StringMaybeCache {
