@@ -1,4 +1,3 @@
-use std::fmt::Display;
 use std::ops::Range;
 
 use crate::errors::{json_err, json_error, JsonResult};
@@ -28,11 +27,11 @@ where
     Data(&'j str),
 }
 
-impl Display for StringOutput<'_, '_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Tape(s) => write!(f, "{}", s),
-            Self::Data(s) => write!(f, "{}", s),
+impl From<StringOutput<'_, '_>> for String {
+    fn from(val: StringOutput) -> Self {
+        match val {
+            StringOutput::Tape(s) => s.to_owned(),
+            StringOutput::Data(s) => s.to_owned(),
         }
     }
 }
