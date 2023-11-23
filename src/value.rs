@@ -100,7 +100,7 @@ pub(crate) fn take_value(
         }
         Peak::String => {
             let s = parser.consume_string::<StringDecoder>(tape)?;
-            Ok(JsonValue::Str(s.to_string()))
+            Ok(JsonValue::Str(s.into()))
         }
         Peak::Num(first) => {
             let n = parser.consume_number::<NumberAny>(first, allow_inf_nan)?;
@@ -131,14 +131,14 @@ pub(crate) fn take_value(
             // same for objects
             let mut object: LazyIndexMap<String, JsonValue> = LazyIndexMap::new();
             if let Some(first_key) = parser.object_first::<StringDecoder>(tape)? {
-                let first_key = first_key.to_string();
+                let first_key = first_key.into();
                 let peak = parser.peak()?;
                 check_recursion!(recursion_limit, parser.index,
                     let first_value = take_value(peak, parser, tape, recursion_limit, allow_inf_nan)?;
                 );
                 object.insert(first_key, first_value);
                 while let Some(key) = parser.object_step::<StringDecoder>(tape)? {
-                    let key = key.to_string();
+                    let key = key.into();
                     let peak = parser.peak()?;
                     check_recursion!(recursion_limit, parser.index,
                         let value = take_value(peak, parser, tape, recursion_limit, allow_inf_nan)?;
