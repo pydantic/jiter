@@ -55,19 +55,19 @@ fn _python_parse_file(path: &str, bench: &mut Bencher, cache_strings: bool) {
     })
 }
 
-fn python_parse_medium_response(bench: &mut Bencher) {
+fn python_parse_medium_response_not_cached(bench: &mut Bencher) {
     _python_parse_file("./benches/medium_response.json", bench, false);
 }
 
-fn python_parse_medium_response_cached(bench: &mut Bencher) {
+fn python_parse_medium_response(bench: &mut Bencher) {
     _python_parse_file("./benches/medium_response.json", bench, true);
 }
 
-fn python_parse_true_object(bench: &mut Bencher) {
+fn python_parse_true_object_not_cached(bench: &mut Bencher) {
     _python_parse_file("./benches/true_object.json", bench, false);
 }
 
-fn python_parse_true_object_cached(bench: &mut Bencher) {
+fn python_parse_true_object(bench: &mut Bencher) {
     _python_parse_file("./benches/true_object.json", bench, true);
 }
 
@@ -80,10 +80,10 @@ benchmark_group!(
     benches,
     python_parse_numeric,
     python_parse_other,
+    python_parse_medium_response_not_cached,
     python_parse_medium_response,
-    python_parse_medium_response_cached,
+    python_parse_true_object_not_cached,
     python_parse_true_object,
-    python_parse_true_object_cached,
     python_parse_true_array,
 );
 benchmark_main!(benches);
