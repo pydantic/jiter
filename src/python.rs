@@ -164,8 +164,8 @@ impl StringMaybeCache for StringCache {
                 None => {
                     let key_object = PyString::new(py, json_str).to_object(py);
                     let mut cache_writable = cache.borrow_mut();
-                    // 1m 64 byte strings is ~64mb
-                    if cache_writable.len() > 1_000_000 {
+                    // 500k limit means 1m keys + values, 1m 64 byte strings is ~64mb
+                    if cache_writable.len() > 500_000 {
                         cache_writable.clear();
                     }
                     cache_writable.insert(json_str.to_owned(), key_object.clone_ref(py));
