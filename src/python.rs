@@ -1,4 +1,4 @@
-use std::cell::{RefCell, RefMut};
+use std::cell::RefCell;
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -9,19 +9,32 @@ use pyo3::{ffi, AsPyPointer};
 use ahash::AHashMap;
 use smallvec::SmallVec;
 
-use crate::errors::{json_error, DEFAULT_RECURSION_LIMIT};
-use crate::string_decoder::Tape;
-use crate::{FilePosition, JsonError, NumberAny, NumberInt, Parser, Peak, StringDecoder};
+use crate::errors::{json_error, FilePosition, JsonError, DEFAULT_RECURSION_LIMIT};
+use crate::number_decoder::{NumberAny, NumberInt};
+use crate::parse::{Parser, Peak};
+use crate::string_decoder::{StringDecoder, Tape};
 
-pub fn python_parse(py: Python, data: &[u8], cache_strings: bool) -> PyResult<PyObject> {
+/// Parse a JSON value from a byte slice and return a Python object.
+///
+/// # Arguments
+/// - `py`: [Python](https://docs.rs/pyo3/latest/pyo3/marker/struct.Python.html) marker token.
+/// - `json_data`: The JSON data to parse.
+/// - `allow_inf_nan`: Whether to allow `(-)Infinity` and `NaN` values.
+/// - `cache_strings`: Whether to cache strings to avoid constructing new Python strings.
+///
+/// # Returns
+///
+/// A [PyObject](https://docs.rs/pyo3/latest/pyo3/type.PyObject.html) representing the parsed JSON value.
+pub fn python_parse(py: Python, json_data: &[u8], allow_inf_nan: bool, cache_strings: bool) -> PyResult<PyObject> {
     let mut python_parser = PythonParser {
-        parser: Parser::new(data),
+        parser: Parser::new(json_data),
         tape: Tape::default(),
-        data,
+        data: json_data,
         recursion_limit: DEFAULT_RECURSION_LIMIT,
+        allow_inf_nan,
     };
 
-    let mje = |e: JsonError| map_json_error(data, e);
+    let mje = |e: JsonError| map_json_error(json_data, e);
 
     let peak = python_parser.parser.peak().map_err(mje)?;
     let v = if cache_strings {
@@ -38,6 +51,7 @@ struct PythonParser<'j> {
     tape: Tape,
     data: &'j [u8],
     recursion_limit: u8,
+    allow_inf_nan: bool,
 }
 
 impl<'j> PythonParser<'j> {
@@ -69,7 +83,10 @@ impl<'j> PythonParser<'j> {
                 Ok(strings_cache.get(py, s.as_str()))
             }
             Peak::Num(first) => {
-                let n = self.parser.consume_number::<NumberAny>(first).map_err(mje)?;
+                let n = self
+                    .parser
+                    .consume_number::<NumberAny>(first, self.allow_inf_nan)
+                    .map_err(mje)?;
                 match n {
                     NumberAny::Int(NumberInt::Int(int)) => Ok(int.to_object(py)),
                     NumberAny::Int(NumberInt::BigInt(big_int)) => Ok(big_int.to_object(py)),
@@ -157,10 +174,10 @@ trait StringMaybeCache<'py> {
     fn get(&mut self, py: Python, json_str: &str) -> PyObject;
 }
 
-struct StringCache<'py>;
+struct StringCache;
 
-impl<'py> StringMaybeCache<'py> for StringCache<'py> {
-    fn new(py: Python<'py>) -> Self {
+impl<'py> StringMaybeCache<'py> for StringCache {
+    fn new(_py: Python<'py>) -> Self {
         Self
     }
 
@@ -170,7 +187,7 @@ impl<'py> StringMaybeCache<'py> for StringCache<'py> {
         if json_str.len() < 64 {
             let cache = STRINGS_CACHE
                 .get_or_init(py, || GILProtected::new(RefCell::new(AHashMap::new())))
-                .get();
+                .get(py);
             // Finish the borrow before matching, so that the RefCell isn't borrowed for the
             // whole match.
             let key = cache.borrow().get(json_str).map(|key| key.clone_ref(py));
@@ -179,7 +196,7 @@ impl<'py> StringMaybeCache<'py> for StringCache<'py> {
                 Some(key) => key,
                 None => {
                     let key_object = PyString::new(py, json_str).to_object(py);
-                    let cache_writable = cache.borrow_mut();
+                    let mut cache_writable = cache.borrow_mut();
                     if cache_writable.len() > 100_000 {
                         cache_writable.clear();
                     }

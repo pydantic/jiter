@@ -1,12 +1,11 @@
-#![feature(test)]
+use bencher::black_box;
+use codspeed_bencher_compat::{benchmark_group, benchmark_main, Bencher};
+
 use std::fs::File;
 use std::io::Read;
 
-extern crate test;
-
 use jiter::{Jiter, JsonValue, Peak};
 use serde_json::Value;
-use test::{black_box, Bencher};
 
 fn read_file(path: &str) -> String {
     let mut file = File::open(path).unwrap();
@@ -19,7 +18,7 @@ fn jiter_value(path: &str, bench: &mut Bencher) {
     let json = read_file(path);
     let json_data = json.as_bytes();
     bench.iter(|| {
-        let v = JsonValue::parse(black_box(json_data)).unwrap();
+        let v = JsonValue::parse(black_box(json_data), false).unwrap();
         black_box(v)
     })
 }
@@ -28,13 +27,13 @@ fn jiter_iter_big(path: &str, bench: &mut Bencher) {
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
     bench.iter(|| {
-        let mut jiter = Jiter::new(json_data);
+        let mut jiter = Jiter::new(json_data, false);
         let mut v_outer = Vec::new();
-        jiter.array_first().unwrap();
+        jiter.next_array().unwrap();
 
         loop {
             let mut v_inner = Vec::new();
-            if let Some(peak) = jiter.array_first().unwrap() {
+            if let Some(peak) = jiter.next_array().unwrap() {
                 let i = jiter.known_float(peak).unwrap();
                 v_inner.push(i);
                 while let Some(peak) = jiter.array_step().unwrap() {
@@ -56,7 +55,7 @@ fn find_string(jiter: &mut Jiter) -> String {
     match peak {
         Peak::String => jiter.known_str().unwrap().to_string(),
         Peak::Array => {
-            assert!(jiter.array_first().unwrap().is_some());
+            assert!(jiter.known_array().unwrap().is_some());
             let s = find_string(jiter).to_string();
             assert!(jiter.array_step().unwrap().is_none());
             s
@@ -69,7 +68,7 @@ fn jiter_iter_pass2(path: &str, bench: &mut Bencher) {
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
     bench.iter(|| {
-        let mut jiter = Jiter::new(json_data);
+        let mut jiter = Jiter::new(json_data, false);
         let string = find_string(&mut jiter);
         jiter.finish().unwrap();
         black_box(string)
@@ -80,10 +79,10 @@ fn jiter_iter_string_array(path: &str, bench: &mut Bencher) {
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
     bench.iter(|| {
-        let mut jiter = Jiter::new(json_data);
+        let mut jiter = Jiter::new(json_data, false);
         let mut v = Vec::new();
-        jiter.array_first().unwrap();
-        let i = jiter.next_str().unwrap();
+        jiter.next_array().unwrap();
+        let i = jiter.known_str().unwrap();
         // record len instead of allocating the string to simulate something like constructing a PyString
         v.push(i.len());
         while jiter.array_step().unwrap().is_some() {
@@ -99,9 +98,9 @@ fn jiter_iter_true_array(path: &str, bench: &mut Bencher) {
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
     bench.iter(|| {
-        let mut jiter = Jiter::new(json_data);
+        let mut jiter = Jiter::new(json_data, false);
         let mut v = Vec::new();
-        let first_peak = jiter.array_first().unwrap().unwrap();
+        let first_peak = jiter.next_array().unwrap().unwrap();
         let i = jiter.known_bool(first_peak).unwrap();
         v.push(i);
         while let Some(peak) = jiter.array_step().unwrap() {
@@ -116,7 +115,7 @@ fn jiter_iter_true_object(path: &str, bench: &mut Bencher) {
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
     bench.iter(|| {
-        let mut jiter = Jiter::new(json_data);
+        let mut jiter = Jiter::new(json_data, false);
         let mut v = Vec::new();
         if let Some(first_key) = jiter.next_object().unwrap() {
             let first_key = first_key.to_string();
@@ -136,9 +135,9 @@ fn jiter_iter_ints_array(path: &str, bench: &mut Bencher) {
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
     bench.iter(|| {
-        let mut jiter = Jiter::new(json_data);
+        let mut jiter = Jiter::new(json_data, false);
         let mut v = Vec::new();
-        let first_peak = jiter.array_first().unwrap().unwrap();
+        let first_peak = jiter.next_array().unwrap().unwrap();
         let i = jiter.known_int(first_peak).unwrap();
         v.push(i);
         while let Some(peak) = jiter.array_step().unwrap() {
@@ -153,9 +152,9 @@ fn jiter_iter_floats_array(path: &str, bench: &mut Bencher) {
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
     bench.iter(|| {
-        let mut jiter = Jiter::new(json_data);
+        let mut jiter = Jiter::new(json_data, false);
         let mut v = Vec::new();
-        let first_peak = jiter.array_first().unwrap().unwrap();
+        let first_peak = jiter.next_array().unwrap().unwrap();
         let i = jiter.known_float(first_peak).unwrap();
         v.push(i);
         while let Some(peak) = jiter.array_step().unwrap() {
@@ -178,13 +177,11 @@ fn serde_value(path: &str, bench: &mut Bencher) {
 macro_rules! test_cases {
     ($file_name:ident) => {
         paste::item! {
-            #[bench]
-            fn [< $file_name _jiter_value_string >](bench: &mut Bencher) {
+            fn [< $file_name _jiter_value >](bench: &mut Bencher) {
                 let file_path = format!("./benches/{}.json", stringify!($file_name));
                 jiter_value(&file_path, bench);
             }
 
-            #[bench]
             fn [< $file_name _jiter_iter >](bench: &mut Bencher) {
                 let file_name = stringify!($file_name);
                 let file_path = format!("./benches/{}.json", file_name);
@@ -207,7 +204,6 @@ macro_rules! test_cases {
                 }
             }
 
-            #[bench]
             fn [< $file_name _serde_value >](bench: &mut Bencher) {
                 let file_path = format!("./benches/{}.json", stringify!($file_name));
                 serde_value(&file_path, bench);
@@ -232,3 +228,38 @@ test_cases!(floats_array);
 // from https://github.com/json-iterator/go-benchmark/blob/179abe5e3f72acce34fb5a16f3473b901fbdd6b9/
 // src/github.com/json-iterator/go-benchmark/benchmark.go#L30C17-L30C29
 test_cases!(medium_response);
+
+benchmark_group!(
+    benches,
+    big_jiter_iter,
+    big_jiter_value,
+    big_serde_value,
+    bigints_array_jiter_iter,
+    bigints_array_jiter_value,
+    bigints_array_serde_value,
+    floats_array_jiter_iter,
+    floats_array_jiter_value,
+    floats_array_serde_value,
+    massive_ints_array_jiter_iter,
+    massive_ints_array_jiter_value,
+    massive_ints_array_serde_value,
+    medium_response_jiter_iter,
+    medium_response_jiter_value,
+    medium_response_serde_value,
+    pass1_jiter_iter,
+    pass1_jiter_value,
+    pass1_serde_value,
+    pass2_jiter_iter,
+    pass2_jiter_value,
+    pass2_serde_value,
+    string_array_jiter_iter,
+    string_array_jiter_value,
+    string_array_serde_value,
+    true_array_jiter_iter,
+    true_array_jiter_value,
+    true_array_serde_value,
+    true_object_jiter_iter,
+    true_object_jiter_value,
+    true_object_serde_value
+);
+benchmark_main!(benches);

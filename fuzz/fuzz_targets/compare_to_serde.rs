@@ -101,7 +101,7 @@ fn errors_equal(jiter_error: &JiterError, serde_error: &SerdeError) -> bool {
 // fuzz_target!(|json: String| {
 //     let json_data = json.as_bytes();
 fuzz_target!(|json_data: &[u8]| {
-    let jiter_value = match JiterValue::parse(json_data) {
+    let jiter_value = match JiterValue::parse(json_data, false) {
         Ok(v) => v,
         Err(jiter_error) => {
             match serde_json::from_slice::<SerdeValue>(json_data) {
