@@ -1,6 +1,6 @@
 #![no_main]
 
-use jiter::{JsonValue as JiterValue, JsonValueError as JiterError, JsonErrorType as JiterJsonErrorType};
+use jiter::{JsonValue as JiterValue, JsonError as JiterError, JsonErrorType as JiterJsonErrorType};
 use serde_json::{Value as SerdeValue, Number as SerdeNumber, Error as SerdeError};
 
 use libfuzzer_sys::fuzz_target;
@@ -81,8 +81,8 @@ fn remove_suffix(s: &str) -> &str {
     }
 }
 
-fn errors_equal(jiter_error: &JiterError, serde_error: &SerdeError) -> bool {
-    let jiter_error_str = jiter_error.to_string();
+fn errors_equal(jiter_error: &JiterError, serde_error: &SerdeError, json_data: &[u8]) -> bool {
+    let jiter_error_str = jiter_error.description(json_data);
     let serde_error_str = serde_error.to_string();
     if serde_error_str.starts_with("number out of range") {
         // ignore this case as serde is stricter so fails on this before jiter does
@@ -110,11 +110,11 @@ fuzz_target!(|json_data: &[u8]| {
                     panic!("jiter failed to parse when serde passed");
                 },
                 Err(serde_error) => {
-                    if errors_equal(&jiter_error, &serde_error) {
+                    if errors_equal(&jiter_error, &serde_error, json_data) {
                         return
                     } else {
                         println!("============================");
-                        dbg!(&jiter_error, jiter_error.to_string(), &serde_error, serde_error.to_string());
+                        dbg!(&jiter_error, jiter_error.description(json_data), &serde_error, serde_error.to_string());
                         panic!("errors not equal");
                         // return
                     }
