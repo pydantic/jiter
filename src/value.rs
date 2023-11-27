@@ -3,7 +3,7 @@ use std::sync::Arc;
 use num_bigint::BigInt;
 use smallvec::SmallVec;
 
-use crate::errors::{FilePosition, JsonError, JsonResult, JsonValueError, DEFAULT_RECURSION_LIMIT};
+use crate::errors::{JsonError, JsonResult, DEFAULT_RECURSION_LIMIT};
 use crate::lazy_index_map::LazyIndexMap;
 use crate::number_decoder::{NumberAny, NumberInt};
 use crate::parse::{Parser, Peak};
@@ -49,18 +49,13 @@ impl pyo3::ToPyObject for JsonValue {
 
 impl JsonValue {
     /// Parse a JSON value from a byte slice.
-    pub fn parse(data: &[u8], allow_inf_nan: bool) -> Result<Self, JsonValueError> {
+    pub fn parse(data: &[u8], allow_inf_nan: bool) -> Result<Self, JsonError> {
         let mut parser = Parser::new(data);
 
-        let map_err = |e: JsonError| {
-            let position = FilePosition::find(data, e.index);
-            JsonValueError::new(e.error_type, e.index, position)
-        };
-
         let mut tape = Tape::default();
-        let peak = parser.peak().map_err(map_err)?;
-        let v = take_value(peak, &mut parser, &mut tape, DEFAULT_RECURSION_LIMIT, allow_inf_nan).map_err(map_err)?;
-        parser.finish().map_err(map_err)?;
+        let peak = parser.peak()?;
+        let v = take_value(peak, &mut parser, &mut tape, DEFAULT_RECURSION_LIMIT, allow_inf_nan)?;
+        parser.finish()?;
         Ok(v)
     }
 }

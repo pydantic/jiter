@@ -7,7 +7,7 @@ use num_bigint::BigInt;
 use smallvec::smallvec;
 
 use jiter::{
-    FilePosition, Jiter, JiterErrorType, JiterResult, JsonErrorType, JsonType, JsonValue, LazyIndexMap, NumberAny,
+    Jiter, JiterErrorType, JiterResult, JsonErrorType, JsonType, JsonValue, LazyIndexMap, LinePosition, NumberAny,
     NumberInt, Peak,
 };
 
@@ -243,7 +243,7 @@ fn invalid_string_controls() {
         JiterErrorType::JsonError(JsonErrorType::ControlCharacterWhileParsingString)
     );
     assert_eq!(e.index, 4);
-    assert_eq!(jiter.error_position(e.index), FilePosition::new(1, 5));
+    assert_eq!(jiter.error_position(e.index), LinePosition::new(1, 5));
     assert_eq!(
         e.to_string(),
         "control character (\\u0000-\\u001F) found while parsing a string at index 4"
@@ -257,7 +257,7 @@ fn json_parse_str() {
     let mut jiter = Jiter::new(data, false);
     let peak = jiter.peak().unwrap();
     assert_eq!(peak, Peak::String);
-    assert_eq!(jiter.current_position(), FilePosition::new(1, 2));
+    assert_eq!(jiter.current_position(), LinePosition::new(1, 2));
 
     let result_string = jiter.known_str().unwrap();
     assert_eq!(result_string, "foobar");
@@ -342,7 +342,7 @@ fn invalid_unicode_code() {
         JiterErrorType::JsonError(JsonErrorType::InvalidUnicodeCodePoint)
     );
     assert_eq!(e.index, 3);
-    assert_eq!(jiter.error_position(e.index), FilePosition::new(1, 4));
+    assert_eq!(jiter.error_position(e.index), LinePosition::new(1, 4));
 }
 
 #[test]
@@ -356,7 +356,7 @@ fn nan_disallowed() {
         JiterErrorType::JsonError(JsonErrorType::ExpectedSomeValue)
     );
     assert_eq!(e.index, 1);
-    assert_eq!(jiter.error_position(e.index), FilePosition::new(1, 2));
+    assert_eq!(jiter.error_position(e.index), LinePosition::new(1, 2));
 }
 
 #[test]
@@ -370,7 +370,7 @@ fn inf_disallowed() {
         JiterErrorType::JsonError(JsonErrorType::ExpectedSomeValue)
     );
     assert_eq!(e.index, 1);
-    assert_eq!(jiter.error_position(e.index), FilePosition::new(1, 2));
+    assert_eq!(jiter.error_position(e.index), LinePosition::new(1, 2));
 }
 
 #[test]
@@ -381,7 +381,7 @@ fn inf_neg_disallowed() {
     let e = jiter.next_number().unwrap_err();
     assert_eq!(e.error_type, JiterErrorType::JsonError(JsonErrorType::InvalidNumber));
     assert_eq!(e.index, 2);
-    assert_eq!(jiter.error_position(e.index), FilePosition::new(1, 3));
+    assert_eq!(jiter.error_position(e.index), LinePosition::new(1, 3));
 }
 
 #[test]
@@ -395,7 +395,7 @@ fn nan_disallowed_wrong_type() {
         JiterErrorType::JsonError(JsonErrorType::ExpectedSomeValue)
     );
     assert_eq!(e.index, 1);
-    assert_eq!(jiter.error_position(e.index), FilePosition::new(1, 2));
+    assert_eq!(jiter.error_position(e.index), LinePosition::new(1, 2));
 }
 
 #[test]
@@ -417,7 +417,7 @@ fn value_disallow_nan() {
     let json = r#"[1, NaN]"#;
     let err = JsonValue::parse(json.as_bytes(), false).unwrap_err();
     assert_eq!(err.error_type, JsonErrorType::ExpectedSomeValue);
-    assert_eq!(err.to_string(), "expected value at line 1 column 5");
+    assert_eq!(err.description(json.as_bytes()), "expected value at line 1 column 5");
 }
 
 #[test]
@@ -446,7 +446,7 @@ macro_rules! test_position {
             paste::item! {
                 #[test]
                 fn [< test_position_ $name >]() {
-                    assert_eq!(FilePosition::find($data, $find), $expected);
+                    assert_eq!(LinePosition::find($data, $find), $expected);
                 }
             }
         )*
@@ -454,17 +454,17 @@ macro_rules! test_position {
 }
 
 test_position! {
-    empty_zero: b"", 0, FilePosition::new(1, 0);
-    empty_one: b"", 1, FilePosition::new(1, 0);
-    first_line_zero: b"123456", 0, FilePosition::new(1, 1);
-    first_line_first: b"123456", 1, FilePosition::new(1, 2);
-    first_line_3rd: b"123456", 3, FilePosition::new(1, 4);
-    first_line_5th: b"123456", 5, FilePosition::new(1, 6);
-    first_line_last: b"123456", 6, FilePosition::new(1, 6);
-    first_line_after: b"123456", 7, FilePosition::new(1, 6);
-    second_line0: b"123456\n789", 6, FilePosition::new(2, 0);
-    second_line1: b"123456\n789", 7, FilePosition::new(2, 1);
-    second_line2: b"123456\n789", 8, FilePosition::new(2, 2);
+    empty_zero: b"", 0, LinePosition::new(1, 0);
+    empty_one: b"", 1, LinePosition::new(1, 0);
+    first_line_zero: b"123456", 0, LinePosition::new(1, 1);
+    first_line_first: b"123456", 1, LinePosition::new(1, 2);
+    first_line_3rd: b"123456", 3, LinePosition::new(1, 4);
+    first_line_5th: b"123456", 5, LinePosition::new(1, 6);
+    first_line_last: b"123456", 6, LinePosition::new(1, 6);
+    first_line_after: b"123456", 7, LinePosition::new(1, 6);
+    second_line0: b"123456\n789", 6, LinePosition::new(2, 0);
+    second_line1: b"123456\n789", 7, LinePosition::new(2, 1);
+    second_line2: b"123456\n789", 8, LinePosition::new(2, 2);
 }
 
 #[test]
@@ -497,7 +497,7 @@ fn bad_lower_value_in_string() {
     let e = JsonValue::parse(&bytes, false).unwrap_err();
     assert_eq!(e.error_type, JsonErrorType::ControlCharacterWhileParsingString);
     assert_eq!(e.index, 1);
-    assert_eq!(e.position, FilePosition::new(1, 2));
+    assert_eq!(e.get_position(&bytes), LinePosition::new(1, 2));
 }
 
 #[test]
@@ -506,7 +506,7 @@ fn bad_high_order_string() {
     let e = JsonValue::parse(&bytes, false).unwrap_err();
     assert_eq!(e.error_type, JsonErrorType::InvalidUnicodeCodePoint);
     assert_eq!(e.index, 4);
-    assert_eq!(e.to_string(), "invalid unicode code point at line 1 column 5")
+    assert_eq!(e.description(&bytes), "invalid unicode code point at line 1 column 5")
 }
 
 #[test]
@@ -573,10 +573,10 @@ fn parse_array_empty() {
 
 #[test]
 fn repeat_trailing_array() {
-    let json = "[1]]";
-    let e = JsonValue::parse(json.as_bytes(), false).unwrap_err();
+    let json = b"[1]]";
+    let e = JsonValue::parse(json, false).unwrap_err();
     assert_eq!(e.error_type, JsonErrorType::TrailingCharacters);
-    assert_eq!(e.position, FilePosition::new(1, 4));
+    assert_eq!(e.get_position(json), LinePosition::new(1, 4));
 }
 
 #[test]
@@ -597,11 +597,11 @@ fn parse_value_nested() {
 
 #[test]
 fn test_array_trailing() {
-    let json = r#"[1, 2,]"#;
-    let e = JsonValue::parse(json.as_bytes(), false).unwrap_err();
+    let json = br#"[1, 2,]"#;
+    let e = JsonValue::parse(json, false).unwrap_err();
     assert_eq!(e.error_type, JsonErrorType::TrailingComma);
-    assert_eq!(e.position, FilePosition::new(1, 7));
-    assert_eq!(e.to_string(), "trailing comma at line 1 column 7");
+    assert_eq!(e.get_position(json), LinePosition::new(1, 7));
+    assert_eq!(e.description(json), "trailing comma at line 1 column 7");
 }
 
 fn read_file(path: &str) -> String {
@@ -709,9 +709,9 @@ fn jiter_bytes_u_escape() {
         e.error_type,
         JiterErrorType::JsonError(JsonErrorType::StringEscapeNotSupported)
     );
-    assert_eq!(jiter.error_position(e.index), FilePosition::new(1, 14));
+    assert_eq!(jiter.error_position(e.index), LinePosition::new(1, 14));
     assert_eq!(
-        e.with_position(&jiter).to_string(),
+        e.description(&jiter),
         "string escape sequences are not supported at line 1 column 14"
     )
 }
@@ -734,7 +734,7 @@ fn jiter_trailing_bracket() {
         e.error_type,
         JiterErrorType::JsonError(JsonErrorType::TrailingCharacters)
     );
-    assert_eq!(jiter.error_position(e.index), FilePosition::new(1, 4));
+    assert_eq!(jiter.error_position(e.index), LinePosition::new(1, 4));
 }
 
 #[test]
@@ -749,10 +749,10 @@ fn jiter_wrong_type() {
         }
     );
     assert_eq!(e.index, 1);
-    assert_eq!(jiter.error_position(e.index), FilePosition::new(1, 2));
+    assert_eq!(jiter.error_position(e.index), LinePosition::new(1, 2));
     assert_eq!(e.to_string(), "expected string but found int at index 1");
     assert_eq!(
-        e.with_position(&jiter).to_string(),
+        e.description(&jiter),
         "expected string but found int at line 1 column 2"
     );
 }
@@ -804,7 +804,7 @@ fn test_recursion_limit() {
     let e = JsonValue::parse(bytes, false).unwrap_err();
     assert_eq!(e.error_type, JsonErrorType::RecursionLimitExceeded);
     assert_eq!(e.index, 201);
-    assert_eq!(e.to_string(), "recursion limit exceeded at line 1 column 202");
+    assert_eq!(e.description(bytes), "recursion limit exceeded at line 1 column 202");
 }
 
 #[test]
@@ -868,7 +868,7 @@ fn test_4302_int_err() {
     let e = JsonValue::parse(bytes, false).unwrap_err();
     assert_eq!(e.error_type, JsonErrorType::NumberOutOfRange);
     assert_eq!(e.index, 4301);
-    assert_eq!(e.to_string(), "number out of range at line 1 column 4302");
+    assert_eq!(e.description(bytes), "number out of range at line 1 column 4302");
 }
 
 #[test]

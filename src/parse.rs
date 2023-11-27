@@ -1,4 +1,4 @@
-use crate::errors::{json_err, FilePosition, JsonResult};
+use crate::errors::{json_err, JsonResult, LinePosition};
 use crate::number_decoder::AbstractNumberDecoder;
 use crate::string_decoder::{AbstractStringDecoder, Tape};
 
@@ -51,8 +51,8 @@ impl<'j> Parser<'j> {
 }
 
 impl<'j> Parser<'j> {
-    pub fn current_position(&self) -> FilePosition {
-        FilePosition::find(self.data, self.index)
+    pub fn current_position(&self) -> LinePosition {
+        LinePosition::find(self.data, self.index)
     }
 
     pub fn peak(&mut self) -> JsonResult<Peak> {

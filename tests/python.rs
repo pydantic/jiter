@@ -1,7 +1,7 @@
 use pyo3::prelude::*;
 use pyo3::ToPyObject;
 
-use jiter::{python_parse, JsonValue};
+use jiter::{map_json_error, python_parse, JsonValue};
 
 #[test]
 fn test_to_py_object_numeric() {
@@ -79,7 +79,8 @@ fn test_python_parse_other_no_cache() {
 #[test]
 fn test_python_disallow_nan() {
     Python::with_gil(|py| {
-        let e = python_parse(py, br#"[NaN]"#, false, true).unwrap_err();
+        let r = python_parse(py, br#"[NaN]"#, false, true);
+        let e = r.map_err(|e| map_json_error(br#"[NaN]"#, &e)).unwrap_err();
         assert_eq!(e.to_string(), "ValueError: expected value at line 1 column 2");
     })
 }
@@ -87,7 +88,9 @@ fn test_python_disallow_nan() {
 #[test]
 fn test_error() {
     Python::with_gil(|py| {
-        let e = python_parse(py, br#"["string""#, false, true).unwrap_err();
+        let bytes = br#"["string""#;
+        let r = python_parse(py, bytes, false, true);
+        let e = r.map_err(|e| map_json_error(bytes, &e)).unwrap_err();
         assert_eq!(e.to_string(), "ValueError: EOF while parsing a list at line 1 column 9");
     })
 }
@@ -97,14 +100,13 @@ fn test_recursion_limit() {
     let json = (0..10_000).map(|_| "[").collect::<String>();
     let bytes = json.as_bytes();
 
-    Python::with_gil(|py| match python_parse(py, bytes, false, true) {
-        Ok(v) => panic!("unexpectedly valid: {:?}", v),
-        Err(e) => {
-            assert_eq!(
-                e.to_string(),
-                "ValueError: recursion limit exceeded at line 1 column 202"
-            );
-        }
+    Python::with_gil(|py| {
+        let r = python_parse(py, bytes, false, true);
+        let e = r.map_err(|e| map_json_error(bytes, &e)).unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "ValueError: recursion limit exceeded at line 1 column 202"
+        );
     })
 }
 

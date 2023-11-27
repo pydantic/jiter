@@ -1,4 +1,4 @@
-use crate::errors::{FilePosition, JiterError, JsonType, DEFAULT_RECURSION_LIMIT};
+use crate::errors::{JiterError, JsonType, LinePosition, DEFAULT_RECURSION_LIMIT};
 use crate::number_decoder::{NumberAny, NumberFloat, NumberInt, NumberRange};
 use crate::parse::{Parser, Peak};
 use crate::string_decoder::{StringDecoder, StringDecoderRange, Tape};
@@ -42,17 +42,17 @@ impl<'j> Jiter<'j> {
         }
     }
 
-    /// Get the current [FilePosition] of the parser.
-    pub fn current_position(&self) -> FilePosition {
+    /// Get the current [LinePosition] of the parser.
+    pub fn current_position(&self) -> LinePosition {
         self.parser.current_position()
     }
 
-    /// Convert an error index to a [FilePosition].
+    /// Convert an error index to a [LinePosition].
     ///
     /// # Arguments
     /// - `index`: The index of the error to find the position of.
-    pub fn error_position(&self, index: usize) -> FilePosition {
-        FilePosition::find(self.data, index)
+    pub fn error_position(&self, index: usize) -> LinePosition {
+        LinePosition::find(self.data, index)
     }
 
     /// Peak at the next JSON value without consuming it.

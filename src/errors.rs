@@ -112,15 +112,27 @@ impl std::fmt::Display for JsonErrorType {
 
 pub type JsonResult<T> = Result<T, JsonError>;
 
+/// Represents an error from parsing JSON
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct JsonError {
+    /// The type of error.
     pub error_type: JsonErrorType,
+    /// The index in the data where the error occurred.
     pub index: usize,
 }
 
 impl JsonError {
     pub(crate) fn new(error_type: JsonErrorType, index: usize) -> Self {
         Self { error_type, index }
+    }
+
+    pub fn get_position(&self, json_data: &[u8]) -> LinePosition {
+        LinePosition::find(json_data, self.index)
+    }
+
+    pub fn description(&self, json_data: &[u8]) -> String {
+        let position = self.get_position(json_data);
+        format!("{} at {}", self.error_type, position)
     }
 }
 
@@ -198,34 +210,26 @@ impl std::fmt::Display for JiterErrorType {
 pub struct JiterError {
     pub error_type: JiterErrorType,
     pub index: usize,
-    pub position: Option<FilePosition>,
 }
 
 impl std::fmt::Display for JiterError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(ref p) = self.position {
-            write!(f, "{} at {}", self.error_type, p)
-        } else {
-            write!(f, "{} at index {}", self.error_type, self.index)
-        }
+        write!(f, "{} at index {}", self.error_type, self.index)
     }
 }
 
 impl JiterError {
     pub(crate) fn new(error_type: JiterErrorType, index: usize) -> Self {
-        Self {
-            error_type,
-            index,
-            position: None,
-        }
+        Self { error_type, index }
     }
 
-    pub fn with_position(&self, jiter: &Jiter) -> Self {
-        Self {
-            error_type: self.error_type.clone(),
-            index: self.index,
-            position: Some(jiter.error_position(self.index)),
-        }
+    pub fn get_position(&self, jiter: &Jiter) -> LinePosition {
+        jiter.error_position(self.index)
+    }
+
+    pub fn description(&self, jiter: &Jiter) -> String {
+        let position = self.get_position(jiter);
+        format!("{} at {}", self.error_type, position)
     }
 
     pub(crate) fn wrong_type(expected: JsonType, actual: JsonType, index: usize) -> Self {
@@ -238,64 +242,36 @@ impl From<JsonError> for JiterError {
         Self {
             error_type: JiterErrorType::JsonError(error.error_type),
             index: error.index,
-            position: None,
         }
     }
 }
 
-/// An error from the [crate::JsonValue::parse] method.
-#[derive(Debug, Clone)]
-pub struct JsonValueError {
-    /// The type of error.
-    pub error_type: JsonErrorType,
-    /// The index in the data where the error occurred.
-    pub index: usize,
-    /// The line and column in the data where the error occurred.
-    pub position: FilePosition,
-}
-
-impl std::fmt::Display for JsonValueError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} at {}", self.error_type, self.position)
-    }
-}
-
-impl JsonValueError {
-    pub(crate) fn new(error_type: JsonErrorType, index: usize, position: FilePosition) -> Self {
-        Self {
-            error_type,
-            index,
-            position,
-        }
-    }
-}
-
-/// Represents a line and column in a file, used for both errors and value positions.
+/// Represents a line and column in a file or input string, used for both errors and value positions.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FilePosition {
+pub struct LinePosition {
     /// Line number, starting at 1.
     pub line: usize,
     /// Column number, starting at 1.
     pub column: usize,
 }
 
-impl fmt::Display for FilePosition {
+impl fmt::Display for LinePosition {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "line {} column {}", self.line, self.column)
     }
 }
 
-impl FilePosition {
+impl LinePosition {
     pub fn new(line: usize, column: usize) -> Self {
         Self { line, column }
     }
 
     /// Find the line and column of a byte index in a string.
-    pub fn find(data: &[u8], find: usize) -> Self {
+    pub fn find(json_data: &[u8], find: usize) -> Self {
         let mut line = 1;
         let mut last_line_start = 0;
         let mut index = 0;
-        while let Some(next) = data.get(index) {
+        while let Some(next) = json_data.get(index) {
             if *next == b'\n' {
                 line += 1;
                 last_line_start = index + 1;
