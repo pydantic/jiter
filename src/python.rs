@@ -84,18 +84,35 @@ impl<'j> PythonParser<'j> {
                 }
             }
             Peak::Array => {
-                let list = if let Some(peak_first) = self.parser.array_first()? {
-                    let mut vec: SmallVec<[PyObject; 8]> = SmallVec::with_capacity(8);
+                let list = PyList::empty(py);
+                let append = |value: PyObject| {
+                    let r = unsafe { ffi::PyList_Append(list.as_ptr(), value.as_ptr()) };
+                    if r == -1 {
+                        panic!("PyList_Append failed")
+                    }
+                };
+                if let Some(peak_first) = self.parser.array_first()? {
                     let v = self._check_take_value::<StringCache>(py, peak_first)?;
-                    vec.push(v);
+                    append(v);
                     while let Some(peak) = self.parser.array_step()? {
                         let v = self._check_take_value::<StringCache>(py, peak)?;
-                        vec.push(v);
+                        append(v);
+                        // vec.push(v);
                     }
-                    PyList::new(py, vec)
-                } else {
-                    PyList::empty(py)
-                };
+                }
+
+                // let list = if let Some(peak_first) = self.parser.array_first()? {
+                //     let mut vec: SmallVec<[PyObject; 8]> = SmallVec::with_capacity(8);
+                //     let v = self._check_take_value::<StringCache>(py, peak_first)?;
+                //     vec.push(v);
+                //     while let Some(peak) = self.parser.array_step()? {
+                //         let v = self._check_take_value::<StringCache>(py, peak)?;
+                //         vec.push(v);
+                //     }
+                //     PyList::new(py, vec)
+                // } else {
+                //     PyList::empty(py)
+                // };
                 Ok(list.to_object(py))
             }
             Peak::Object => {
