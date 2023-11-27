@@ -112,7 +112,7 @@ impl std::fmt::Display for JsonErrorType {
 
 pub type JsonResult<T> = Result<T, JsonError>;
 
-/// Represents an error from parsing JSON, optionally with a lint position
+/// Represents an error from parsing JSON
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct JsonError {
     /// The type of error.
