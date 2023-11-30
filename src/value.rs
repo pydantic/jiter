@@ -97,14 +97,6 @@ pub(crate) fn take_value(
             let s = parser.consume_string::<StringDecoder>(tape)?;
             Ok(JsonValue::Str(s.into()))
         }
-        Peak::Num(first) => {
-            let n = parser.consume_number::<NumberAny>(first, allow_inf_nan)?;
-            match n {
-                NumberAny::Int(NumberInt::Int(int)) => Ok(JsonValue::Int(int)),
-                NumberAny::Int(NumberInt::BigInt(big_int)) => Ok(JsonValue::BigInt(big_int)),
-                NumberAny::Float(float) => Ok(JsonValue::Float(float)),
-            }
-        }
         Peak::Array => {
             // we could do something clever about guessing the size of the array
             let mut array: SmallVec<[JsonValue; 8]> = SmallVec::new();
@@ -143,6 +135,14 @@ pub(crate) fn take_value(
             }
 
             Ok(JsonValue::Object(Arc::new(object)))
+        }
+        _ => {
+            let n = parser.consume_number::<NumberAny>(peak.into_inner(), allow_inf_nan)?;
+            match n {
+                NumberAny::Int(NumberInt::Int(int)) => Ok(JsonValue::Int(int)),
+                NumberAny::Int(NumberInt::BigInt(big_int)) => Ok(JsonValue::BigInt(big_int)),
+                NumberAny::Float(float) => Ok(JsonValue::Float(float)),
+            }
         }
     }
 }

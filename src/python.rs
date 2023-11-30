@@ -75,14 +75,6 @@ impl<'j> PythonParser<'j> {
                 let s = self.parser.consume_string::<StringDecoder>(&mut self.tape)?;
                 Ok(StringCache::get(py, s.as_str()))
             }
-            Peak::Num(first) => {
-                let n = self.parser.consume_number::<NumberAny>(first, self.allow_inf_nan)?;
-                match n {
-                    NumberAny::Int(NumberInt::Int(int)) => Ok(int.to_object(py)),
-                    NumberAny::Int(NumberInt::BigInt(big_int)) => Ok(big_int.to_object(py)),
-                    NumberAny::Float(float) => Ok(float.to_object(py)),
-                }
-            }
             Peak::Array => {
                 let list = if let Some(peak_first) = self.parser.array_first()? {
                     let mut vec: SmallVec<[PyObject; 8]> = SmallVec::with_capacity(8);
@@ -124,6 +116,16 @@ impl<'j> PythonParser<'j> {
                     }
                 }
                 Ok(dict.to_object(py))
+            }
+            _ => {
+                let n = self
+                    .parser
+                    .consume_number::<NumberAny>(peak.into_inner(), self.allow_inf_nan)?;
+                match n {
+                    NumberAny::Int(NumberInt::Int(int)) => Ok(int.to_object(py)),
+                    NumberAny::Int(NumberInt::BigInt(big_int)) => Ok(big_int.to_object(py)),
+                    NumberAny::Float(float) => Ok(float.to_object(py)),
+                }
             }
         }
     }

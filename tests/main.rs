@@ -36,10 +36,6 @@ fn json_vec(jiter: &mut Jiter, peak: Option<Peak>) -> JiterResult<Vec<String>> {
             let str = jiter.known_str()?;
             v.push(format!("String({str}) @ {position}"));
         }
-        Peak::Num(_) => {
-            let s = display_number(peak, jiter)?;
-            v.push(s);
-        }
         Peak::Array => {
             v.push(format!("[ @ {position}"));
             if let Some(peak) = jiter.known_array()? {
@@ -65,6 +61,10 @@ fn json_vec(jiter: &mut Jiter, peak: Option<Peak>) -> JiterResult<Vec<String>> {
                 }
             }
             v.push("}".to_string());
+        }
+        _ => {
+            let s = display_number(peak, jiter)?;
+            v.push(s);
         }
     };
     Ok(v)
@@ -349,7 +349,7 @@ fn invalid_unicode_code() {
 fn nan_disallowed() {
     let json = r#"[NaN]"#;
     let mut jiter = Jiter::new(json.as_bytes(), false);
-    assert_eq!(jiter.next_array().unwrap().unwrap(), Peak::Num(b'N'));
+    assert_eq!(jiter.next_array().unwrap().unwrap(), Peak::NaN);
     let e = jiter.next_number().unwrap_err();
     assert_eq!(
         e.error_type,
@@ -363,7 +363,7 @@ fn nan_disallowed() {
 fn inf_disallowed() {
     let json = r#"[Infinity]"#;
     let mut jiter = Jiter::new(json.as_bytes(), false);
-    assert_eq!(jiter.next_array().unwrap().unwrap(), Peak::Num(b'I'));
+    assert_eq!(jiter.next_array().unwrap().unwrap(), Peak::Infinity);
     let e = jiter.next_number().unwrap_err();
     assert_eq!(
         e.error_type,
@@ -377,7 +377,7 @@ fn inf_disallowed() {
 fn inf_neg_disallowed() {
     let json = r#"[-Infinity]"#;
     let mut jiter = Jiter::new(json.as_bytes(), false);
-    assert_eq!(jiter.next_array().unwrap().unwrap(), Peak::Num(b'-'));
+    assert_eq!(jiter.next_array().unwrap().unwrap(), Peak::Minus);
     let e = jiter.next_number().unwrap_err();
     assert_eq!(e.error_type, JiterErrorType::JsonError(JsonErrorType::InvalidNumber));
     assert_eq!(e.index, 2);
@@ -388,7 +388,7 @@ fn inf_neg_disallowed() {
 fn nan_disallowed_wrong_type() {
     let json = r#"[NaN]"#;
     let mut jiter = Jiter::new(json.as_bytes(), false);
-    assert_eq!(jiter.next_array().unwrap().unwrap(), Peak::Num(b'N'));
+    assert_eq!(jiter.next_array().unwrap().unwrap(), Peak::NaN);
     let e = jiter.next_str().unwrap_err();
     assert_eq!(
         e.error_type,
@@ -630,9 +630,9 @@ fn jiter_object() {
     assert_eq!(jiter.next_object().unwrap(), Some("foo"));
     assert_eq!(jiter.next_str().unwrap(), "bar");
     assert_eq!(jiter.next_key().unwrap(), Some("spam"));
-    assert_eq!(jiter.next_array().unwrap(), Some(Peak::Num(b'1')));
+    assert_eq!(jiter.next_array().unwrap(), Some(Peak::One));
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(1));
-    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Num(b'-')));
+    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Minus));
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(-2));
     assert_eq!(jiter.array_step().unwrap(), Some(Peak::String));
     assert_eq!(jiter.next_bytes().unwrap(), b"x");
@@ -644,11 +644,11 @@ fn jiter_object() {
 #[test]
 fn jiter_inf() {
     let mut jiter = Jiter::new(b"[Infinity, -Infinity, NaN]", true);
-    assert_eq!(jiter.next_array().unwrap(), Some(Peak::Num(b'I')));
+    assert_eq!(jiter.next_array().unwrap(), Some(Peak::Infinity));
     assert_eq!(jiter.next_float().unwrap(), f64::INFINITY);
-    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Num(b'-')));
+    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Minus));
     assert_eq!(jiter.next_float().unwrap(), f64::NEG_INFINITY);
-    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Num(b'N')));
+    assert_eq!(jiter.array_step().unwrap(), Some(Peak::NaN));
     assert_eq!(jiter.next_float().unwrap().to_string(), "NaN");
     assert_eq!(jiter.array_step().unwrap(), None);
     jiter.finish().unwrap();
@@ -681,20 +681,20 @@ fn jiter_bytes() {
 #[test]
 fn jiter_number() {
     let mut jiter = Jiter::new(br#"  [1, 2.2, 3, 4.1, 5.67]"#, false);
-    assert_eq!(jiter.next_array().unwrap(), Some(Peak::Num(b'1')));
+    assert_eq!(jiter.next_array().unwrap(), Some(Peak::One));
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(1));
-    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Num(b'2')));
+    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Two));
     assert_eq!(jiter.next_float().unwrap(), 2.2);
-    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Num(b'3')));
+    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Three));
 
     let n = jiter.next_number().unwrap();
     assert_eq!(n, NumberAny::Int(NumberInt::Int(3)));
     let n_float: f64 = n.into();
     assert_eq!(n_float, 3.0);
 
-    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Num(b'4')));
+    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Four));
     assert_eq!(jiter.next_number().unwrap(), NumberAny::Float(4.1));
-    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Num(b'5')));
+    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Five));
     assert_eq!(jiter.next_number_bytes().unwrap(), b"5.67");
     assert_eq!(jiter.array_step().unwrap(), None);
     jiter.finish().unwrap();
@@ -726,7 +726,7 @@ fn jiter_empty_array() {
 #[test]
 fn jiter_trailing_bracket() {
     let mut jiter = Jiter::new(b"[1]]", false);
-    assert_eq!(jiter.next_array().unwrap(), Some(Peak::Num(b'1')));
+    assert_eq!(jiter.next_array().unwrap(), Some(Peak::One));
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(1));
     assert!(jiter.array_step().unwrap().is_none());
     let e = jiter.finish().unwrap_err();
@@ -914,17 +914,17 @@ fn readme_jiter() {
 fn jiter_clone() {
     let json = r#"[1, 2]"#;
     let mut jiter1 = Jiter::new(json.as_bytes(), false);
-    assert_eq!(jiter1.next_array().unwrap().unwrap(), Peak::Num(b'1'));
+    assert_eq!(jiter1.next_array().unwrap().unwrap(), Peak::One);
     let n = jiter1.next_number().unwrap();
     assert_eq!(n, NumberAny::Int(NumberInt::Int(1)));
 
     let mut jiter2 = jiter1.clone();
 
-    assert_eq!(jiter1.array_step().unwrap().unwrap(), Peak::Num(b'2'));
+    assert_eq!(jiter1.array_step().unwrap().unwrap(), Peak::Two);
     let n = jiter1.next_number().unwrap();
     assert_eq!(n, NumberAny::Int(NumberInt::Int(2)));
 
-    assert_eq!(jiter2.array_step().unwrap().unwrap(), Peak::Num(b'2'));
+    assert_eq!(jiter2.array_step().unwrap().unwrap(), Peak::Two);
     let n = jiter2.next_number().unwrap();
     assert_eq!(n, NumberAny::Int(NumberInt::Int(2)));
 

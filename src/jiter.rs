@@ -1,4 +1,4 @@
-use crate::errors::{JiterError, JsonType, LinePosition, DEFAULT_RECURSION_LIMIT};
+use crate::errors::{json_error, JiterError, JsonType, LinePosition, DEFAULT_RECURSION_LIMIT};
 use crate::number_decoder::{NumberAny, NumberFloat, NumberInt, NumberRange};
 use crate::parse::{Parser, Peak};
 use crate::string_decoder::{StringDecoder, StringDecoderRange, Tape};
@@ -110,13 +110,15 @@ impl<'j> Jiter<'j> {
 
     /// Knowing the next value is a number, parse it.
     pub fn known_number(&mut self, peak: Peak) -> JiterResult<NumberAny> {
-        match peak {
-            Peak::Num(first) => self
-                .parser
-                .consume_number::<NumberAny>(first, self.allow_inf_nan)
-                .map_err(Into::into),
-            _ => Err(self.wrong_type(JsonType::Int, peak)),
-        }
+        self.parser
+            .consume_number::<NumberAny>(peak.into_inner(), self.allow_inf_nan)
+            .map_err(|e| {
+                if !peak.is_num() {
+                    self.wrong_type(JsonType::Int, peak)
+                } else {
+                    e.into()
+                }
+            })
     }
 
     /// Assuming the next value is an integer, consume it. Error if it is not an integer, or is invalid JSON.
@@ -127,13 +129,15 @@ impl<'j> Jiter<'j> {
 
     /// Knowing the next value is an integer, parse it.
     pub fn known_int(&mut self, peak: Peak) -> JiterResult<NumberInt> {
-        match peak {
-            Peak::Num(first) => self
-                .parser
-                .consume_number::<NumberInt>(first, self.allow_inf_nan)
-                .map_err(Into::into),
-            _ => Err(self.wrong_type(JsonType::Int, peak)),
-        }
+        self.parser
+            .consume_number::<NumberInt>(peak.into_inner(), self.allow_inf_nan)
+            .map_err(|e| {
+                if !peak.is_num() {
+                    self.wrong_type(JsonType::Int, peak)
+                } else {
+                    e.into()
+                }
+            })
     }
 
     /// Assuming the next value is a float, consume it. Error if it is not a float, or is invalid JSON.
@@ -144,13 +148,15 @@ impl<'j> Jiter<'j> {
 
     /// Knowing the next value is a float, parse it.
     pub fn known_float(&mut self, peak: Peak) -> JiterResult<f64> {
-        match peak {
-            Peak::Num(first) => self
-                .parser
-                .consume_number::<NumberFloat>(first, self.allow_inf_nan)
-                .map_err(Into::into),
-            _ => Err(self.wrong_type(JsonType::Int, peak)),
-        }
+        self.parser
+            .consume_number::<NumberFloat>(peak.into_inner(), self.allow_inf_nan)
+            .map_err(|e| {
+                if !peak.is_num() {
+                    self.wrong_type(JsonType::Float, peak)
+                } else {
+                    e.into()
+                }
+            })
     }
 
     /// Assuming the next value is a number, consume it and return bytes from the original JSON data.
@@ -161,12 +167,18 @@ impl<'j> Jiter<'j> {
 
     /// Knowing the next value is a number, parse it and return bytes from the original JSON data.
     fn known_number_bytes(&mut self, peak: Peak) -> JiterResult<&[u8]> {
-        match peak {
-            Peak::Num(first) => {
-                let range = self.parser.consume_number::<NumberRange>(first, self.allow_inf_nan)?;
-                Ok(&self.data[range])
+        match self
+            .parser
+            .consume_number::<NumberRange>(peak.into_inner(), self.allow_inf_nan)
+        {
+            Ok(range) => Ok(&self.data[range]),
+            Err(e) => {
+                if !peak.is_num() {
+                    Err(self.wrong_type(JsonType::Float, peak))
+                } else {
+                    Err(e.into())
+                }
             }
-            _ => Err(self.wrong_type(JsonType::Float, peak)),
         }
     }
 
@@ -299,9 +311,10 @@ impl<'j> Jiter<'j> {
             Peak::True | Peak::False => JiterError::wrong_type(expected, JsonType::Bool, self.parser.index),
             Peak::Null => JiterError::wrong_type(expected, JsonType::Null, self.parser.index),
             Peak::String => JiterError::wrong_type(expected, JsonType::String, self.parser.index),
-            Peak::Num(first) => self.wrong_num(first, expected),
             Peak::Array => JiterError::wrong_type(expected, JsonType::Array, self.parser.index),
             Peak::Object => JiterError::wrong_type(expected, JsonType::Object, self.parser.index),
+            _ if peak.is_num() => self.wrong_num(peak.into_inner(), expected),
+            _ => json_error!(ExpectedSomeValue, self.parser.index).into(),
         }
     }
 

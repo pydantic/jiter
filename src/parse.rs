@@ -2,33 +2,60 @@ use crate::errors::{json_err, JsonResult, LinePosition};
 use crate::number_decoder::AbstractNumberDecoder;
 use crate::string_decoder::{AbstractStringDecoder, Tape};
 
-/// Enum used to describe the next expected value in JSON.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Peak {
-    Null,
-    True,
-    False,
-    // we keep the first character of the number as we'll need it when decoding
-    Num(u8),
-    String,
-    Array,
-    Object,
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct Peak(u8);
+
+#[allow(non_upper_case_globals)] // while testing
+impl Peak {
+    pub const Null: Self = Self(b'n');
+    pub const True: Self = Self(b't');
+    pub const False: Self = Self(b'f');
+    pub const Zero: Self = Self(b'0');
+    pub const One: Self = Self(b'1');
+    pub const Two: Self = Self(b'2');
+    pub const Three: Self = Self(b'3');
+    pub const Four: Self = Self(b'4');
+    pub const Five: Self = Self(b'5');
+    pub const Six: Self = Self(b'6');
+    pub const Seven: Self = Self(b'7');
+    pub const Eight: Self = Self(b'8');
+    pub const Nine: Self = Self(b'9');
+    pub const Minus: Self = Self(b'-');
+    pub const Plus: Self = Self(b'+');
+    pub const Infinity: Self = Self(b'I');
+    pub const NaN: Self = Self(b'N');
+    pub const String: Self = Self(b'"');
+    pub const Array: Self = Self(b'[');
+    pub const Object: Self = Self(b'{');
 }
 
 impl Peak {
-    fn new(next: u8) -> Option<Self> {
-        match next {
-            b'[' => Some(Self::Array),
-            b'{' => Some(Self::Object),
-            b'"' => Some(Self::String),
-            b't' => Some(Self::True),
-            b'f' => Some(Self::False),
-            b'n' => Some(Self::Null),
-            b'0'..=b'9' => Some(Self::Num(next)),
-            // `-` negative, `I` Infinity, `N` NaN
-            b'-' | b'I' | b'N' => Some(Self::Num(next)),
-            _ => None,
-        }
+    const fn new(next: u8) -> Self {
+        Self(next)
+    }
+
+    pub const fn is_num(self) -> bool {
+        matches!(
+            self,
+            Self::Zero
+                | Self::One
+                | Self::Two
+                | Self::Three
+                | Self::Four
+                | Self::Five
+                | Self::Six
+                | Self::Seven
+                | Self::Eight
+                | Self::Nine
+                | Self::Minus
+                | Self::Plus
+                | Self::Infinity
+                | Self::NaN
+        )
+    }
+
+    pub const fn into_inner(self) -> u8 {
+        self.0
     }
 }
 
@@ -57,10 +84,7 @@ impl<'j> Parser<'j> {
 
     pub fn peak(&mut self) -> JsonResult<Peak> {
         if let Some(next) = self.eat_whitespace() {
-            match Peak::new(next) {
-                Some(p) => Ok(p),
-                None => json_err!(ExpectedSomeValue, self.index),
-            }
+            Ok(Peak::new(next))
         } else {
             json_err!(EofWhileParsingValue, self.index)
         }
@@ -73,7 +97,7 @@ impl<'j> Parser<'j> {
                 self.index += 1;
                 Ok(None)
             } else {
-                self.array_peak()
+                Ok(Some(Peak::new(next)))
             }
         } else {
             json_err!(EofWhileParsingList, self.index)
@@ -85,7 +109,12 @@ impl<'j> Parser<'j> {
             match next {
                 b',' => {
                     self.index += 1;
-                    self.array_peak()
+                    let next = self.array_peak()?;
+                    if next.is_none() {
+                        json_err!(TrailingComma, self.index)
+                    } else {
+                        Ok(next)
+                    }
                 }
                 b']' => {
                     self.index += 1;
@@ -216,16 +245,9 @@ impl<'j> Parser<'j> {
 
     fn array_peak(&mut self) -> JsonResult<Option<Peak>> {
         if let Some(next) = self.eat_whitespace() {
-            match Peak::new(next) {
-                Some(p) => Ok(Some(p)),
-                None => {
-                    // if next is a `]`, we have a "trailing comma" error
-                    if next == b']' {
-                        json_err!(TrailingComma, self.index)
-                    } else {
-                        json_err!(ExpectedSomeValue, self.index)
-                    }
-                }
+            match next {
+                b']' => Ok(None),
+                _ => Ok(Some(Peak::new(next))),
             }
         } else {
             json_err!(EofWhileParsingValue, self.index)
