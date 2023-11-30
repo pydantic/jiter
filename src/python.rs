@@ -151,7 +151,8 @@ impl StringMaybeCache for StringCache {
     fn get(py: Python, json_str: &str) -> PyObject {
         static STRINGS_CACHE: GILOnceCell<GILProtected<RefCell<AHashMap<String, PyObject>>>> = GILOnceCell::new();
 
-        if json_str.len() < 64 {
+        // from tests, 0 and 1 character strings are faster not cached
+        if (2..64).contains(&json_str.len()) {
             let cache = STRINGS_CACHE
                 .get_or_init(py, || GILProtected::new(RefCell::new(AHashMap::new())))
                 .get(py);

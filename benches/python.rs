@@ -67,6 +67,14 @@ fn python_parse_true_object_not_cached(bench: &mut Bencher) {
     _python_parse_file("./benches/true_object.json", bench, false);
 }
 
+fn python_parse_string_array_not_cached(bench: &mut Bencher) {
+    _python_parse_file("./benches/string_array.json", bench, false);
+}
+
+fn python_parse_string_array(bench: &mut Bencher) {
+    _python_parse_file("./benches/string_array.json", bench, true);
+}
+
 fn python_parse_true_object(bench: &mut Bencher) {
     _python_parse_file("./benches/true_object.json", bench, true);
 }
@@ -83,6 +91,8 @@ benchmark_group!(
     python_parse_medium_response_not_cached,
     python_parse_medium_response,
     python_parse_true_object_not_cached,
+    python_parse_string_array_not_cached,
+    python_parse_string_array,
     python_parse_true_object,
     python_parse_true_array,
 );
