@@ -233,13 +233,13 @@ impl<'j> Parser<'j> {
     }
 
     fn eat_whitespace(&mut self) -> Option<u8> {
-        while let Some(next) = self.data.get(self.index) {
-            match next {
-                b' ' | b'\r' | b'\t' | b'\n' => self.index += 1,
-                _ => return Some(*next),
-            }
-        }
-        None
+        self.index = self
+            .data
+            .get(self.index..)?
+            .iter()
+            .position(|next| !matches!(*next, b' ' | b'\r' | b'\t' | b'\n'))
+            .map_or_else(|| self.data.len(), |pos| self.index + pos);
+        self.data.get(self.index).copied()
     }
 }
 
