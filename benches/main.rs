@@ -1,5 +1,5 @@
-use bencher::black_box;
 use codspeed_bencher_compat::{benchmark_group, benchmark_main, Bencher};
+use std::hint::black_box;
 
 use std::fs::File;
 use std::io::Read;
@@ -28,25 +28,21 @@ fn jiter_iter_big(path: &str, bench: &mut Bencher) {
     let json_data = black_box(json.as_bytes());
     bench.iter(|| {
         let mut jiter = Jiter::new(json_data, false);
-        let mut v_outer = Vec::new();
         jiter.next_array().unwrap();
 
         loop {
-            let mut v_inner = Vec::new();
             if let Some(peak) = jiter.next_array().unwrap() {
                 let i = jiter.known_float(peak).unwrap();
-                v_inner.push(i);
+                black_box(i);
                 while let Some(peak) = jiter.array_step().unwrap() {
                     let i = jiter.known_float(peak).unwrap();
-                    v_inner.push(i);
+                    black_box(i);
                 }
             }
-            v_outer.push(v_inner);
             if jiter.array_step().unwrap().is_none() {
                 break;
             }
         }
-        black_box(v_outer)
     })
 }
 
@@ -80,17 +76,15 @@ fn jiter_iter_string_array(path: &str, bench: &mut Bencher) {
     let json_data = black_box(json.as_bytes());
     bench.iter(|| {
         let mut jiter = Jiter::new(json_data, false);
-        let mut v = Vec::new();
         jiter.next_array().unwrap();
         let i = jiter.known_str().unwrap();
         // record len instead of allocating the string to simulate something like constructing a PyString
-        v.push(i.len());
+        black_box(i.len());
         while jiter.array_step().unwrap().is_some() {
             let i = jiter.known_str().unwrap();
-            v.push(i.len());
+            black_box(i.len());
         }
         jiter.finish().unwrap();
-        black_box(v)
     })
 }
 
@@ -99,15 +93,13 @@ fn jiter_iter_true_array(path: &str, bench: &mut Bencher) {
     let json_data = black_box(json.as_bytes());
     bench.iter(|| {
         let mut jiter = Jiter::new(json_data, false);
-        let mut v = Vec::new();
         let first_peak = jiter.next_array().unwrap().unwrap();
         let i = jiter.known_bool(first_peak).unwrap();
-        v.push(i);
+        black_box(i);
         while let Some(peak) = jiter.array_step().unwrap() {
             let i = jiter.known_bool(peak).unwrap();
-            v.push(i);
+            black_box(i);
         }
-        black_box(v)
     })
 }
 
@@ -116,18 +108,16 @@ fn jiter_iter_true_object(path: &str, bench: &mut Bencher) {
     let json_data = black_box(json.as_bytes());
     bench.iter(|| {
         let mut jiter = Jiter::new(json_data, false);
-        let mut v = Vec::new();
         if let Some(first_key) = jiter.next_object().unwrap() {
             let first_key = first_key.to_string();
             let first_value = jiter.next_bool().unwrap();
-            v.push((first_key, first_value));
+            black_box((first_key, first_value));
             while let Some(key) = jiter.next_key().unwrap() {
                 let key = key.to_string();
                 let value = jiter.next_bool().unwrap();
-                v.push((key, value));
+                black_box((key, value));
             }
         }
-        black_box(v)
     })
 }
 
@@ -136,15 +126,13 @@ fn jiter_iter_ints_array(path: &str, bench: &mut Bencher) {
     let json_data = black_box(json.as_bytes());
     bench.iter(|| {
         let mut jiter = Jiter::new(json_data, false);
-        let mut v = Vec::new();
         let first_peak = jiter.next_array().unwrap().unwrap();
         let i = jiter.known_int(first_peak).unwrap();
-        v.push(i);
+        black_box(i);
         while let Some(peak) = jiter.array_step().unwrap() {
             let i = jiter.known_int(peak).unwrap();
-            v.push(i);
+            black_box(i);
         }
-        black_box(v)
     })
 }
 
@@ -153,15 +141,13 @@ fn jiter_iter_floats_array(path: &str, bench: &mut Bencher) {
     let json_data = black_box(json.as_bytes());
     bench.iter(|| {
         let mut jiter = Jiter::new(json_data, false);
-        let mut v = Vec::new();
         let first_peak = jiter.next_array().unwrap().unwrap();
         let i = jiter.known_float(first_peak).unwrap();
-        v.push(i);
+        black_box(i);
         while let Some(peak) = jiter.array_step().unwrap() {
             let i = jiter.known_float(peak).unwrap();
-            v.push(i);
+            black_box(i);
         }
-        black_box(v)
     })
 }
 
