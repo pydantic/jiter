@@ -4,15 +4,16 @@ use crate::string_decoder::{AbstractStringDecoder, Tape};
 
 /// Enum used to describe the next expected value in JSON.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[repr(u8)]
 pub enum Peak {
-    Null,
-    True,
-    False,
+    Null = b'n',
+    True = b't',
+    False = b'f',
     // we keep the first character of the number as we'll need it when decoding
     Num(u8),
-    String,
-    Array,
-    Object,
+    String = b'"',
+    Array = b'[',
+    Object = b'{',
 }
 
 impl Peak {
