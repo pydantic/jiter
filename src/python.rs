@@ -6,7 +6,7 @@ use pyo3::prelude::*;
 use pyo3::sync::{GILOnceCell, GILProtected};
 use pyo3::types::{PyDict, PyList, PyString};
 
-use ahash::AHashMap;
+use hashbrown::hash_map::{HashMap, RawEntryMut};
 use smallvec::SmallVec;
 
 use crate::errors::{json_err, JsonError, JsonResult, DEFAULT_RECURSION_LIMIT};
@@ -162,30 +162,33 @@ struct StringCache;
 
 impl StringMaybeCache for StringCache {
     fn get<'py>(py: Python<'py>, json_str: &str) -> Py2<'py, PyAny> {
-        static STRINGS_CACHE: GILOnceCell<GILProtected<RefCell<AHashMap<String, PyObject>>>> = GILOnceCell::new();
+        static STRINGS_CACHE: GILOnceCell<GILProtected<RefCell<HashMap<String, PyObject>>>> = GILOnceCell::new();
 
         // from tests, 0 and 1 character strings are faster not cached
         if (2..64).contains(&json_str.len()) {
             let cache = STRINGS_CACHE
-                .get_or_init(py, || GILProtected::new(RefCell::new(AHashMap::new())))
+                .get_or_init(py, || GILProtected::new(RefCell::new(HashMap::new())))
                 .get(py);
 
-            // Finish the borrow before matching, so that the RefCell isn't borrowed for the whole match.
-            let key = cache.borrow().get(json_str).map(|key| key.clone_ref(py));
+            let mut map = cache.borrow_mut();
+            let entry = map.raw_entry_mut().from_key(json_str);
 
-            match key {
-                Some(key) => key.attach_into(py),
-                None => {
-                    let key_object = PyString::new2(py, json_str).to_object(py);
-                    let mut cache_writable = cache.borrow_mut();
-                    // 500k limit means 1m keys + values, 1m 64 byte strings is ~64mb
-                    if cache_writable.len() > 500_000 {
-                        cache_writable.clear();
-                    }
-                    cache_writable.insert(json_str.to_owned(), key_object.clone_ref(py));
-                    key_object.attach_into(py)
+            let (py_string, inserted) = match entry {
+                RawEntryMut::Vacant(view) => {
+                    let py_string = PyString::new2(py, json_str).to_object(py);
+                    view.insert(json_str.to_owned(), py_string.clone_ref(py));
+                    (py_string.attach_into(py), true)
+                }
+                RawEntryMut::Occupied(view) => (view.get().clone_ref(py).attach_into(py), false),
+            };
+            if inserted {
+                // 500k limit means 1m keys + values, 1m 64 byte strings is ~64mb
+                if map.len() > 500_000 {
+                    // TODO is there a fast way to keep (say) half the cache?
+                    map.clear();
                 }
             }
+            py_string
         } else {
             let key = PyString::new2(py, json_str);
             key.to_object(py).attach_into(py)
