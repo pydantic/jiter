@@ -32,11 +32,11 @@ impl Peak {
     }
 }
 
-static TRUE_REST: [u8; 3] = [b'r', b'u', b'e'];
-static FALSE_REST: [u8; 4] = [b'a', b'l', b's', b'e'];
-static NULL_REST: [u8; 3] = [b'u', b'l', b'l'];
-static NAN_REST: [u8; 2] = [b'a', b'N'];
-static INFINITY_REST: [u8; 7] = [b'n', b'f', b'i', b'n', b'i', b't', b'y'];
+static TRUE_REST: &[u8; 3] = b"rue";
+static FALSE_REST: &[u8; 4] = b"alse";
+static NULL_REST: &[u8; 3] = b"ull";
+static NAN_REST: &[u8; 2] = b"aN";
+static INFINITY_REST: &[u8; 7] = b"nfinity";
 
 #[derive(Debug, Clone)]
 pub(crate) struct Parser<'j> {
@@ -209,7 +209,7 @@ impl<'j> Parser<'j> {
         }
     }
 
-    fn consume_ident<const SIZE: usize>(&mut self, expected: [u8; SIZE]) -> JsonResult<()> {
+    fn consume_ident<const SIZE: usize>(&mut self, expected: &'static [u8; SIZE]) -> JsonResult<()> {
         self.index = consume_ident(self.data, self.index, expected)?;
         Ok(())
     }
@@ -251,21 +251,20 @@ pub(crate) fn consume_nan(data: &[u8], index: usize) -> JsonResult<usize> {
     consume_ident(data, index, NAN_REST)
 }
 
-fn consume_ident<const SIZE: usize>(data: &[u8], mut index: usize, expected: [u8; SIZE]) -> JsonResult<usize> {
-    match data.get(index + 1..index + SIZE + 1) {
-        Some(s) if s == expected => Ok(index + SIZE + 1),
-        // TODO very sadly iterating over expected cause extra branches in the generated assembly
-        //   and is significantly slower than just returning an error
-        _ => {
-            index += 1;
-            for c in expected.iter() {
-                match data.get(index) {
-                    Some(v) if v == c => index += 1,
-                    Some(_) => return json_err!(ExpectedSomeIdent, index),
-                    _ => break,
-                }
-            }
-            json_err!(EofWhileParsingValue, index)
-        }
+fn consume_ident<const SIZE: usize>(data: &[u8], index: usize, expected: &'static [u8; SIZE]) -> JsonResult<usize> {
+    let Some(slice) = data.get(index + 1..) else {
+        return json_err!(EofWhileParsingValue, data.len());
+    };
+
+    let mut expected = expected.iter();
+
+    if let Some(error) = slice.iter().zip(expected.by_ref()).position(|(a, b)| a != b) {
+        return json_err!(ExpectedSomeIdent, index + 1 + error);
     }
+
+    if expected.next().is_some() {
+        return json_err!(EofWhileParsingValue, data.len());
+    }
+
+    Ok(index + 1 + SIZE)
 }
