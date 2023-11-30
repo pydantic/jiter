@@ -3,7 +3,7 @@ use std::sync::Arc;
 use num_bigint::BigInt;
 use smallvec::SmallVec;
 
-use crate::errors::{JsonError, JsonResult, DEFAULT_RECURSION_LIMIT};
+use crate::errors::{json_error, JsonError, JsonResult, DEFAULT_RECURSION_LIMIT};
 use crate::lazy_index_map::LazyIndexMap;
 use crate::number_decoder::{NumberAny, NumberInt};
 use crate::parse::{Parser, Peak};
@@ -137,11 +137,18 @@ pub(crate) fn take_value(
             Ok(JsonValue::Object(Arc::new(object)))
         }
         _ => {
-            let n = parser.consume_number::<NumberAny>(peak.into_inner(), allow_inf_nan)?;
+            let n = parser.consume_number::<NumberAny>(peak.into_inner(), allow_inf_nan);
             match n {
-                NumberAny::Int(NumberInt::Int(int)) => Ok(JsonValue::Int(int)),
-                NumberAny::Int(NumberInt::BigInt(big_int)) => Ok(JsonValue::BigInt(big_int)),
-                NumberAny::Float(float) => Ok(JsonValue::Float(float)),
+                Ok(NumberAny::Int(NumberInt::Int(int))) => Ok(JsonValue::Int(int)),
+                Ok(NumberAny::Int(NumberInt::BigInt(big_int))) => Ok(JsonValue::BigInt(big_int)),
+                Ok(NumberAny::Float(float)) => Ok(JsonValue::Float(float)),
+                Err(e) => {
+                    if !peak.is_num() {
+                        Err(json_error!(ExpectedSomeValue, self.parser.index).into())
+                    } else {
+                        Err(e.into())
+                    }
+                }
             }
         }
     }
