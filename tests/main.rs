@@ -630,7 +630,7 @@ fn jiter_object() {
     assert_eq!(jiter.next_object().unwrap(), Some("foo"));
     assert_eq!(jiter.next_str().unwrap(), "bar");
     assert_eq!(jiter.next_key().unwrap(), Some("spam"));
-    assert_eq!(jiter.next_array().unwrap(), Some(Peak::One));
+    assert_eq!(jiter.next_array().unwrap().unwrap().into_inner(), b'1');
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(1));
     assert_eq!(jiter.array_step().unwrap(), Some(Peak::Minus));
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(-2));
@@ -681,20 +681,20 @@ fn jiter_bytes() {
 #[test]
 fn jiter_number() {
     let mut jiter = Jiter::new(br#"  [1, 2.2, 3, 4.1, 5.67]"#, false);
-    assert_eq!(jiter.next_array().unwrap(), Some(Peak::One));
+    assert_eq!(jiter.next_array().unwrap().unwrap().into_inner(), b'1');
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(1));
-    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Two));
+    assert_eq!(jiter.array_step().unwrap().unwrap().into_inner(), b'2');
     assert_eq!(jiter.next_float().unwrap(), 2.2);
-    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Three));
+    assert_eq!(jiter.array_step().unwrap().unwrap().into_inner(), b'3');
 
     let n = jiter.next_number().unwrap();
     assert_eq!(n, NumberAny::Int(NumberInt::Int(3)));
     let n_float: f64 = n.into();
     assert_eq!(n_float, 3.0);
 
-    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Four));
+    assert_eq!(jiter.array_step().unwrap().unwrap().into_inner(), b'4');
     assert_eq!(jiter.next_number().unwrap(), NumberAny::Float(4.1));
-    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Five));
+    assert_eq!(jiter.array_step().unwrap().unwrap().into_inner(), b'5');
     assert_eq!(jiter.next_number_bytes().unwrap(), b"5.67");
     assert_eq!(jiter.array_step().unwrap(), None);
     jiter.finish().unwrap();
@@ -726,7 +726,7 @@ fn jiter_empty_array() {
 #[test]
 fn jiter_trailing_bracket() {
     let mut jiter = Jiter::new(b"[1]]", false);
-    assert_eq!(jiter.next_array().unwrap(), Some(Peak::One));
+    assert_eq!(jiter.next_array().unwrap().unwrap().into_inner(), b'1');
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(1));
     assert!(jiter.array_step().unwrap().is_none());
     let e = jiter.finish().unwrap_err();
@@ -914,17 +914,17 @@ fn readme_jiter() {
 fn jiter_clone() {
     let json = r#"[1, 2]"#;
     let mut jiter1 = Jiter::new(json.as_bytes(), false);
-    assert_eq!(jiter1.next_array().unwrap().unwrap(), Peak::One);
+    assert_eq!(jiter1.next_array().unwrap().unwrap().into_inner(), b'1');
     let n = jiter1.next_number().unwrap();
     assert_eq!(n, NumberAny::Int(NumberInt::Int(1)));
 
     let mut jiter2 = jiter1.clone();
 
-    assert_eq!(jiter1.array_step().unwrap().unwrap(), Peak::Two);
+    assert_eq!(jiter1.array_step().unwrap().unwrap().into_inner(), b'2');
     let n = jiter1.next_number().unwrap();
     assert_eq!(n, NumberAny::Int(NumberInt::Int(2)));
 
-    assert_eq!(jiter2.array_step().unwrap().unwrap(), Peak::Two);
+    assert_eq!(jiter2.array_step().unwrap().unwrap().into_inner(), b'2');
     let n = jiter2.next_number().unwrap();
     assert_eq!(n, NumberAny::Int(NumberInt::Int(2)));
 

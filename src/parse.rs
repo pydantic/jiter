@@ -10,18 +10,7 @@ impl Peak {
     pub const Null: Self = Self(b'n');
     pub const True: Self = Self(b't');
     pub const False: Self = Self(b'f');
-    pub const Zero: Self = Self(b'0');
-    pub const One: Self = Self(b'1');
-    pub const Two: Self = Self(b'2');
-    pub const Three: Self = Self(b'3');
-    pub const Four: Self = Self(b'4');
-    pub const Five: Self = Self(b'5');
-    pub const Six: Self = Self(b'6');
-    pub const Seven: Self = Self(b'7');
-    pub const Eight: Self = Self(b'8');
-    pub const Nine: Self = Self(b'9');
     pub const Minus: Self = Self(b'-');
-    pub const Plus: Self = Self(b'+');
     pub const Infinity: Self = Self(b'I');
     pub const NaN: Self = Self(b'N');
     pub const String: Self = Self(b'"');
@@ -35,23 +24,7 @@ impl Peak {
     }
 
     pub const fn is_num(self) -> bool {
-        matches!(
-            self,
-            Self::Zero
-                | Self::One
-                | Self::Two
-                | Self::Three
-                | Self::Four
-                | Self::Five
-                | Self::Six
-                | Self::Seven
-                | Self::Eight
-                | Self::Nine
-                | Self::Minus
-                | Self::Plus
-                | Self::Infinity
-                | Self::NaN
-        )
+        self.0.is_ascii_digit() || matches!(self, Self::Minus | Self::Infinity | Self::NaN)
     }
 
     pub const fn into_inner(self) -> u8 {

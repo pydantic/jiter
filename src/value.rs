@@ -144,9 +144,9 @@ pub(crate) fn take_value(
                 Ok(NumberAny::Float(float)) => Ok(JsonValue::Float(float)),
                 Err(e) => {
                     if !peak.is_num() {
-                        Err(json_error!(ExpectedSomeValue, parser.index).into())
+                        Err(json_error!(ExpectedSomeValue, parser.index))
                     } else {
-                        Err(e.into())
+                        Err(e)
                     }
                 }
             }
