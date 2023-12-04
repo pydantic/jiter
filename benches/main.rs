@@ -4,7 +4,7 @@ use std::hint::black_box;
 use std::fs::File;
 use std::io::Read;
 
-use jiter::{Jiter, JsonValue, Peak};
+use jiter::{Jiter, JsonValue, Peek};
 use serde_json::Value;
 
 fn read_file(path: &str) -> String {
@@ -31,11 +31,11 @@ fn jiter_iter_big(path: &str, bench: &mut Bencher) {
         jiter.next_array().unwrap();
 
         loop {
-            if let Some(peak) = jiter.next_array().unwrap() {
-                let i = jiter.known_float(peak).unwrap();
+            if let Some(peek) = jiter.next_array().unwrap() {
+                let i = jiter.known_float(peek).unwrap();
                 black_box(i);
-                while let Some(peak) = jiter.array_step().unwrap() {
-                    let i = jiter.known_float(peak).unwrap();
+                while let Some(peek) = jiter.array_step().unwrap() {
+                    let i = jiter.known_float(peek).unwrap();
                     black_box(i);
                 }
             }
@@ -47,10 +47,10 @@ fn jiter_iter_big(path: &str, bench: &mut Bencher) {
 }
 
 fn find_string(jiter: &mut Jiter) -> String {
-    let peak = jiter.peak().unwrap();
-    match peak {
-        Peak::String => jiter.known_str().unwrap().to_string(),
-        Peak::Array => {
+    let peek = jiter.peek().unwrap();
+    match peek {
+        Peek::String => jiter.known_str().unwrap().to_string(),
+        Peek::Array => {
             assert!(jiter.known_array().unwrap().is_some());
             let s = find_string(jiter).to_string();
             assert!(jiter.array_step().unwrap().is_none());
@@ -93,11 +93,11 @@ fn jiter_iter_true_array(path: &str, bench: &mut Bencher) {
     let json_data = black_box(json.as_bytes());
     bench.iter(|| {
         let mut jiter = Jiter::new(json_data, false);
-        let first_peak = jiter.next_array().unwrap().unwrap();
-        let i = jiter.known_bool(first_peak).unwrap();
+        let first_peek = jiter.next_array().unwrap().unwrap();
+        let i = jiter.known_bool(first_peek).unwrap();
         black_box(i);
-        while let Some(peak) = jiter.array_step().unwrap() {
-            let i = jiter.known_bool(peak).unwrap();
+        while let Some(peek) = jiter.array_step().unwrap() {
+            let i = jiter.known_bool(peek).unwrap();
             black_box(i);
         }
     })
@@ -126,11 +126,11 @@ fn jiter_iter_ints_array(path: &str, bench: &mut Bencher) {
     let json_data = black_box(json.as_bytes());
     bench.iter(|| {
         let mut jiter = Jiter::new(json_data, false);
-        let first_peak = jiter.next_array().unwrap().unwrap();
-        let i = jiter.known_int(first_peak).unwrap();
+        let first_peek = jiter.next_array().unwrap().unwrap();
+        let i = jiter.known_int(first_peek).unwrap();
         black_box(i);
-        while let Some(peak) = jiter.array_step().unwrap() {
-            let i = jiter.known_int(peak).unwrap();
+        while let Some(peek) = jiter.array_step().unwrap() {
+            let i = jiter.known_int(peek).unwrap();
             black_box(i);
         }
     })
@@ -141,11 +141,11 @@ fn jiter_iter_floats_array(path: &str, bench: &mut Bencher) {
     let json_data = black_box(json.as_bytes());
     bench.iter(|| {
         let mut jiter = Jiter::new(json_data, false);
-        let first_peak = jiter.next_array().unwrap().unwrap();
-        let i = jiter.known_float(first_peak).unwrap();
+        let first_peek = jiter.next_array().unwrap().unwrap();
+        let i = jiter.known_float(first_peek).unwrap();
         black_box(i);
-        while let Some(peak) = jiter.array_step().unwrap() {
-            let i = jiter.known_float(peak).unwrap();
+        while let Some(peek) = jiter.array_step().unwrap() {
+            let i = jiter.known_float(peek).unwrap();
             black_box(i);
         }
     })

@@ -6,7 +6,7 @@ use smallvec::SmallVec;
 use crate::errors::{json_error, JsonError, JsonResult, DEFAULT_RECURSION_LIMIT};
 use crate::lazy_index_map::LazyIndexMap;
 use crate::number_decoder::{NumberAny, NumberInt};
-use crate::parse::{Parser, Peak};
+use crate::parse::{Parser, Peek};
 use crate::string_decoder::{StringDecoder, Tape};
 
 /// Enum representing a JSON value.
@@ -53,8 +53,8 @@ impl JsonValue {
         let mut parser = Parser::new(data);
 
         let mut tape = Tape::default();
-        let peak = parser.peak()?;
-        let v = take_value(peak, &mut parser, &mut tape, DEFAULT_RECURSION_LIMIT, allow_inf_nan)?;
+        let peek = parser.peek()?;
+        let v = take_value(peek, &mut parser, &mut tape, DEFAULT_RECURSION_LIMIT, allow_inf_nan)?;
         parser.finish()?;
         Ok(v)
     }
@@ -74,61 +74,61 @@ macro_rules! check_recursion {
 }
 
 pub(crate) fn take_value(
-    peak: Peak,
+    peek: Peek,
     parser: &mut Parser,
     tape: &mut Tape,
     mut recursion_limit: u8,
     allow_inf_nan: bool,
 ) -> JsonResult<JsonValue> {
-    match peak {
-        Peak::True => {
+    match peek {
+        Peek::True => {
             parser.consume_true()?;
             Ok(JsonValue::Bool(true))
         }
-        Peak::False => {
+        Peek::False => {
             parser.consume_false()?;
             Ok(JsonValue::Bool(false))
         }
-        Peak::Null => {
+        Peek::Null => {
             parser.consume_null()?;
             Ok(JsonValue::Null)
         }
-        Peak::String => {
+        Peek::String => {
             let s = parser.consume_string::<StringDecoder>(tape)?;
             Ok(JsonValue::Str(s.into()))
         }
-        Peak::Array => {
+        Peek::Array => {
             // we could do something clever about guessing the size of the array
             let mut array: SmallVec<[JsonValue; 8]> = SmallVec::new();
-            if let Some(peak_first) = parser.array_first()? {
+            if let Some(peek_first) = parser.array_first()? {
                 check_recursion!(recursion_limit, parser.index,
-                    let v = take_value(peak_first, parser, tape, recursion_limit, allow_inf_nan)?;
+                    let v = take_value(peek_first, parser, tape, recursion_limit, allow_inf_nan)?;
                 );
                 array.push(v);
-                while let Some(peak) = parser.array_step()? {
+                while let Some(peek) = parser.array_step()? {
                     check_recursion!(recursion_limit, parser.index,
-                        let v = take_value(peak, parser, tape, recursion_limit, allow_inf_nan)?;
+                        let v = take_value(peek, parser, tape, recursion_limit, allow_inf_nan)?;
                     );
                     array.push(v);
                 }
             }
             Ok(JsonValue::Array(Arc::new(array)))
         }
-        Peak::Object => {
+        Peek::Object => {
             // same for objects
             let mut object: LazyIndexMap<String, JsonValue> = LazyIndexMap::new();
             if let Some(first_key) = parser.object_first::<StringDecoder>(tape)? {
                 let first_key = first_key.into();
-                let peak = parser.peak()?;
+                let peek = parser.peek()?;
                 check_recursion!(recursion_limit, parser.index,
-                    let first_value = take_value(peak, parser, tape, recursion_limit, allow_inf_nan)?;
+                    let first_value = take_value(peek, parser, tape, recursion_limit, allow_inf_nan)?;
                 );
                 object.insert(first_key, first_value);
                 while let Some(key) = parser.object_step::<StringDecoder>(tape)? {
                     let key = key.into();
-                    let peak = parser.peak()?;
+                    let peek = parser.peek()?;
                     check_recursion!(recursion_limit, parser.index,
-                        let value = take_value(peak, parser, tape, recursion_limit, allow_inf_nan)?;
+                        let value = take_value(peek, parser, tape, recursion_limit, allow_inf_nan)?;
                     );
                     object.insert(key, value);
                 }
@@ -137,13 +137,13 @@ pub(crate) fn take_value(
             Ok(JsonValue::Object(Arc::new(object)))
         }
         _ => {
-            let n = parser.consume_number::<NumberAny>(peak.into_inner(), allow_inf_nan);
+            let n = parser.consume_number::<NumberAny>(peek.into_inner(), allow_inf_nan);
             match n {
                 Ok(NumberAny::Int(NumberInt::Int(int))) => Ok(JsonValue::Int(int)),
                 Ok(NumberAny::Int(NumberInt::BigInt(big_int))) => Ok(JsonValue::BigInt(big_int)),
                 Ok(NumberAny::Float(float)) => Ok(JsonValue::Float(float)),
                 Err(e) => {
-                    if !peak.is_num() {
+                    if !peek.is_num() {
                         Err(json_error!(ExpectedSomeValue, parser.index))
                     } else {
                         Err(e)

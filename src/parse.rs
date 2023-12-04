@@ -3,10 +3,10 @@ use crate::number_decoder::AbstractNumberDecoder;
 use crate::string_decoder::{AbstractStringDecoder, Tape};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct Peak(u8);
+pub struct Peek(u8);
 
 #[allow(non_upper_case_globals)] // while testing
-impl Peak {
+impl Peek {
     pub const Null: Self = Self(b'n');
     pub const True: Self = Self(b't');
     pub const False: Self = Self(b'f');
@@ -18,7 +18,7 @@ impl Peak {
     pub const Object: Self = Self(b'{');
 }
 
-impl Peak {
+impl Peek {
     const fn new(next: u8) -> Self {
         Self(next)
     }
@@ -55,34 +55,34 @@ impl<'j> Parser<'j> {
         LinePosition::find(self.data, self.index)
     }
 
-    pub fn peak(&mut self) -> JsonResult<Peak> {
+    pub fn peek(&mut self) -> JsonResult<Peek> {
         if let Some(next) = self.eat_whitespace() {
-            Ok(Peak::new(next))
+            Ok(Peek::new(next))
         } else {
             json_err!(EofWhileParsingValue, self.index)
         }
     }
 
-    pub fn array_first(&mut self) -> JsonResult<Option<Peak>> {
+    pub fn array_first(&mut self) -> JsonResult<Option<Peek>> {
         self.index += 1;
         if let Some(next) = self.eat_whitespace() {
             if next == b']' {
                 self.index += 1;
                 Ok(None)
             } else {
-                Ok(Some(Peak::new(next)))
+                Ok(Some(Peek::new(next)))
             }
         } else {
             json_err!(EofWhileParsingList, self.index)
         }
     }
 
-    pub fn array_step(&mut self) -> JsonResult<Option<Peak>> {
+    pub fn array_step(&mut self) -> JsonResult<Option<Peek>> {
         if let Some(next) = self.eat_whitespace() {
             match next {
                 b',' => {
                     self.index += 1;
-                    let next = self.array_peak()?;
+                    let next = self.array_peek()?;
                     if next.is_none() {
                         json_err!(TrailingComma, self.index)
                     } else {
@@ -216,11 +216,11 @@ impl<'j> Parser<'j> {
         Ok(())
     }
 
-    fn array_peak(&mut self) -> JsonResult<Option<Peak>> {
+    fn array_peek(&mut self) -> JsonResult<Option<Peek>> {
         if let Some(next) = self.eat_whitespace() {
             match next {
                 b']' => Ok(None),
-                _ => Ok(Some(Peak::new(next))),
+                _ => Ok(Some(Peek::new(next))),
             }
         } else {
             json_err!(EofWhileParsingValue, self.index)
