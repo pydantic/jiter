@@ -3,6 +3,7 @@ use crate::number_decoder::{NumberAny, NumberFloat, NumberInt, NumberRange};
 use crate::parse::{Parser, Peek};
 use crate::string_decoder::{StringDecoder, StringDecoderRange, Tape};
 use crate::value::{take_value, JsonValue};
+use crate::{JsonError, JsonErrorType};
 
 pub type JiterResult<T> = Result<T, JiterError>;
 
@@ -112,13 +113,7 @@ impl<'j> Jiter<'j> {
     pub fn known_number(&mut self, peek: Peek) -> JiterResult<NumberAny> {
         self.parser
             .consume_number::<NumberAny>(peek.into_inner(), self.allow_inf_nan)
-            .map_err(|e| {
-                if !peek.is_num() {
-                    self.wrong_type(JsonType::Int, peek)
-                } else {
-                    e.into()
-                }
-            })
+            .map_err(|e| self.maybe_number_error(e, JsonType::Int, peek))
     }
 
     /// Assuming the next value is an integer, consume it. Error if it is not an integer, or is invalid JSON.
@@ -132,10 +127,10 @@ impl<'j> Jiter<'j> {
         self.parser
             .consume_number::<NumberInt>(peek.into_inner(), self.allow_inf_nan)
             .map_err(|e| {
-                if !peek.is_num() {
-                    self.wrong_type(JsonType::Int, peek)
+                if e.error_type == JsonErrorType::FloatExpectingInt {
+                    JiterError::wrong_type(JsonType::Int, JsonType::Float, self.parser.index)
                 } else {
-                    e.into()
+                    self.maybe_number_error(e, JsonType::Int, peek)
                 }
             })
     }
@@ -150,13 +145,7 @@ impl<'j> Jiter<'j> {
     pub fn known_float(&mut self, peek: Peek) -> JiterResult<f64> {
         self.parser
             .consume_number::<NumberFloat>(peek.into_inner(), self.allow_inf_nan)
-            .map_err(|e| {
-                if !peek.is_num() {
-                    self.wrong_type(JsonType::Float, peek)
-                } else {
-                    e.into()
-                }
-            })
+            .map_err(|e| self.maybe_number_error(e, JsonType::Float, peek))
     }
 
     /// Assuming the next value is a number, consume it and return bytes from the original JSON data.
@@ -172,13 +161,7 @@ impl<'j> Jiter<'j> {
             .consume_number::<NumberRange>(peek.into_inner(), self.allow_inf_nan)
         {
             Ok(range) => Ok(&self.data[range]),
-            Err(e) => {
-                if !peek.is_num() {
-                    Err(self.wrong_type(JsonType::Float, peek))
-                } else {
-                    Err(e.into())
-                }
-            }
+            Err(e) => Err(self.maybe_number_error(e, JsonType::Float, peek)),
         }
     }
 
@@ -326,5 +309,13 @@ impl<'j> Jiter<'j> {
             Err(e) => return e.into(),
         };
         JiterError::wrong_type(expected, actual, self.parser.index)
+    }
+
+    fn maybe_number_error(&self, e: JsonError, expected: JsonType, peek: Peek) -> JiterError {
+        if peek.is_num() {
+            e.into()
+        } else {
+            self.wrong_type(expected, peek)
+        }
     }
 }

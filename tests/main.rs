@@ -934,3 +934,100 @@ fn jiter_clone() {
     jiter1.finish().unwrap();
     jiter2.finish().unwrap();
 }
+
+#[test]
+fn jiter_invalid_value() {
+    let mut jiter = Jiter::new(b" bar", false);
+    let e = jiter.next_value().unwrap_err();
+    assert_eq!(
+        e.error_type,
+        JiterErrorType::JsonError(JsonErrorType::ExpectedSomeValue)
+    );
+    assert_eq!(e.index, 1);
+    assert_eq!(jiter.error_position(e.index), LinePosition::new(1, 2));
+}
+
+#[test]
+fn jiter_wrong_types() {
+    macro_rules! expect_wrong_type_inner {
+        ($actual:path, $input:expr, $method: ident, $expected:path) => {
+            let mut jiter = Jiter::new($input, false);
+            let result = jiter.$method();
+            if $actual == $expected || matches!(($actual, $expected), (JsonType::Int, JsonType::Float)) {
+                // Type matches, or int input to float
+                assert!(result.is_ok());
+            } else {
+                let e = result.unwrap_err();
+                assert_eq!(
+                    e.error_type,
+                    JiterErrorType::WrongType {
+                        expected: $expected,
+                        actual: $actual,
+                    }
+                );
+            }
+        };
+    }
+
+    macro_rules! expect_wrong_type {
+        ($method:ident, $expected:path) => {
+            expect_wrong_type_inner!(JsonType::Array, b"[]", $method, $expected);
+            expect_wrong_type_inner!(JsonType::Bool, b"true", $method, $expected);
+            expect_wrong_type_inner!(JsonType::Int, b"123", $method, $expected);
+            expect_wrong_type_inner!(JsonType::Float, b"123.123", $method, $expected);
+            expect_wrong_type_inner!(JsonType::Null, b"null", $method, $expected);
+            expect_wrong_type_inner!(JsonType::Object, b"{}", $method, $expected);
+            expect_wrong_type_inner!(JsonType::String, b"\"hello\"", $method, $expected);
+        };
+    }
+
+    expect_wrong_type!(next_array, JsonType::Array);
+    expect_wrong_type!(next_bool, JsonType::Bool);
+    expect_wrong_type!(next_bytes, JsonType::String);
+    expect_wrong_type!(next_null, JsonType::Null);
+    expect_wrong_type!(next_object, JsonType::Object);
+    expect_wrong_type!(next_object_bytes, JsonType::Object);
+    expect_wrong_type!(next_str, JsonType::String);
+    expect_wrong_type!(next_int, JsonType::Int);
+    expect_wrong_type!(next_float, JsonType::Float);
+}
+
+#[test]
+fn jiter_invalid_numbers() {
+    let mut jiter = Jiter::new(b" -a", false);
+    let peek = jiter.peek().unwrap();
+    let e = jiter.known_int(peek).unwrap_err();
+    assert_eq!(e.error_type, JiterErrorType::JsonError(JsonErrorType::InvalidNumber));
+    let e = jiter.known_float(peek).unwrap_err();
+    assert_eq!(e.error_type, JiterErrorType::JsonError(JsonErrorType::InvalidNumber));
+    let e = jiter.known_number(peek).unwrap_err();
+    assert_eq!(e.error_type, JiterErrorType::JsonError(JsonErrorType::InvalidNumber));
+    let e = jiter.next_number_bytes().unwrap_err();
+    assert_eq!(e.error_type, JiterErrorType::JsonError(JsonErrorType::InvalidNumber));
+}
+
+#[test]
+fn jiter_invalid_numbers_expected_some_value() {
+    let mut jiter = Jiter::new(b" bar", false);
+    let peek = jiter.peek().unwrap();
+    let e = jiter.known_int(peek).unwrap_err();
+    assert_eq!(
+        e.error_type,
+        JiterErrorType::JsonError(JsonErrorType::ExpectedSomeValue)
+    );
+    let e = jiter.known_float(peek).unwrap_err();
+    assert_eq!(
+        e.error_type,
+        JiterErrorType::JsonError(JsonErrorType::ExpectedSomeValue)
+    );
+    let e = jiter.known_number(peek).unwrap_err();
+    assert_eq!(
+        e.error_type,
+        JiterErrorType::JsonError(JsonErrorType::ExpectedSomeValue)
+    );
+    let e = jiter.next_number_bytes().unwrap_err();
+    assert_eq!(
+        e.error_type,
+        JiterErrorType::JsonError(JsonErrorType::ExpectedSomeValue)
+    );
+}
