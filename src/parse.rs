@@ -2,33 +2,33 @@ use crate::errors::{json_err, JsonResult, LinePosition};
 use crate::number_decoder::AbstractNumberDecoder;
 use crate::string_decoder::{AbstractStringDecoder, Tape};
 
-/// Enum used to describe the next expected value in JSON.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Peak {
-    Null,
-    True,
-    False,
-    // we keep the first character of the number as we'll need it when decoding
-    Num(u8),
-    String,
-    Array,
-    Object,
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct Peek(u8);
+
+#[allow(non_upper_case_globals)] // while testing
+impl Peek {
+    pub const Null: Self = Self(b'n');
+    pub const True: Self = Self(b't');
+    pub const False: Self = Self(b'f');
+    pub const Minus: Self = Self(b'-');
+    pub const Infinity: Self = Self(b'I');
+    pub const NaN: Self = Self(b'N');
+    pub const String: Self = Self(b'"');
+    pub const Array: Self = Self(b'[');
+    pub const Object: Self = Self(b'{');
 }
 
-impl Peak {
-    fn new(next: u8) -> Option<Self> {
-        match next {
-            b'[' => Some(Self::Array),
-            b'{' => Some(Self::Object),
-            b'"' => Some(Self::String),
-            b't' => Some(Self::True),
-            b'f' => Some(Self::False),
-            b'n' => Some(Self::Null),
-            b'0'..=b'9' => Some(Self::Num(next)),
-            // `-` negative, `I` Infinity, `N` NaN
-            b'-' | b'I' | b'N' => Some(Self::Num(next)),
-            _ => None,
-        }
+impl Peek {
+    const fn new(next: u8) -> Self {
+        Self(next)
+    }
+
+    pub const fn is_num(self) -> bool {
+        self.0.is_ascii_digit() || matches!(self, Self::Minus | Self::Infinity | Self::NaN)
+    }
+
+    pub const fn into_inner(self) -> u8 {
+        self.0
     }
 }
 
@@ -55,37 +55,39 @@ impl<'j> Parser<'j> {
         LinePosition::find(self.data, self.index)
     }
 
-    pub fn peak(&mut self) -> JsonResult<Peak> {
+    pub fn peek(&mut self) -> JsonResult<Peek> {
         if let Some(next) = self.eat_whitespace() {
-            match Peak::new(next) {
-                Some(p) => Ok(p),
-                None => json_err!(ExpectedSomeValue, self.index),
-            }
+            Ok(Peek::new(next))
         } else {
             json_err!(EofWhileParsingValue, self.index)
         }
     }
 
-    pub fn array_first(&mut self) -> JsonResult<Option<Peak>> {
+    pub fn array_first(&mut self) -> JsonResult<Option<Peek>> {
         self.index += 1;
         if let Some(next) = self.eat_whitespace() {
             if next == b']' {
                 self.index += 1;
                 Ok(None)
             } else {
-                self.array_peak()
+                Ok(Some(Peek::new(next)))
             }
         } else {
             json_err!(EofWhileParsingList, self.index)
         }
     }
 
-    pub fn array_step(&mut self) -> JsonResult<Option<Peak>> {
+    pub fn array_step(&mut self) -> JsonResult<Option<Peek>> {
         if let Some(next) = self.eat_whitespace() {
             match next {
                 b',' => {
                     self.index += 1;
-                    self.array_peak()
+                    let next = self.array_peek()?;
+                    if next.is_none() {
+                        json_err!(TrailingComma, self.index)
+                    } else {
+                        Ok(next)
+                    }
                 }
                 b']' => {
                     self.index += 1;
@@ -214,18 +216,11 @@ impl<'j> Parser<'j> {
         Ok(())
     }
 
-    fn array_peak(&mut self) -> JsonResult<Option<Peak>> {
+    fn array_peek(&mut self) -> JsonResult<Option<Peek>> {
         if let Some(next) = self.eat_whitespace() {
-            match Peak::new(next) {
-                Some(p) => Ok(Some(p)),
-                None => {
-                    // if next is a `]`, we have a "trailing comma" error
-                    if next == b']' {
-                        json_err!(TrailingComma, self.index)
-                    } else {
-                        json_err!(ExpectedSomeValue, self.index)
-                    }
-                }
+            match next {
+                b']' => Ok(None),
+                _ => Ok(Some(Peek::new(next))),
             }
         } else {
             json_err!(EofWhileParsingValue, self.index)

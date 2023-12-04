@@ -11,7 +11,7 @@ use smallvec::SmallVec;
 
 use crate::errors::{json_err, JsonError, JsonResult, DEFAULT_RECURSION_LIMIT};
 use crate::number_decoder::{NumberAny, NumberInt};
-use crate::parse::{Parser, Peak};
+use crate::parse::{Parser, Peek};
 use crate::string_decoder::{StringDecoder, Tape};
 
 /// Parse a JSON value from a byte slice and return a Python object.
@@ -34,11 +34,11 @@ pub fn python_parse(py: Python, json_data: &[u8], allow_inf_nan: bool, cache_str
         allow_inf_nan,
     };
 
-    let peak = python_parser.parser.peak()?;
+    let peek = python_parser.parser.peek()?;
     let v = if cache_strings {
-        python_parser.py_take_value::<StringCache>(py, peak)?
+        python_parser.py_take_value::<StringCache>(py, peek)?
     } else {
-        python_parser.py_take_value::<StringNoCache>(py, peak)?
+        python_parser.py_take_value::<StringNoCache>(py, peek)?
     };
     python_parser.parser.finish()?;
     Ok(v)
@@ -57,39 +57,31 @@ struct PythonParser<'j> {
 }
 
 impl<'j> PythonParser<'j> {
-    fn py_take_value<StringCache: StringMaybeCache>(&mut self, py: Python, peak: Peak) -> JsonResult<PyObject> {
-        match peak {
-            Peak::True => {
+    fn py_take_value<StringCache: StringMaybeCache>(&mut self, py: Python, peek: Peek) -> JsonResult<PyObject> {
+        match peek {
+            Peek::True => {
                 self.parser.consume_true()?;
                 Ok(true.to_object(py))
             }
-            Peak::False => {
+            Peek::False => {
                 self.parser.consume_false()?;
                 Ok(false.to_object(py))
             }
-            Peak::Null => {
+            Peek::Null => {
                 self.parser.consume_null()?;
                 Ok(py.None())
             }
-            Peak::String => {
+            Peek::String => {
                 let s = self.parser.consume_string::<StringDecoder>(&mut self.tape)?;
                 Ok(StringCache::get(py, s.as_str()))
             }
-            Peak::Num(first) => {
-                let n = self.parser.consume_number::<NumberAny>(first, self.allow_inf_nan)?;
-                match n {
-                    NumberAny::Int(NumberInt::Int(int)) => Ok(int.to_object(py)),
-                    NumberAny::Int(NumberInt::BigInt(big_int)) => Ok(big_int.to_object(py)),
-                    NumberAny::Float(float) => Ok(float.to_object(py)),
-                }
-            }
-            Peak::Array => {
-                let list = if let Some(peak_first) = self.parser.array_first()? {
+            Peek::Array => {
+                let list = if let Some(peek_first) = self.parser.array_first()? {
                     let mut vec: SmallVec<[PyObject; 8]> = SmallVec::with_capacity(8);
-                    let v = self._check_take_value::<StringCache>(py, peak_first)?;
+                    let v = self._check_take_value::<StringCache>(py, peek_first)?;
                     vec.push(v);
-                    while let Some(peak) = self.parser.array_step()? {
-                        let v = self._check_take_value::<StringCache>(py, peak)?;
+                    while let Some(peek) = self.parser.array_step()? {
+                        let v = self._check_take_value::<StringCache>(py, peek)?;
                         vec.push(v);
                     }
                     PyList::new(py, vec)
@@ -98,7 +90,7 @@ impl<'j> PythonParser<'j> {
                 };
                 Ok(list.to_object(py))
             }
-            Peak::Object => {
+            Peek::Object => {
                 let dict = PyDict::new(py);
 
                 let set_item = |key: PyObject, value: PyObject| {
@@ -113,28 +105,38 @@ impl<'j> PythonParser<'j> {
 
                 if let Some(first_key) = self.parser.object_first::<StringDecoder>(&mut self.tape)? {
                     let first_key = StringCache::get(py, first_key.as_str());
-                    let peak = self.parser.peak()?;
-                    let first_value = self._check_take_value::<StringCache>(py, peak)?;
+                    let peek = self.parser.peek()?;
+                    let first_value = self._check_take_value::<StringCache>(py, peek)?;
                     set_item(first_key, first_value);
                     while let Some(key) = self.parser.object_step::<StringDecoder>(&mut self.tape)? {
                         let key = StringCache::get(py, key.as_str());
-                        let peak = self.parser.peak()?;
-                        let value = self._check_take_value::<StringCache>(py, peak)?;
+                        let peek = self.parser.peek()?;
+                        let value = self._check_take_value::<StringCache>(py, peek)?;
                         set_item(key, value);
                     }
                 }
                 Ok(dict.to_object(py))
             }
+            _ => {
+                let n = self
+                    .parser
+                    .consume_number::<NumberAny>(peek.into_inner(), self.allow_inf_nan)?;
+                match n {
+                    NumberAny::Int(NumberInt::Int(int)) => Ok(int.to_object(py)),
+                    NumberAny::Int(NumberInt::BigInt(big_int)) => Ok(big_int.to_object(py)),
+                    NumberAny::Float(float) => Ok(float.to_object(py)),
+                }
+            }
         }
     }
 
-    fn _check_take_value<StringCache: StringMaybeCache>(&mut self, py: Python, peak: Peak) -> JsonResult<PyObject> {
+    fn _check_take_value<StringCache: StringMaybeCache>(&mut self, py: Python, peek: Peek) -> JsonResult<PyObject> {
         self.recursion_limit = match self.recursion_limit.checked_sub(1) {
             Some(limit) => limit,
             None => return json_err!(RecursionLimitExceeded, self.parser.index),
         };
 
-        let r = self.py_take_value::<StringCache>(py, peak);
+        let r = self.py_take_value::<StringCache>(py, peek);
 
         self.recursion_limit += 1;
         r

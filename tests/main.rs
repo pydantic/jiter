@@ -8,51 +8,47 @@ use smallvec::smallvec;
 
 use jiter::{
     Jiter, JiterErrorType, JiterResult, JsonErrorType, JsonType, JsonValue, LazyIndexMap, LinePosition, NumberAny,
-    NumberInt, Peak,
+    NumberInt, Peek,
 };
 
-fn json_vec(jiter: &mut Jiter, peak: Option<Peak>) -> JiterResult<Vec<String>> {
+fn json_vec(jiter: &mut Jiter, peek: Option<Peek>) -> JiterResult<Vec<String>> {
     let mut v = Vec::new();
-    let peak = match peak {
-        Some(peak) => peak,
-        None => jiter.peak()?,
+    let peek = match peek {
+        Some(peek) => peek,
+        None => jiter.peek()?,
     };
 
     let position = jiter.current_position().short();
-    match peak {
-        Peak::True => {
-            jiter.known_bool(peak)?;
+    match peek {
+        Peek::True => {
+            jiter.known_bool(peek)?;
             v.push(format!("true @ {position}"));
         }
-        Peak::False => {
-            jiter.known_bool(peak)?;
+        Peek::False => {
+            jiter.known_bool(peek)?;
             v.push(format!("false @ {position}"));
         }
-        Peak::Null => {
+        Peek::Null => {
             jiter.known_null()?;
             v.push(format!("null @ {position}"));
         }
-        Peak::String => {
+        Peek::String => {
             let str = jiter.known_str()?;
             v.push(format!("String({str}) @ {position}"));
         }
-        Peak::Num(_) => {
-            let s = display_number(peak, jiter)?;
-            v.push(s);
-        }
-        Peak::Array => {
+        Peek::Array => {
             v.push(format!("[ @ {position}"));
-            if let Some(peak) = jiter.known_array()? {
-                let el_vec = json_vec(jiter, Some(peak))?;
+            if let Some(peek) = jiter.known_array()? {
+                let el_vec = json_vec(jiter, Some(peek))?;
                 v.extend(el_vec);
-                while let Some(peak) = jiter.array_step()? {
-                    let el_vec = json_vec(jiter, Some(peak))?;
+                while let Some(peek) = jiter.array_step()? {
+                    let el_vec = json_vec(jiter, Some(peek))?;
                     v.extend(el_vec);
                 }
             }
             v.push("]".to_string());
         }
-        Peak::Object => {
+        Peek::Object => {
             v.push(format!("{{ @ {position}"));
             if let Some(key) = jiter.known_object()? {
                 v.push(format!("Key({key})"));
@@ -66,13 +62,17 @@ fn json_vec(jiter: &mut Jiter, peak: Option<Peak>) -> JiterResult<Vec<String>> {
             }
             v.push("}".to_string());
         }
+        _ => {
+            let s = display_number(peek, jiter)?;
+            v.push(s);
+        }
     };
     Ok(v)
 }
 
-fn display_number(peak: Peak, jiter: &mut Jiter) -> JiterResult<String> {
+fn display_number(peek: Peek, jiter: &mut Jiter) -> JiterResult<String> {
     let position = jiter.current_position().short();
-    let number = jiter.known_number(peak)?;
+    let number = jiter.known_number(peek)?;
     let s = match number {
         NumberAny::Int(NumberInt::Int(int)) => {
             format!("Int({int}) @ {position}")
@@ -255,8 +255,8 @@ fn json_parse_str() {
     let json = r#" "foobar" "#;
     let data = json.as_bytes();
     let mut jiter = Jiter::new(data, false);
-    let peak = jiter.peak().unwrap();
-    assert_eq!(peak, Peak::String);
+    let peek = jiter.peek().unwrap();
+    assert_eq!(peek, Peek::String);
     assert_eq!(jiter.current_position(), LinePosition::new(1, 2));
 
     let result_string = jiter.known_str().unwrap();
@@ -349,7 +349,7 @@ fn invalid_unicode_code() {
 fn nan_disallowed() {
     let json = r#"[NaN]"#;
     let mut jiter = Jiter::new(json.as_bytes(), false);
-    assert_eq!(jiter.next_array().unwrap().unwrap(), Peak::Num(b'N'));
+    assert_eq!(jiter.next_array().unwrap().unwrap(), Peek::NaN);
     let e = jiter.next_number().unwrap_err();
     assert_eq!(
         e.error_type,
@@ -363,7 +363,7 @@ fn nan_disallowed() {
 fn inf_disallowed() {
     let json = r#"[Infinity]"#;
     let mut jiter = Jiter::new(json.as_bytes(), false);
-    assert_eq!(jiter.next_array().unwrap().unwrap(), Peak::Num(b'I'));
+    assert_eq!(jiter.next_array().unwrap().unwrap(), Peek::Infinity);
     let e = jiter.next_number().unwrap_err();
     assert_eq!(
         e.error_type,
@@ -377,7 +377,7 @@ fn inf_disallowed() {
 fn inf_neg_disallowed() {
     let json = r#"[-Infinity]"#;
     let mut jiter = Jiter::new(json.as_bytes(), false);
-    assert_eq!(jiter.next_array().unwrap().unwrap(), Peak::Num(b'-'));
+    assert_eq!(jiter.next_array().unwrap().unwrap(), Peek::Minus);
     let e = jiter.next_number().unwrap_err();
     assert_eq!(e.error_type, JiterErrorType::JsonError(JsonErrorType::InvalidNumber));
     assert_eq!(e.index, 2);
@@ -388,7 +388,7 @@ fn inf_neg_disallowed() {
 fn nan_disallowed_wrong_type() {
     let json = r#"[NaN]"#;
     let mut jiter = Jiter::new(json.as_bytes(), false);
-    assert_eq!(jiter.next_array().unwrap().unwrap(), Peak::Num(b'N'));
+    assert_eq!(jiter.next_array().unwrap().unwrap(), Peek::NaN);
     let e = jiter.next_str().unwrap_err();
     assert_eq!(
         e.error_type,
@@ -630,11 +630,11 @@ fn jiter_object() {
     assert_eq!(jiter.next_object().unwrap(), Some("foo"));
     assert_eq!(jiter.next_str().unwrap(), "bar");
     assert_eq!(jiter.next_key().unwrap(), Some("spam"));
-    assert_eq!(jiter.next_array().unwrap(), Some(Peak::Num(b'1')));
+    assert_eq!(jiter.next_array().unwrap().unwrap().into_inner(), b'1');
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(1));
-    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Num(b'-')));
+    assert_eq!(jiter.array_step().unwrap(), Some(Peek::Minus));
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(-2));
-    assert_eq!(jiter.array_step().unwrap(), Some(Peak::String));
+    assert_eq!(jiter.array_step().unwrap(), Some(Peek::String));
     assert_eq!(jiter.next_bytes().unwrap(), b"x");
     assert!(jiter.array_step().unwrap().is_none());
     assert_eq!(jiter.next_key().unwrap(), None);
@@ -644,11 +644,11 @@ fn jiter_object() {
 #[test]
 fn jiter_inf() {
     let mut jiter = Jiter::new(b"[Infinity, -Infinity, NaN]", true);
-    assert_eq!(jiter.next_array().unwrap(), Some(Peak::Num(b'I')));
+    assert_eq!(jiter.next_array().unwrap(), Some(Peek::Infinity));
     assert_eq!(jiter.next_float().unwrap(), f64::INFINITY);
-    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Num(b'-')));
+    assert_eq!(jiter.array_step().unwrap(), Some(Peek::Minus));
     assert_eq!(jiter.next_float().unwrap(), f64::NEG_INFINITY);
-    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Num(b'N')));
+    assert_eq!(jiter.array_step().unwrap(), Some(Peek::NaN));
     assert_eq!(jiter.next_float().unwrap().to_string(), "NaN");
     assert_eq!(jiter.array_step().unwrap(), None);
     jiter.finish().unwrap();
@@ -657,11 +657,11 @@ fn jiter_inf() {
 #[test]
 fn jiter_bool() {
     let mut jiter = Jiter::new(b"[true, false, null]", false);
-    assert_eq!(jiter.next_array().unwrap(), Some(Peak::True));
+    assert_eq!(jiter.next_array().unwrap(), Some(Peek::True));
     assert_eq!(jiter.next_bool().unwrap(), true);
-    assert_eq!(jiter.array_step().unwrap(), Some(Peak::False));
+    assert_eq!(jiter.array_step().unwrap(), Some(Peek::False));
     assert_eq!(jiter.next_bool().unwrap(), false);
-    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Null));
+    assert_eq!(jiter.array_step().unwrap(), Some(Peek::Null));
     jiter.next_null().unwrap();
     assert_eq!(jiter.array_step().unwrap(), None);
     jiter.finish().unwrap();
@@ -681,20 +681,20 @@ fn jiter_bytes() {
 #[test]
 fn jiter_number() {
     let mut jiter = Jiter::new(br#"  [1, 2.2, 3, 4.1, 5.67]"#, false);
-    assert_eq!(jiter.next_array().unwrap(), Some(Peak::Num(b'1')));
+    assert_eq!(jiter.next_array().unwrap().unwrap().into_inner(), b'1');
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(1));
-    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Num(b'2')));
+    assert_eq!(jiter.array_step().unwrap().unwrap().into_inner(), b'2');
     assert_eq!(jiter.next_float().unwrap(), 2.2);
-    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Num(b'3')));
+    assert_eq!(jiter.array_step().unwrap().unwrap().into_inner(), b'3');
 
     let n = jiter.next_number().unwrap();
     assert_eq!(n, NumberAny::Int(NumberInt::Int(3)));
     let n_float: f64 = n.into();
     assert_eq!(n_float, 3.0);
 
-    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Num(b'4')));
+    assert_eq!(jiter.array_step().unwrap().unwrap().into_inner(), b'4');
     assert_eq!(jiter.next_number().unwrap(), NumberAny::Float(4.1));
-    assert_eq!(jiter.array_step().unwrap(), Some(Peak::Num(b'5')));
+    assert_eq!(jiter.array_step().unwrap().unwrap().into_inner(), b'5');
     assert_eq!(jiter.next_number_bytes().unwrap(), b"5.67");
     assert_eq!(jiter.array_step().unwrap(), None);
     jiter.finish().unwrap();
@@ -726,7 +726,7 @@ fn jiter_empty_array() {
 #[test]
 fn jiter_trailing_bracket() {
     let mut jiter = Jiter::new(b"[1]]", false);
-    assert_eq!(jiter.next_array().unwrap(), Some(Peak::Num(b'1')));
+    assert_eq!(jiter.next_array().unwrap().unwrap().into_inner(), b'1');
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(1));
     assert!(jiter.array_step().unwrap().is_none());
     let e = jiter.finish().unwrap_err();
@@ -896,10 +896,10 @@ fn readme_jiter() {
     assert_eq!(jiter.next_key().unwrap(), Some("age"));
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(43));
     assert_eq!(jiter.next_key().unwrap(), Some("phones"));
-    assert_eq!(jiter.next_array().unwrap(), Some(Peak::String));
+    assert_eq!(jiter.next_array().unwrap(), Some(Peek::String));
     // we know the next value is a string as we just asserted so
     assert_eq!(jiter.known_str().unwrap(), "+44 1234567");
-    assert_eq!(jiter.array_step().unwrap(), Some(Peak::String));
+    assert_eq!(jiter.array_step().unwrap(), Some(Peek::String));
     // same again
     assert_eq!(jiter.known_str().unwrap(), "+44 2345678");
     // next we'll get `None` from `array_step` as the array is finished
@@ -914,17 +914,17 @@ fn readme_jiter() {
 fn jiter_clone() {
     let json = r#"[1, 2]"#;
     let mut jiter1 = Jiter::new(json.as_bytes(), false);
-    assert_eq!(jiter1.next_array().unwrap().unwrap(), Peak::Num(b'1'));
+    assert_eq!(jiter1.next_array().unwrap().unwrap().into_inner(), b'1');
     let n = jiter1.next_number().unwrap();
     assert_eq!(n, NumberAny::Int(NumberInt::Int(1)));
 
     let mut jiter2 = jiter1.clone();
 
-    assert_eq!(jiter1.array_step().unwrap().unwrap(), Peak::Num(b'2'));
+    assert_eq!(jiter1.array_step().unwrap().unwrap().into_inner(), b'2');
     let n = jiter1.next_number().unwrap();
     assert_eq!(n, NumberAny::Int(NumberInt::Int(2)));
 
-    assert_eq!(jiter2.array_step().unwrap().unwrap(), Peak::Num(b'2'));
+    assert_eq!(jiter2.array_step().unwrap().unwrap().into_inner(), b'2');
     let n = jiter2.next_number().unwrap();
     assert_eq!(n, NumberAny::Int(NumberInt::Int(2)));
 
@@ -933,4 +933,101 @@ fn jiter_clone() {
 
     jiter1.finish().unwrap();
     jiter2.finish().unwrap();
+}
+
+#[test]
+fn jiter_invalid_value() {
+    let mut jiter = Jiter::new(b" bar", false);
+    let e = jiter.next_value().unwrap_err();
+    assert_eq!(
+        e.error_type,
+        JiterErrorType::JsonError(JsonErrorType::ExpectedSomeValue)
+    );
+    assert_eq!(e.index, 1);
+    assert_eq!(jiter.error_position(e.index), LinePosition::new(1, 2));
+}
+
+#[test]
+fn jiter_wrong_types() {
+    macro_rules! expect_wrong_type_inner {
+        ($actual:path, $input:expr, $method: ident, $expected:path) => {
+            let mut jiter = Jiter::new($input, false);
+            let result = jiter.$method();
+            if $actual == $expected || matches!(($actual, $expected), (JsonType::Int, JsonType::Float)) {
+                // Type matches, or int input to float
+                assert!(result.is_ok());
+            } else {
+                let e = result.unwrap_err();
+                assert_eq!(
+                    e.error_type,
+                    JiterErrorType::WrongType {
+                        expected: $expected,
+                        actual: $actual,
+                    }
+                );
+            }
+        };
+    }
+
+    macro_rules! expect_wrong_type {
+        ($method:ident, $expected:path) => {
+            expect_wrong_type_inner!(JsonType::Array, b"[]", $method, $expected);
+            expect_wrong_type_inner!(JsonType::Bool, b"true", $method, $expected);
+            expect_wrong_type_inner!(JsonType::Int, b"123", $method, $expected);
+            expect_wrong_type_inner!(JsonType::Float, b"123.123", $method, $expected);
+            expect_wrong_type_inner!(JsonType::Null, b"null", $method, $expected);
+            expect_wrong_type_inner!(JsonType::Object, b"{}", $method, $expected);
+            expect_wrong_type_inner!(JsonType::String, b"\"hello\"", $method, $expected);
+        };
+    }
+
+    expect_wrong_type!(next_array, JsonType::Array);
+    expect_wrong_type!(next_bool, JsonType::Bool);
+    expect_wrong_type!(next_bytes, JsonType::String);
+    expect_wrong_type!(next_null, JsonType::Null);
+    expect_wrong_type!(next_object, JsonType::Object);
+    expect_wrong_type!(next_object_bytes, JsonType::Object);
+    expect_wrong_type!(next_str, JsonType::String);
+    expect_wrong_type!(next_int, JsonType::Int);
+    expect_wrong_type!(next_float, JsonType::Float);
+}
+
+#[test]
+fn jiter_invalid_numbers() {
+    let mut jiter = Jiter::new(b" -a", false);
+    let peek = jiter.peek().unwrap();
+    let e = jiter.known_int(peek).unwrap_err();
+    assert_eq!(e.error_type, JiterErrorType::JsonError(JsonErrorType::InvalidNumber));
+    let e = jiter.known_float(peek).unwrap_err();
+    assert_eq!(e.error_type, JiterErrorType::JsonError(JsonErrorType::InvalidNumber));
+    let e = jiter.known_number(peek).unwrap_err();
+    assert_eq!(e.error_type, JiterErrorType::JsonError(JsonErrorType::InvalidNumber));
+    let e = jiter.next_number_bytes().unwrap_err();
+    assert_eq!(e.error_type, JiterErrorType::JsonError(JsonErrorType::InvalidNumber));
+}
+
+#[test]
+fn jiter_invalid_numbers_expected_some_value() {
+    let mut jiter = Jiter::new(b" bar", false);
+    let peek = jiter.peek().unwrap();
+    let e = jiter.known_int(peek).unwrap_err();
+    assert_eq!(
+        e.error_type,
+        JiterErrorType::JsonError(JsonErrorType::ExpectedSomeValue)
+    );
+    let e = jiter.known_float(peek).unwrap_err();
+    assert_eq!(
+        e.error_type,
+        JiterErrorType::JsonError(JsonErrorType::ExpectedSomeValue)
+    );
+    let e = jiter.known_number(peek).unwrap_err();
+    assert_eq!(
+        e.error_type,
+        JiterErrorType::JsonError(JsonErrorType::ExpectedSomeValue)
+    );
+    let e = jiter.next_number_bytes().unwrap_err();
+    assert_eq!(
+        e.error_type,
+        JiterErrorType::JsonError(JsonErrorType::ExpectedSomeValue)
+    );
 }

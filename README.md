@@ -57,7 +57,7 @@ Object(
 To use [Jiter], you need to know what schema you're expecting:
 
 ```rust
-use jiter::{Jiter, NumberInt, Peak};
+use jiter::{Jiter, NumberInt, Peek};
 
 fn main() {
     let json_data = r#"
@@ -75,10 +75,10 @@ fn main() {
     assert_eq!(jiter.next_key().unwrap(), Some("age"));
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(43));
     assert_eq!(jiter.next_key().unwrap(), Some("phones"));
-    assert_eq!(jiter.next_array().unwrap(), Some(Peak::String));
+    assert_eq!(jiter.next_array().unwrap(), Some(Peek::String));
     // we know the next value is a string as we just asserted so
     assert_eq!(jiter.known_str().unwrap(), "+44 1234567");
-    assert_eq!(jiter.array_step().unwrap(), Some(Peak::String));
+    assert_eq!(jiter.array_step().unwrap(), Some(Peek::String));
     // same again
     assert_eq!(jiter.known_str().unwrap(), "+44 2345678");
     // next we'll get `None` from `array_step` as the array is finished
