@@ -59,6 +59,98 @@ where
         let mut found_escape = false;
         let mut ascii_only = true;
 
+        #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
+        'simd: {
+            #[cfg(target_arch = "aarch64")]
+            mod impl_ {
+                pub use std::arch::aarch64::{
+                    vceqq_u8 as simd_eq, vcltq_u8 as simd_lt, vdupq_n_u8 as simd_duplicate, vld1q_u8 as simd_load,
+                    vorrq_u8 as simd_or, *,
+                };
+
+                pub const SIMD_STEP: usize = 16;
+
+                pub fn is_vector_nonzero(vec: uint8x16_t) -> bool {
+                    unsafe { vmaxvq_u8(vec) != 0 }
+                }
+
+                pub unsafe fn simd_is_ascii_non_control(vec: uint8x16_t) -> uint8x16_t {
+                    simd_or(vcltq_u8(vec, vdupq_n_u8(32)), vcgeq_u8(vec, vdupq_n_u8(128)))
+                }
+            }
+
+            #[cfg(target_arch = "x86_64")]
+            mod impl_ {
+                pub use std::arch::x86_64::{_mm_cmpeq_epi8 as simd_eq, _mm_or_si128 as simd_or, *};
+
+                pub const SIMD_STEP: usize = 16;
+
+                pub fn is_vector_nonzero(vec: __m128i) -> bool {
+                    unsafe { _mm_testz_si128(vec, vec) == 0 }
+                }
+
+                pub unsafe fn simd_duplicate(val: u8) -> __m128i {
+                    _mm_set1_epi8(val as i8)
+                }
+
+                pub unsafe fn simd_load(ptr: *const u8) -> __m128i {
+                    _mm_loadu_si128(ptr as *const __m128i)
+                }
+
+                pub unsafe fn simd_is_ascii_non_control(vec: __m128i) -> __m128i {
+                    let is_lt_32 = _mm_cmplt_epi8(
+                        // range-shift to unsigned
+                        _mm_xor_si128(vec, _mm_set1_epi8(-128)),
+                        _mm_xor_si128(_mm_set1_epi8(32), _mm_set1_epi8(-128)),
+                    );
+                    let is_ge_128 = _mm_cmplt_epi8(vec, _mm_set1_epi8(0));
+                    _mm_or_si128(is_lt_32, is_ge_128)
+                }
+            }
+
+            use impl_::*;
+
+            #[cfg(target_arch = "x86_64")]
+            if !is_x86_feature_detected!("sse") {
+                break 'simd;
+            }
+
+            let simd_quote = unsafe { simd_duplicate(b'"') };
+            let simd_backslash = unsafe { simd_duplicate(b'\\') };
+
+            for remaining_chunk in data
+                .get(index..)
+                .into_iter()
+                .flat_map(|remaining| remaining.chunks_exact(SIMD_STEP))
+            {
+                let remaining_chunk_v = unsafe { simd_load(remaining_chunk.as_ptr()) };
+
+                let backslash = unsafe { simd_eq(remaining_chunk_v, simd_backslash) };
+                let mask = unsafe { simd_is_ascii_non_control(remaining_chunk_v) };
+                let backslash_or_mask = unsafe { simd_or(backslash, mask) };
+
+                // go slow if backslash or mask found
+                if is_vector_nonzero(backslash_or_mask) {
+                    break 'simd;
+                }
+
+                // Compare the remaining chunk with the special characters
+                let compare_result = unsafe { simd_eq(remaining_chunk_v, simd_quote) };
+
+                // Check if any element in the comparison result is true
+                if is_vector_nonzero(compare_result) {
+                    // Found a match, return the index
+                    let j = unsafe { remaining_chunk.iter().position(|&x| x == b'"').unwrap_unchecked() };
+                    return Ok((
+                        StringOutput::Data(unsafe { std::str::from_utf8_unchecked(&data[start..index + j]) }),
+                        index + j + 1,
+                    ));
+                }
+
+                index += remaining_chunk.len();
+            }
+        }
+
         while let Some(next) = data.get(index) {
             match next {
                 b'"' => {
