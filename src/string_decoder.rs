@@ -78,6 +78,8 @@ fn decode_onebyone<'j, 't>(
 where
     'j: 't,
 {
+    index += 1;
+
     let start = index;
     let mut last_escape = start;
     let mut found_escape = false;
@@ -98,7 +100,10 @@ where
                 };
             }
             b'\\' => {
-                found_escape = true;
+                if !found_escape {
+                    tape.clear();
+                    found_escape = true;
+                }
                 tape.extend_from_slice(&data[last_escape..index]);
                 index += 1;
                 if let Some(next_inner) = data.get(index) {
@@ -142,6 +147,8 @@ fn decode_simd<'j, 't>(
 where
     'j: 't,
 {
+    index += 1;
+
     let start = index;
     let mut last_escape = start;
     let mut found_escape = false;
@@ -213,7 +220,10 @@ where
                 };
             }
             b'\\' => {
-                found_escape = true;
+                if !found_escape {
+                    tape.clear();
+                    found_escape = true;
+                }
                 tape.extend_from_slice(&data[last_escape..index]);
                 index += 1;
                 if let Some(next_inner) = data.get(index) {
