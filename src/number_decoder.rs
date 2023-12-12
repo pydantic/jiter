@@ -2,8 +2,6 @@ use num_bigint::BigInt;
 use num_traits::cast::ToPrimitive;
 use std::ops::Range;
 
-use lexical_core::{format as lexical_format, parse_partial_with_options, ParseFloatOptions};
-
 use crate::errors::{json_err, JsonResult};
 
 pub trait AbstractNumberDecoder {
@@ -63,41 +61,20 @@ pub struct NumberFloat;
 impl AbstractNumberDecoder for NumberFloat {
     type Output = f64;
 
-    fn decode(data: &[u8], mut index: usize, first: u8, allow_inf_nan: bool) -> JsonResult<(Self::Output, usize)> {
-        let start = index;
-
-        let positive = match first {
-            b'N' => return consume_nan(data, index, allow_inf_nan),
-            b'-' => false,
-            _ => true,
-        };
-        if !positive {
-            // we started with a minus sign, so the first digit is at index + 1
-            index += 1;
-        };
-        let first2 = if positive { Some(&first) } else { data.get(index) };
-
-        match first2 {
-            Some(b'I') => consume_inf(data, index, positive, allow_inf_nan),
-            Some(digit) if digit.is_ascii_digit() => {
-                const JSON: u128 = lexical_format::JSON;
-                let options = ParseFloatOptions::new();
-                match parse_partial_with_options::<f64, JSON>(&data[start..], &options) {
-                    Ok((float, index)) => Ok((float, index + start)),
-                    Err(_) => {
-                        // it's impossible to work out the right error from LexicalError here, so we parse again
-                        // with NumberRange and use that error
-                        match NumberRange::decode(data, start, first, allow_inf_nan) {
-                            Err(e) => Err(e),
-                            // NumberRange should always raise an error if `parse_partial_with_options`
-                            // except for Infinity and -Infinity, which are handled above
-                            Ok(_) => unreachable!("NumberRange should always return an error"),
-                        }
-                    }
+    fn decode(data: &[u8], index: usize, first: u8, allow_inf_nan: bool) -> JsonResult<(Self::Output, usize)> {
+        match first {
+            b'N' => consume_nan(data, index, allow_inf_nan),
+            b'I' => consume_inf(data, index, true, allow_inf_nan),
+            b'-' if data.get(index + 1) == Some(&b'I') => consume_inf(data, index + 1, false, allow_inf_nan),
+            _ => {
+                let (range, end) = NumberRange::decode(data, index, first, allow_inf_nan)?;
+                // safety: only known safe ascii characters in the range
+                let text = unsafe { std::str::from_utf8_unchecked(data.get_unchecked(range)) };
+                match text.parse() {
+                    Ok(f) => Ok((f, end)),
+                    Err(_) => json_err!(InvalidNumber, index),
                 }
             }
-            Some(_) => json_err!(InvalidNumber, index),
-            None => json_err!(EofWhileParsingValue, index),
         }
     }
 }
@@ -284,8 +261,9 @@ impl AbstractNumberDecoder for NumberRange {
                         let end = consume_exponential(data, index)?;
                         Ok((start..end, end))
                     }
-                    Some(_) => return json_err!(InvalidNumber, index),
-                    None => return Ok((start..index, index)),
+                    // might be zero, so we need to check for the end of the value or whitespace
+                    Some(b',' | b']' | b'}' | b' ' | b'\n' | b'\r' | b'\t') | None => return Ok((start..index, index)),
+                    Some(_) => json_err!(InvalidNumber, index),
                 };
             }
             Some(b'I') => {
