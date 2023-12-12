@@ -60,147 +60,19 @@ where
             return unsafe { decode_simd(data, index, tape) };
         }
 
-        return decode_onebyone(data, index, tape);
-
-        let start = index;
-        let mut last_escape = start;
-        let mut found_escape = false;
-        let mut ascii_only = true;
-
-        #[cfg(any(target_arch = "aarch64"))]
-        'simd: {
-            #[cfg(target_arch = "aarch64")]
-            mod impl_ {
-
-                pub const SIMD_STEP: usize = 16;
-
-                pub fn is_vector_nonzero(vec: uint8x16_t) -> bool {
-                    unsafe { vmaxvq_u8(vec) != 0 }
-                }
-
-                pub unsafe fn simd_is_ascii_non_control(vec: uint8x16_t) -> uint8x16_t {
-                    simd_or(vcltq_u8(vec, vdupq_n_u8(32)), vcgeq_u8(vec, vdupq_n_u8(128)))
-                }
-            }
-
-            #[cfg(target_arch = "x86_64")]
-            mod impl_ {
-                pub use std::arch::x86_64::{_mm_cmpeq_epi8 as simd_eq, _mm_or_si128 as simd_or, *};
-
-                pub const SIMD_STEP: usize = 16;
-
-                pub fn is_vector_nonzero(vec: __m128i) -> bool {
-                    unsafe { _mm_testz_si128(vec, vec) == 0 }
-                }
-
-                pub unsafe fn simd_duplicate(val: u8) -> __m128i {
-                    _mm_set1_epi8(val as i8)
-                }
-
-                pub unsafe fn simd_load(ptr: *const u8) -> __m128i {
-                    _mm_loadu_si128(ptr as *const __m128i)
-                }
-
-                pub unsafe fn simd_is_ascii_non_control(vec: __m128i) -> __m128i {
-                    let is_lt_32 = _mm_cmplt_epi8(
-                        // range-shift to unsigned
-                        _mm_xor_si128(vec, _mm_set1_epi8(-128)),
-                        _mm_xor_si128(_mm_set1_epi8(32), _mm_set1_epi8(-128)),
-                    );
-                    let is_ge_128 = _mm_cmplt_epi8(vec, _mm_set1_epi8(0));
-                    _mm_or_si128(is_lt_32, is_ge_128)
-                }
-            }
-
-            use impl_::*;
-
-            let simd_quote = unsafe { simd_duplicate(b'"') };
-            let simd_backslash = unsafe { simd_duplicate(b'\\') };
-
-            for remaining_chunk in data
-                .get(index..)
-                .into_iter()
-                .flat_map(|remaining| remaining.chunks_exact(SIMD_STEP))
-            {
-                let remaining_chunk_v = unsafe { simd_load(remaining_chunk.as_ptr()) };
-
-                let backslash = unsafe { simd_eq(remaining_chunk_v, simd_backslash) };
-                let mask = unsafe { simd_is_ascii_non_control(remaining_chunk_v) };
-                let backslash_or_mask = unsafe { simd_or(backslash, mask) };
-
-                // go slow if backslash or mask found
-                if is_vector_nonzero(backslash_or_mask) {
-                    break 'simd;
-                }
-
-                // Compare the remaining chunk with the special characters
-                let compare_result = unsafe { simd_eq(remaining_chunk_v, simd_quote) };
-
-                // Check if any element in the comparison result is true
-                if is_vector_nonzero(compare_result) {
-                    // Found a match, return the index
-                    let j = unsafe { remaining_chunk.iter().position(|&x| x == b'"').unwrap_unchecked() };
-                    return Ok((
-                        StringOutput::Data(unsafe { std::str::from_utf8_unchecked(&data[start..index + j]) }),
-                        index + j + 1,
-                    ));
-                }
-
-                index += remaining_chunk.len();
-            }
+        #[cfg(target_arch = "aarch64")]
+        {
+            return decode_simd(data, index, tape);
         }
 
-        while let Some(next) = data.get(index) {
-            match next {
-                b'"' => {
-                    return if found_escape {
-                        tape.extend_from_slice(&data[last_escape..index]);
-                        index += 1;
-                        let s = to_str(tape, ascii_only, start)?;
-                        Ok((StringOutput::Tape(s), index))
-                    } else {
-                        let s = to_str(&data[start..index], ascii_only, start)?;
-                        index += 1;
-                        Ok((StringOutput::Data(s), index))
-                    };
-                }
-                b'\\' => {
-                    found_escape = true;
-                    tape.extend_from_slice(&data[last_escape..index]);
-                    index += 1;
-                    if let Some(next_inner) = data.get(index) {
-                        match next_inner {
-                            b'"' | b'\\' | b'/' => tape.push(*next_inner),
-                            b'b' => tape.push(b'\x08'),
-                            b'f' => tape.push(b'\x0C'),
-                            b'n' => tape.push(b'\n'),
-                            b'r' => tape.push(b'\r'),
-                            b't' => tape.push(b'\t'),
-                            b'u' => {
-                                let (c, new_index) = parse_escape(data, index)?;
-                                index = new_index;
-                                tape.extend_from_slice(c.encode_utf8(&mut [0_u8; 4]).as_bytes());
-                            }
-                            _ => return json_err!(InvalidEscape, index),
-                        }
-                        last_escape = index + 1;
-                    } else {
-                        break;
-                    }
-                }
-                // all values below 32 are invalid
-                next if *next < 32u8 => return json_err!(ControlCharacterWhileParsingString, index),
-                next if *next >= 128u8 && ascii_only => {
-                    ascii_only = false;
-                }
-                _ => (),
-            }
-            index += 1;
+        #[cfg(not(target_arch = "aarch64"))]
+        {
+            return decode_onebyone(data, index, tape);
         }
-        json_err!(EofWhileParsingString, index)
     }
 }
 
+#[cfg(not(target_arch = "aarch64"))]
 fn decode_onebyone<'j, 't>(
     data: &'j [u8],
     mut index: usize,
@@ -213,6 +85,121 @@ where
     let mut last_escape = start;
     let mut found_escape = false;
     let mut ascii_only = true;
+
+    while let Some(next) = data.get(index) {
+        match next {
+            b'"' => {
+                return if found_escape {
+                    tape.extend_from_slice(&data[last_escape..index]);
+                    index += 1;
+                    let s = to_str(tape, ascii_only, start)?;
+                    Ok((StringOutput::Tape(s), index))
+                } else {
+                    let s = to_str(&data[start..index], ascii_only, start)?;
+                    index += 1;
+                    Ok((StringOutput::Data(s), index))
+                };
+            }
+            b'\\' => {
+                found_escape = true;
+                tape.extend_from_slice(&data[last_escape..index]);
+                index += 1;
+                if let Some(next_inner) = data.get(index) {
+                    match next_inner {
+                        b'"' | b'\\' | b'/' => tape.push(*next_inner),
+                        b'b' => tape.push(b'\x08'),
+                        b'f' => tape.push(b'\x0C'),
+                        b'n' => tape.push(b'\n'),
+                        b'r' => tape.push(b'\r'),
+                        b't' => tape.push(b'\t'),
+                        b'u' => {
+                            let (c, new_index) = parse_escape(data, index)?;
+                            index = new_index;
+                            tape.extend_from_slice(c.encode_utf8(&mut [0_u8; 4]).as_bytes());
+                        }
+                        _ => return json_err!(InvalidEscape, index),
+                    }
+                    last_escape = index + 1;
+                } else {
+                    break;
+                }
+            }
+            // all values below 32 are invalid
+            next if *next < 32u8 => return json_err!(ControlCharacterWhileParsingString, index),
+            next if *next >= 128u8 && ascii_only => {
+                ascii_only = false;
+            }
+            _ => (),
+        }
+        index += 1;
+    }
+    json_err!(EofWhileParsingString, index)
+}
+
+#[cfg(target_arch = "aarch64")]
+fn decode_simd<'j, 't>(
+    data: &'j [u8],
+    mut index: usize,
+    tape: &'t mut Tape,
+) -> JsonResult<(StringOutput<'t, 'j>, usize)>
+where
+    'j: 't,
+{
+    let start = index;
+    let mut last_escape = start;
+    let mut found_escape = false;
+    let mut ascii_only = true;
+
+    'simd: {
+        use std::arch::aarch64::{
+            vceqq_u8 as simd_eq, vdupq_n_u8 as simd_duplicate, vld1q_u8 as simd_load, vorrq_u8 as simd_or, *,
+        };
+
+        const SIMD_STEP: usize = 16;
+
+        fn is_vector_nonzero(vec: uint8x16_t) -> bool {
+            unsafe { vmaxvq_u8(vec) != 0 }
+        }
+
+        unsafe fn simd_is_ascii_non_control(vec: uint8x16_t) -> uint8x16_t {
+            simd_or(vcltq_u8(vec, vdupq_n_u8(32)), vcgeq_u8(vec, vdupq_n_u8(128)))
+        }
+
+        let simd_quote = unsafe { simd_duplicate(b'"') };
+        let simd_backslash = unsafe { simd_duplicate(b'\\') };
+
+        for remaining_chunk in data
+            .get(index..)
+            .into_iter()
+            .flat_map(|remaining| remaining.chunks_exact(SIMD_STEP))
+        {
+            let remaining_chunk_v = unsafe { simd_load(remaining_chunk.as_ptr()) };
+
+            let backslash = unsafe { simd_eq(remaining_chunk_v, simd_backslash) };
+            let mask = unsafe { simd_is_ascii_non_control(remaining_chunk_v) };
+            let backslash_or_mask = unsafe { simd_or(backslash, mask) };
+
+            // go slow if backslash or mask found
+            if is_vector_nonzero(backslash_or_mask) {
+                break 'simd;
+            }
+
+            // Compare the remaining chunk with the special characters
+            let compare_result = unsafe { simd_eq(remaining_chunk_v, simd_quote) };
+
+            // Check if any element in the comparison result is true
+            if is_vector_nonzero(compare_result) {
+                // Found a match, return the index
+                let j = unsafe { remaining_chunk.iter().position(|&x| x == b'"').unwrap_unchecked() };
+                return Ok((
+                    StringOutput::Data(unsafe { std::str::from_utf8_unchecked(&data[start..index + j]) }),
+                    index + j + 1,
+                ));
+            }
+
+            index += remaining_chunk.len();
+        }
+    }
 
     while let Some(next) = data.get(index) {
         match next {
