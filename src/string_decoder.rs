@@ -51,10 +51,7 @@ where
 {
     type Output = StringOutput<'t, 'j>;
 
-    fn decode(data: &'j [u8], mut index: usize, tape: &'t mut Tape) -> JsonResult<(Self::Output, usize)> {
-        index += 1;
-        tape.clear();
-
+    fn decode(data: &'j [u8], index: usize, tape: &'t mut Tape) -> JsonResult<(Self::Output, usize)> {
         #[cfg(target_arch = "x86_64")]
         if is_x86_feature_detected!("avx2") {
             return unsafe { decode_simd(data, index, tape) };
@@ -357,7 +354,7 @@ where
                         b'f' => tape.push(b'\x0C'),
                         b'n' => tape.push(b'\n'),
                         b'r' => tape.push(b'\r'),
-                        b's' => tape.push(b'\t'),
+                        b't' => tape.push(b'\t'),
                         b'u' => {
                             let (c, new_index) = parse_escape(data, index)?;
                             index = new_index;
