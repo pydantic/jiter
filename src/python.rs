@@ -9,7 +9,7 @@ use pyo3::{ffi, AsPyPointer};
 use hashbrown::hash_map::{HashMap, RawEntryMut};
 use smallvec::SmallVec;
 
-use crate::errors::{json_err, JsonError, JsonResult, DEFAULT_RECURSION_LIMIT};
+use crate::errors::{json_err, json_error, JsonError, JsonResult, DEFAULT_RECURSION_LIMIT};
 use crate::number_decoder::{NumberAny, NumberInt};
 use crate::parse::{Parser, Peek};
 use crate::string_decoder::{StringDecoder, Tape};
@@ -71,16 +71,6 @@ impl<'j> PythonParser<'j> {
                 self.parser.consume_false()?;
                 Ok(false.to_object(py))
             }
-            _ if peek.is_num() => {
-                let n = self
-                    .parser
-                    .consume_number::<NumberAny>(peek.into_inner(), self.allow_inf_nan)?;
-                match n {
-                    NumberAny::Int(NumberInt::Int(int)) => Ok(int.to_object(py)),
-                    NumberAny::Int(NumberInt::BigInt(big_int)) => Ok(big_int.to_object(py)),
-                    NumberAny::Float(float) => Ok(float.to_object(py)),
-                }
-            }
             Peek::String => {
                 let s = self.parser.consume_string::<StringDecoder>(&mut self.tape)?;
                 Ok(StringCache::get(py, s.as_str()))
@@ -127,7 +117,23 @@ impl<'j> PythonParser<'j> {
                 }
                 Ok(dict.to_object(py))
             }
-            _ => json_err!(ExpectedSomeValue, self.parser.index),
+            _ => {
+                let n = self
+                    .parser
+                    .consume_number::<NumberAny>(peek.into_inner(), self.allow_inf_nan);
+                match n {
+                    Ok(NumberAny::Int(NumberInt::Int(int))) => Ok(int.to_object(py)),
+                    Ok(NumberAny::Int(NumberInt::BigInt(big_int))) => Ok(big_int.to_object(py)),
+                    Ok(NumberAny::Float(float)) => Ok(float.to_object(py)),
+                    Err(e) => {
+                        if !peek.is_num() {
+                            Err(json_error!(ExpectedSomeValue, self.parser.index))
+                        } else {
+                            Err(e)
+                        }
+                    }
+                }
+            }
         }
     }
 
