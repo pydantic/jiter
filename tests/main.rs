@@ -873,11 +873,64 @@ fn test_4302_int_err() {
 }
 
 #[test]
-fn lazy_index_map_prety() {
+fn lazy_index_map_pretty() {
+    let mut map = LazyIndexMap::new();
+    assert!(map.is_empty());
+    map.insert("foo".to_string(), JsonValue::Str("bar".to_string()));
+    assert!(!map.is_empty());
+    map.insert("spam".to_string(), JsonValue::Null);
+    assert_eq!(format!("{map:?}"), r#"{"foo": Str("bar"), "spam": Null}"#);
+    let keys = map.keys().collect::<Vec<_>>();
+    assert_eq!(keys, vec!["foo", "spam"]);
+}
+
+#[test]
+fn lazy_index_map_small_get() {
     let mut map = LazyIndexMap::new();
     map.insert("foo".to_string(), JsonValue::Str("bar".to_string()));
     map.insert("spam".to_string(), JsonValue::Null);
-    assert_eq!(format!("{map:?}"), r#"{"foo": Str("bar"), "spam": Null}"#);
+
+    assert_eq!(map.get("foo"), Some(&JsonValue::Str("bar".to_string())));
+    assert_eq!(map.get("spam"), Some(&JsonValue::Null));
+    assert_eq!(map.get("spam"), Some(&JsonValue::Null));
+    assert_eq!(map.get("foo"), Some(&JsonValue::Str("bar".to_string())));
+    assert_eq!(map.get("other"), None);
+}
+
+#[test]
+fn lazy_index_map_big_get() {
+    let mut map = LazyIndexMap::new();
+
+    for i in 0..25 {
+        let key = i.to_string();
+        map.insert(key, JsonValue::Int(i));
+    }
+
+    assert_eq!(map.get("0"), Some(&JsonValue::Int(0)));
+    assert_eq!(map.get("10"), Some(&JsonValue::Int(10)));
+    assert_eq!(map.get("22"), Some(&JsonValue::Int(22)));
+    assert_eq!(map.get("other"), None);
+}
+
+#[test]
+fn lazy_index_map_clone() {
+    let mut map = LazyIndexMap::default();
+
+    map.insert("foo".to_string(), JsonValue::Str("bar".to_string()));
+    map.insert("spam".to_string(), JsonValue::Null);
+
+    assert_eq!(map.get("foo"), Some(&JsonValue::Str("bar".to_string())));
+    assert_eq!(map.get("spam"), Some(&JsonValue::Null));
+    assert_eq!(map.get("spam"), Some(&JsonValue::Null));
+    assert_eq!(map.get("foo"), Some(&JsonValue::Str("bar".to_string())));
+    assert_eq!(map.get("other"), None);
+
+    let map2 = map.clone();
+    assert_eq!(map2.get("foo"), Some(&JsonValue::Str("bar".to_string())));
+    assert_eq!(map2.get("spam"), Some(&JsonValue::Null));
+    assert_eq!(map2.get("spam"), Some(&JsonValue::Null));
+    assert_eq!(map2.get("foo"), Some(&JsonValue::Str("bar".to_string())));
+    assert_eq!(map2.get("other"), None);
 }
 
 #[test]
