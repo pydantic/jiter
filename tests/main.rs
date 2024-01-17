@@ -894,6 +894,7 @@ fn lazy_index_map_small_get() {
     assert_eq!(map.get("spam"), Some(&JsonValue::Null));
     assert_eq!(map.get("spam"), Some(&JsonValue::Null));
     assert_eq!(map.get("foo"), Some(&JsonValue::Str("bar".to_string())));
+    assert_eq!(map.get("other"), None);
 }
 
 #[test]
@@ -908,6 +909,7 @@ fn lazy_index_map_big_get() {
     assert_eq!(map.get("0"), Some(&JsonValue::Int(0)));
     assert_eq!(map.get("10"), Some(&JsonValue::Int(10)));
     assert_eq!(map.get("22"), Some(&JsonValue::Int(22)));
+    assert_eq!(map.get("other"), None);
 }
 
 #[test]
