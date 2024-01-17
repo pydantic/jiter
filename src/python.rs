@@ -71,16 +71,8 @@ impl<'j> PythonParser<'j> {
                 self.parser.consume_false()?;
                 Ok(false.to_object(py))
             }
-            Peek::Minus | Peek::Infinity | Peek::NaN => {
-                let n = self
-                    .parser
-                    .consume_number::<NumberAny>(peek.into_inner(), self.allow_inf_nan)?;
-                match n {
-                    NumberAny::Int(NumberInt::Int(int)) => Ok(int.to_object(py)),
-                    NumberAny::Int(NumberInt::BigInt(big_int)) => Ok(big_int.to_object(py)),
-                    NumberAny::Float(float) => Ok(float.to_object(py)),
-                }
-            }
+            Peek::Minus | Peek::Infinity | Peek::NaN => self._take_num(py, peek),
+            _ if peek.is_num() => self._take_num(py, peek),
             Peek::String => {
                 let s = self.parser.consume_string::<StringDecoder>(&mut self.tape)?;
                 Ok(StringCache::get(py, s.as_str()))
@@ -127,6 +119,18 @@ impl<'j> PythonParser<'j> {
                 }
                 Ok(dict.to_object(py))
             }
+            _ => json_err!(ExpectedSomeValue, self.parser.index),
+        }
+    }
+
+    fn _take_num(&mut self, py: Python, peek: Peek) -> JsonResult<PyObject> {
+        let n = self
+            .parser
+            .consume_number::<NumberAny>(peek.into_inner(), self.allow_inf_nan)?;
+        match n {
+            NumberAny::Int(NumberInt::Int(int)) => Ok(int.to_object(py)),
+            NumberAny::Int(NumberInt::BigInt(big_int)) => Ok(big_int.to_object(py)),
+            NumberAny::Float(float) => Ok(float.to_object(py)),
         }
     }
 
