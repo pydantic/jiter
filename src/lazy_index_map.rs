@@ -66,7 +66,7 @@ where
     }
 
     pub fn is_empty(&self) -> bool {
-        self.get_map().is_empty()
+        self.vec.is_empty()
     }
 
     pub fn get<Q: ?Sized>(&self, key: &Q) -> Option<&V>

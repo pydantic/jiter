@@ -875,9 +875,13 @@ fn test_4302_int_err() {
 #[test]
 fn lazy_index_map_pretty() {
     let mut map = LazyIndexMap::new();
+    assert!(map.is_empty());
     map.insert("foo".to_string(), JsonValue::Str("bar".to_string()));
+    assert!(!map.is_empty());
     map.insert("spam".to_string(), JsonValue::Null);
     assert_eq!(format!("{map:?}"), r#"{"foo": Str("bar"), "spam": Null}"#);
+    let keys = map.keys().collect::<Vec<_>>();
+    assert_eq!(keys, vec!["foo", "spam"]);
 }
 
 #[test]
