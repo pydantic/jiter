@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::cell::Cell;
 use std::cmp::{Eq, PartialEq};
 use std::fmt;
 use std::hash::Hash;
@@ -13,6 +14,7 @@ use smallvec::SmallVec;
 pub struct LazyIndexMap<K, V> {
     vec: SmallVec<[(K, V); 8]>,
     map: OnceLock<AHashMap<K, usize>>,
+    last_find: Cell<usize>,
 }
 
 impl<K, V> fmt::Debug for LazyIndexMap<K, V>
@@ -25,6 +27,9 @@ where
     }
 }
 
+// picked to be a good tradeoff after experimenting with `lazy_map_lookup` benchmark, should cover most models
+const HASHMAP_THRESHOLD: usize = 16;
+
 /// Like [IndexMap](https://docs.rs/indexmap/latest/indexmap/) but only builds the lookup map when it's needed.
 impl<K, V> LazyIndexMap<K, V>
 where
@@ -35,6 +40,7 @@ where
         Self {
             vec: SmallVec::new(),
             map: OnceLock::new(),
+            last_find: Cell::new(0),
         }
     }
 
@@ -58,14 +64,24 @@ where
         K: Borrow<Q> + PartialEq<Q>,
         Q: Hash + Eq,
     {
-        let map = self.map.get_or_init(|| {
-            self.vec
-                .iter()
-                .enumerate()
-                .map(|(index, (key, _))| (key.clone(), index))
-                .collect()
-        });
-        map.get(key).map(|&i| &self.vec[i].1)
+        let vec_len = self.vec.len();
+        // if the vec is longer than the threshold, we use the hashmap for lookups
+        if vec_len > HASHMAP_THRESHOLD {
+            self.get_map().get(key).map(|&i| &self.vec[i].1)
+        } else {
+            // otherwise we find the value in the vec
+            // we assume the most likely position for the match is at `last_find + 1`
+            let first_try = self.last_find.get() + 1;
+            for i in first_try..first_try + vec_len {
+                let index = i % vec_len;
+                let (k, v) = &self.vec[index];
+                if k == key {
+                    self.last_find.set(index);
+                    return Some(v);
+                }
+            }
+            None
+        }
     }
 
     pub fn keys(&self) -> impl Iterator<Item = &K> {

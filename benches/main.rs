@@ -4,7 +4,7 @@ use std::hint::black_box;
 use std::fs::File;
 use std::io::Read;
 
-use jiter::{Jiter, JsonValue, Peek};
+use jiter::{Jiter, JsonValue, LazyIndexMap, Peek};
 use serde_json::Value;
 
 fn read_file(path: &str) -> String {
@@ -215,6 +215,33 @@ test_cases!(floats_array);
 // src/github.com/json-iterator/go-benchmark/benchmark.go#L30C17-L30C29
 test_cases!(medium_response);
 
+fn lazy_map_lookup(length: i64, bench: &mut Bencher) {
+    bench.iter(|| {
+        let mut map: LazyIndexMap<String, JsonValue> = LazyIndexMap::new();
+        for i in 0..length {
+            let key = i.to_string();
+            map.insert(key, JsonValue::Int(i));
+        }
+
+        // best case we get the next value each time
+        for i in 0..length {
+            black_box(map.get(&i.to_string()).unwrap());
+        }
+    })
+}
+
+fn lazy_map_lookup_1_10(bench: &mut Bencher) {
+    lazy_map_lookup(10, bench);
+}
+
+fn lazy_map_lookup_2_20(bench: &mut Bencher) {
+    lazy_map_lookup(20, bench);
+}
+
+fn lazy_map_lookup_3_50(bench: &mut Bencher) {
+    lazy_map_lookup(50, bench);
+}
+
 benchmark_group!(
     benches,
     big_jiter_iter,
@@ -246,6 +273,9 @@ benchmark_group!(
     true_array_serde_value,
     true_object_jiter_iter,
     true_object_jiter_value,
-    true_object_serde_value
+    true_object_serde_value,
+    lazy_map_lookup_1_10,
+    lazy_map_lookup_2_20,
+    lazy_map_lookup_3_50,
 );
 benchmark_main!(benches);
