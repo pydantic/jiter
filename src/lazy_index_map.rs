@@ -10,11 +10,20 @@ use ahash::AHashMap;
 use smallvec::SmallVec;
 
 /// Like [IndexMap](https://docs.rs/indexmap/latest/indexmap/) but only builds the lookup map when it's needed.
-#[derive(Default)]
 pub struct LazyIndexMap<K, V> {
     vec: SmallVec<[(K, V); 8]>,
     map: OnceLock<AHashMap<K, usize>>,
     last_find: AtomicUsize,
+}
+
+impl<K, V> Default for LazyIndexMap<K, V>
+where
+    K: Clone + fmt::Debug + Eq + Hash,
+    V: fmt::Debug,
+{
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<K: Clone, V: Clone> Clone for LazyIndexMap<K, V> {

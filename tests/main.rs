@@ -913,6 +913,27 @@ fn lazy_index_map_big_get() {
 }
 
 #[test]
+fn lazy_index_map_clone() {
+    let mut map = LazyIndexMap::default();
+
+    map.insert("foo".to_string(), JsonValue::Str("bar".to_string()));
+    map.insert("spam".to_string(), JsonValue::Null);
+
+    assert_eq!(map.get("foo"), Some(&JsonValue::Str("bar".to_string())));
+    assert_eq!(map.get("spam"), Some(&JsonValue::Null));
+    assert_eq!(map.get("spam"), Some(&JsonValue::Null));
+    assert_eq!(map.get("foo"), Some(&JsonValue::Str("bar".to_string())));
+    assert_eq!(map.get("other"), None);
+
+    let map2 = map.clone();
+    assert_eq!(map2.get("foo"), Some(&JsonValue::Str("bar".to_string())));
+    assert_eq!(map2.get("spam"), Some(&JsonValue::Null));
+    assert_eq!(map2.get("spam"), Some(&JsonValue::Null));
+    assert_eq!(map2.get("foo"), Some(&JsonValue::Str("bar".to_string())));
+    assert_eq!(map2.get("other"), None);
+}
+
+#[test]
 fn readme_jiter() {
     let json_data = r#"
         {
