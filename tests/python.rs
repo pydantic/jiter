@@ -126,3 +126,15 @@ fn test_recursion_limit_incr() {
         assert_eq!(v.as_ref(py).len().unwrap(), 2000);
     });
 }
+
+#[test]
+fn test_exected_value_error() {
+    let json = "xx";
+    let bytes = json.as_bytes();
+
+    Python::with_gil(|py| {
+        let r = python_parse(py, bytes, false, true);
+        let e = r.map_err(|e| map_json_error(bytes, &e)).unwrap_err();
+        assert_eq!(e.to_string(), "ValueError: expected value at line 1 column 1");
+    })
+}

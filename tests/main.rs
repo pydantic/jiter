@@ -230,6 +230,7 @@ single_tests! {
     second_line: err => "[1\nx]", "ExpectedListCommaOrEnd @ 2:1";
     floats_error: err => "06", "InvalidNumber @ 1:2";
     unexpect_value: err => "[\u{16}\u{8}", "ExpectedSomeValue @ 1:2";
+    unexpect_value_xx: err => "xx", "ExpectedSomeValue @ 1:1";
 }
 
 #[test]
