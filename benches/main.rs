@@ -198,7 +198,7 @@ macro_rules! test_cases {
                     jiter_iter_ints_array(&file_path, bench);
                 } else if file_name == "floats_array" {
                     jiter_iter_floats_array(&file_path, bench);
-                } else {
+                } else if file_name == "x100" {
                     jiter_x100(&file_path, bench);
                 }
             }
