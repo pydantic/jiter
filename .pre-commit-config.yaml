@@ -21,7 +21,7 @@ repos:
     pass_filenames: false
   - id: clippy
     name: Clippy
-    entry: cargo clippy -- -D warnings -A incomplete_features -W clippy::dbg_macro -W clippy::print_stdout
+    entry: cargo clippy -F python -- -D warnings -A incomplete_features -W clippy::dbg_macro -W clippy::print_stdout
     types: [rust]
     language: system
     pass_filenames: false
