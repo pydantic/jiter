@@ -1,10 +1,9 @@
 use std::borrow::Borrow;
-use std::cell::Cell;
 use std::cmp::{Eq, PartialEq};
 use std::fmt;
 use std::hash::Hash;
 use std::slice::Iter as SliceIter;
-use std::sync::OnceLock;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use ahash::AHashMap;
 use smallvec::SmallVec;
@@ -14,7 +13,7 @@ use smallvec::SmallVec;
 pub struct LazyIndexMap<K, V> {
     vec: SmallVec<[(K, V); 8]>,
     map: OnceLock<AHashMap<K, usize>>,
-    last_find: Cell<usize>,
+    last_find: Arc<Mutex<usize>>,
 }
 
 impl<K, V> fmt::Debug for LazyIndexMap<K, V>
@@ -40,7 +39,7 @@ where
         Self {
             vec: SmallVec::new(),
             map: OnceLock::new(),
-            last_find: Cell::new(0),
+            last_find: Arc::new(Mutex::new(0)),
         }
     }
 
@@ -71,16 +70,21 @@ where
         } else {
             // otherwise we find the value in the vec
             // we assume the most likely position for the match is at `last_find + 1`
-            let first_try = self.last_find.get() + 1;
-            for i in first_try..first_try + vec_len {
-                let index = i % vec_len;
-                let (k, v) = &self.vec[index];
-                if k == key {
-                    self.last_find.set(index);
-                    return Some(v);
+            match self.last_find.lock() {
+                Ok(mut last_find) => {
+                    let first_try = *last_find + 1;
+                    for i in first_try..first_try + vec_len {
+                        let index = i % vec_len;
+                        let (k, v) = &self.vec[index];
+                        if k == key {
+                            *last_find = index;
+                            return Some(v);
+                        }
+                    }
+                    None
                 }
+                Err(_) => None,
             }
-            None
         }
     }
 
