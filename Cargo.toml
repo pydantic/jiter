@@ -18,6 +18,8 @@ smallvec = "1.11.0"
 pyo3 = { git = "https://github.com/davidhewitt/pyo3", branch="complete-py2", version = "0.21.0-dev", default-features=false, features = ["num-bigint"], optional = true }
 lexical-core = { version = "0.8.5", features = ["format"] }
 hashbrown = "0.14.3"
+encoding_rs = { version = "0.8.33", default_features = false }
+bytecount = { version = "0.6.7", default_features = false, features = ["runtime-dispatch-simd"] }
 
 [features]
 python = ["dep:pyo3"]
