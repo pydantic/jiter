@@ -16,7 +16,7 @@ num-traits = "0.2.16"
 ahash = "0.8.0"
 smallvec = "1.11.0"
 pyo3 = { version = "0.20.0", features = ["num-bigint"], optional = true }
-lexical-core = { version = "0.8.5", features = ["format"] }
+lexical-parse-float = { version = "0.8.5", features =  ["format"] }
 hashbrown = "0.14.3"
 
 [features]
