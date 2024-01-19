@@ -347,6 +347,30 @@ fn invalid_unicode_code() {
 }
 
 #[test]
+fn invalid_unicode_127() {
+    let json = vec![34, 127, 34];
+    // dbg!(json.iter().map(|b| *b as char).collect::<Vec<_>>());
+    let mut jiter = Jiter::new(&json, false);
+    let s = jiter.next_str().unwrap();
+    assert_eq!(s, "\u{7f}");
+
+    let s = serde_json::from_slice::<&str>(&json).unwrap();
+    assert_eq!(s, "\u{7f}");
+}
+
+#[test]
+fn invalid_unicode_128() {
+    let json = vec![34, 128, 34];
+    // dbg!(json.iter().map(|b| *b as char).collect::<Vec<_>>());
+    // let mut jiter = Jiter::new(&json, false);
+    // let s = jiter.next_str().unwrap();
+    // assert_eq!(s, "\u{7f}");
+
+    let serde_err = serde_json::from_slice::<&str>(&json).unwrap_err();
+    assert_eq!(serde_err.to_string(), "invalid unicode code point at line 1 column 3");
+}
+
+#[test]
 fn nan_disallowed() {
     let json = r#"[NaN]"#;
     let mut jiter = Jiter::new(json.as_bytes(), false);
