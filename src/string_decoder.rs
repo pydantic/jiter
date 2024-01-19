@@ -124,7 +124,6 @@ where
 
     fn decode(data: &'j [u8], mut index: usize, tape: &'t mut Tape) -> JsonResult<(Self::Output, usize)> {
         index += 1;
-        tape.clear();
         let start = index;
         let mut last_escape = start;
         let mut found_escape = false;
@@ -149,7 +148,10 @@ where
                     };
                 }
                 CharType::Backslash => {
-                    found_escape = true;
+                    if !found_escape {
+                        tape.clear();
+                        found_escape = true;
+                    }
                     tape.extend_from_slice(&data[last_escape..index]);
                     index += 1;
                     if let Some(next_inner) = data.get(index) {
