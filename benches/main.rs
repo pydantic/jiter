@@ -171,6 +171,15 @@ fn serde_value(path: &str, bench: &mut Bencher) {
     })
 }
 
+fn serde_str(path: &str, bench: &mut Bencher) {
+    let json = read_file(path);
+    let json_data = black_box(json.as_bytes());
+    bench.iter(|| {
+        let value: String = serde_json::from_slice(json_data).unwrap();
+        black_box(value);
+    })
+}
+
 macro_rules! test_cases {
     ($file_name:ident) => {
         paste::item! {
@@ -230,6 +239,10 @@ test_cases!(medium_response);
 test_cases!(x100);
 test_cases!(sentence);
 
+fn x100_serde_iter(bench: &mut Bencher) {
+    serde_str("./benches/x100.json", bench);
+}
+
 fn lazy_map_lookup(length: i64, bench: &mut Bencher) {
     bench.iter(|| {
         let mut map: LazyIndexMap<String, JsonValue> = LazyIndexMap::new();
@@ -276,6 +289,7 @@ benchmark_group!(
     medium_response_serde_value,
     x100_jiter_iter,
     x100_jiter_value,
+    x100_serde_iter,
     x100_serde_value,
     sentence_jiter_iter,
     sentence_jiter_value,
