@@ -151,7 +151,7 @@ fn jiter_iter_floats_array(path: &str, bench: &mut Bencher) {
     })
 }
 
-fn jiter_x100(path: &str, bench: &mut Bencher) {
+fn jiter_string(path: &str, bench: &mut Bencher) {
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
     bench.iter(|| {
@@ -198,8 +198,8 @@ macro_rules! test_cases {
                     jiter_iter_ints_array(&file_path, bench);
                 } else if file_name == "floats_array" {
                     jiter_iter_floats_array(&file_path, bench);
-                } else if file_name == "x100" {
-                    jiter_x100(&file_path, bench);
+                } else if file_name == "x100" || file_name == "sentence" {
+                    jiter_string(&file_path, bench);
                 }
             }
 
@@ -228,6 +228,7 @@ test_cases!(floats_array);
 // src/github.com/json-iterator/go-benchmark/benchmark.go#L30C17-L30C29
 test_cases!(medium_response);
 test_cases!(x100);
+test_cases!(sentence);
 
 fn lazy_map_lookup(length: i64, bench: &mut Bencher) {
     bench.iter(|| {
@@ -276,6 +277,9 @@ benchmark_group!(
     x100_jiter_iter,
     x100_jiter_value,
     x100_serde_value,
+    sentence_jiter_iter,
+    sentence_jiter_value,
+    sentence_serde_value,
     pass1_jiter_iter,
     pass1_jiter_value,
     pass1_serde_value,
