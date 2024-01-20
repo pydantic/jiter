@@ -1,6 +1,6 @@
 use num_bigint::BigInt;
 use num_traits::cast::ToPrimitive;
-use std::ops::{Neg, Range};
+use std::ops::Range;
 
 use lexical_core::{format as lexical_format, parse_partial_with_options, ParseFloatOptions};
 
@@ -162,6 +162,7 @@ impl IntParse {
     /// https://github.com/Alexhuszagh/rust-lexical/blob/main/lexical-parse-integer/docs/Algorithm.md
     /// for some context
     fn parse(data: &[u8], mut index: usize, first: u8) -> JsonResult<(Self, usize)> {
+        let start = index;
         let positive = match first {
             b'N' => return Ok((Self::FloatNaN, index)),
             b'-' => false,
@@ -189,15 +190,19 @@ impl IntParse {
         };
 
         macro_rules! consume_digit {
-            () => {
+            ($value:ident, $tp:ty) => {
                 if let Some(digit) = data.get(index) {
                     if CHAR_MAP[*digit as usize] {
                         // we use wrapping add to avoid branching - we know the value cannot wrap
-                        value = value.wrapping_mul(10).wrapping_add((digit & 0x0f) as i64);
-                        continue;
+                        $value = $value.wrapping_mul(10).wrapping_add((digit & 0x0f) as $tp);
+                        false
                     } else if matches!(digit, b'.' | b'e' | b'E') {
                         return Ok((Self::Float, index));
+                    } else {
+                        true
                     }
+                } else {
+                    true
                 }
             };
         }
@@ -205,34 +210,38 @@ impl IntParse {
         // i64::MAX = 9223372036854775807 - 18 chars
         for _ in 1..18 {
             index += 1;
-            consume_digit!();
-            // reached the end of the string, return i64
-            if !positive {
-                value = value.neg();
+            let done = consume_digit!(value, i64);
+            if done {
+                // reached the end of the string, return i64
+                if !positive {
+                    value = -value;
+                }
+                return Ok((Self::Int(NumberInt::Int(value)), index));
             }
-            return Ok((Self::Int(NumberInt::Int(value)), index));
         }
+
+        // number is too big for i64, we need ot use a big int
         let mut big_value: BigInt = value.into();
-        let mut length = 18;
         loop {
-            value = 0;
+            let mut chunk_value: u64 = 0;
             for pow in POW_10 {
                 index += 1;
-                consume_digit!();
-                // reached the end of the string, return bigint
-                big_value *= pow;
-                big_value += value;
-                if !positive {
-                    big_value = big_value.neg();
+                let done = consume_digit!(chunk_value, u64);
+                if done {
+                    // reached the end of the string, return bigint
+                    if (index - start) > 4300 {
+                        return json_err!(NumberOutOfRange, start + 4301);
+                    }
+                    big_value *= pow;
+                    big_value += chunk_value;
+                    if !positive {
+                        big_value = -big_value;
+                    }
+                    return Ok((Self::Int(NumberInt::BigInt(big_value)), index));
                 }
-                return Ok((Self::Int(NumberInt::BigInt(big_value)), index));
-            }
-            length += 18;
-            if length > 4300 {
-                return json_err!(NumberOutOfRange, index);
             }
             big_value *= 10u64.pow(18);
-            big_value += value;
+            big_value += chunk_value;
         }
     }
 }
