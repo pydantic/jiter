@@ -100,14 +100,16 @@ const CAPACITY: usize = 65536;
 
 #[derive(Debug)]
 struct PyStringCache {
-    entries: Vec<Option<(u64, Py<PyString>)>>,
+    entries: [Option<(u64, Py<PyString>)>; CAPACITY],
     hash_builder: BuildHasherDefault<AHasher>,
 }
+
+const ARRAY_REPEAT_VALUE: Option<(u64, Py<PyString>)> = None;
 
 impl Default for PyStringCache {
     fn default() -> Self {
         Self {
-            entries: vec![None; CAPACITY],
+            entries: [ARRAY_REPEAT_VALUE; CAPACITY],
             hash_builder: BuildHasherDefault::default(),
         }
     }
@@ -159,7 +161,6 @@ impl PyStringCache {
 
     /// clear the cache by resetting all entries to `None`
     fn clear(&mut self) {
-        self.entries.clear();
-        self.entries.resize(CAPACITY, None);
+        self.entries = [ARRAY_REPEAT_VALUE; CAPACITY];
     }
 }
