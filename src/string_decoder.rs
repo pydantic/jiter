@@ -1,4 +1,5 @@
 use std::ops::Range;
+use std::str::{from_utf8, from_utf8_unchecked};
 
 use crate::errors::{json_err, json_error, JsonResult};
 
@@ -76,7 +77,6 @@ static ASCII: [bool; 256] = {
     ]
 };
 
-#[derive(Debug)]
 enum CharType {
     // control character \x00..=\x1F
     ControlChar,
@@ -125,58 +125,21 @@ where
     fn decode(data: &'j [u8], mut index: usize, tape: &'t mut Tape) -> JsonResult<(Self::Output, usize)> {
         index += 1;
         let start = index;
-        let mut last_escape = start;
-        let mut found_escape = false;
         let mut ascii_only = true;
 
         while let Some(next) = data.get(index) {
-            if ASCII[*next as usize] {
-                index += 1;
-                continue;
-            }
-            match &CHAR_TYPE[*next as usize] {
-                CharType::Quote => {
-                    return if found_escape {
-                        tape.extend_from_slice(&data[last_escape..index]);
-                        index += 1;
-                        let s = to_str(tape, ascii_only, start)?;
-                        Ok((StringOutput::Tape(s), index))
-                    } else {
+            if !ASCII[*next as usize] {
+                match &CHAR_TYPE[*next as usize] {
+                    CharType::Quote => {
                         let s = to_str(&data[start..index], ascii_only, start)?;
                         index += 1;
-                        Ok((StringOutput::Data(s), index))
-                    };
-                }
-                CharType::Backslash => {
-                    if !found_escape {
-                        tape.clear();
-                        found_escape = true;
+                        return Ok((StringOutput::Data(s), index));
                     }
-                    tape.extend_from_slice(&data[last_escape..index]);
-                    index += 1;
-                    if let Some(next_inner) = data.get(index) {
-                        match next_inner {
-                            b'"' | b'\\' | b'/' => tape.push(*next_inner),
-                            b'b' => tape.push(b'\x08'),
-                            b'f' => tape.push(b'\x0C'),
-                            b'n' => tape.push(b'\n'),
-                            b'r' => tape.push(b'\r'),
-                            b't' => tape.push(b'\t'),
-                            b'u' => {
-                                let (c, new_index) = parse_escape(data, index)?;
-                                index = new_index;
-                                tape.extend_from_slice(c.encode_utf8(&mut [0_u8; 4]).as_bytes());
-                            }
-                            _ => return json_err!(InvalidEscape, index),
-                        }
-                        last_escape = index + 1;
-                    } else {
-                        break;
+                    CharType::Backslash => return decode_to_tape(data, index, tape, start, ascii_only),
+                    CharType::ControlChar => return json_err!(ControlCharacterWhileParsingString, index),
+                    CharType::Other => {
+                        ascii_only = false;
                     }
-                }
-                CharType::ControlChar => return json_err!(ControlCharacterWhileParsingString, index),
-                CharType::Other => {
-                    ascii_only = false;
                 }
             }
             index += 1;
@@ -185,13 +148,73 @@ where
     }
 }
 
+fn decode_to_tape<'t, 'j>(
+    data: &'j [u8],
+    mut index: usize,
+    tape: &'t mut Tape,
+    start: usize,
+    mut ascii_only: bool,
+) -> JsonResult<(StringOutput<'t, 'j>, usize)> {
+    let mut last_escape = start;
+    tape.clear();
+
+    macro_rules! on_backslash {
+        () => {{
+            tape.extend_from_slice(&data[last_escape..index]);
+            index += 1;
+            if let Some(next_inner) = data.get(index) {
+                match next_inner {
+                    b'"' | b'\\' | b'/' => tape.push(*next_inner),
+                    b'b' => tape.push(b'\x08'),
+                    b'f' => tape.push(b'\x0C'),
+                    b'n' => tape.push(b'\n'),
+                    b'r' => tape.push(b'\r'),
+                    b't' => tape.push(b'\t'),
+                    b'u' => {
+                        let (c, new_index) = parse_escape(data, index)?;
+                        index = new_index;
+                        tape.extend_from_slice(c.encode_utf8(&mut [0_u8; 4]).as_bytes());
+                    }
+                    _ => return json_err!(InvalidEscape, index),
+                }
+                last_escape = index + 1;
+            } else {
+                return json_err!(EofWhileParsingString, index);
+            }
+        }};
+    }
+
+    on_backslash!();
+    index += 1;
+
+    while let Some(next) = data.get(index) {
+        if !ASCII[*next as usize] {
+            match &CHAR_TYPE[*next as usize] {
+                CharType::Quote => {
+                    tape.extend_from_slice(&data[last_escape..index]);
+                    index += 1;
+                    let s = to_str(tape, ascii_only, start)?;
+                    return Ok((StringOutput::Tape(s), index));
+                }
+                CharType::Backslash => on_backslash!(),
+                CharType::ControlChar => return json_err!(ControlCharacterWhileParsingString, index),
+                CharType::Other => {
+                    ascii_only = false;
+                }
+            }
+        }
+        index += 1;
+    }
+    json_err!(EofWhileParsingString, index)
+}
+
 fn to_str(bytes: &[u8], ascii_only: bool, start: usize) -> JsonResult<&str> {
     if ascii_only {
         // safety: in this case we've already confirmed that all characters are ascii, we can safely
         // transmute from bytes to str
-        Ok(unsafe { std::str::from_utf8_unchecked(bytes) })
+        Ok(unsafe { from_utf8_unchecked(bytes) })
     } else {
-        std::str::from_utf8(bytes).map_err(|e| json_error!(InvalidUnicodeCodePoint, start + e.valid_up_to() + 1))
+        from_utf8(bytes).map_err(|e| json_error!(InvalidUnicodeCodePoint, start + e.valid_up_to() + 1))
     }
 }
 
