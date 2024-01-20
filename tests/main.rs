@@ -926,6 +926,16 @@ fn test_4302_int_err() {
 }
 
 #[test]
+fn test_5000_int_err() {
+    let json = (0..5000).map(|_| "9".to_string()).collect::<Vec<_>>().join("");
+    let bytes = json.as_bytes();
+    let e = JsonValue::parse(bytes, false).unwrap_err();
+    assert_eq!(e.error_type, JsonErrorType::NumberOutOfRange);
+    assert_eq!(e.index, 4301);
+    assert_eq!(e.description(bytes), "number out of range at line 1 column 4302");
+}
+
+#[test]
 fn lazy_index_map_pretty() {
     let mut map: LazyIndexMap<Cow<'_, str>, JsonValue<'_>> = LazyIndexMap::new();
     assert!(map.is_empty());
