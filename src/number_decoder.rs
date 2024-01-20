@@ -1,9 +1,10 @@
-use num_bigint::BigInt;
-use num_traits::cast::ToPrimitive;
 use std::ops::Range;
 
-use crate::errors::{json_err, JsonResult};
 use lexical_parse_float::{format as lexical_format, FromLexicalWithOptions, Options as ParseFloatOptions};
+use num_bigint::BigInt;
+use num_traits::cast::ToPrimitive;
+
+use crate::errors::{json_err, JsonResult};
 
 pub trait AbstractNumberDecoder {
     type Output;
