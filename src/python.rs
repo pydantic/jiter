@@ -1,17 +1,14 @@
-use std::cell::RefCell;
-
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::sync::{GILOnceCell, GILProtected};
-use pyo3::types::{PyDict, PyList, PyString};
+use pyo3::types::{PyDict, PyList};
 use pyo3::{ffi, AsPyPointer};
 
-use hashbrown::hash_map::{HashMap, RawEntryMut};
 use smallvec::SmallVec;
 
 use crate::errors::{json_err, json_error, JsonError, JsonResult, DEFAULT_RECURSION_LIMIT};
 use crate::number_decoder::{NumberAny, NumberInt};
 use crate::parse::{Parser, Peek};
+use crate::py_string_cache::{StringCacheAll, StringMaybeCache, StringNoCache};
 use crate::string_decoder::{StringDecoder, Tape};
 
 /// Parse a JSON value from a byte slice and return a Python object.
@@ -36,7 +33,7 @@ pub fn python_parse(py: Python, json_data: &[u8], allow_inf_nan: bool, cache_str
 
     let peek = python_parser.parser.peek()?;
     let v = if cache_strings {
-        python_parser.py_take_value::<StringCache>(py, peek)?
+        python_parser.py_take_value::<StringCacheAll>(py, peek)?
     } else {
         python_parser.py_take_value::<StringNoCache>(py, peek)?
     };
@@ -73,7 +70,7 @@ impl<'j> PythonParser<'j> {
             }
             Peek::String => {
                 let s = self.parser.consume_string::<StringDecoder>(&mut self.tape)?;
-                Ok(StringCache::get(py, s.as_str()))
+                Ok(StringCache::get_value(py, s.as_str()))
             }
             Peek::Array => {
                 let list = if let Some(peek_first) = self.parser.array_first()? {
@@ -104,12 +101,12 @@ impl<'j> PythonParser<'j> {
                 };
 
                 if let Some(first_key) = self.parser.object_first::<StringDecoder>(&mut self.tape)? {
-                    let first_key = StringCache::get(py, first_key.as_str());
+                    let first_key = StringCache::get_key(py, first_key.as_str());
                     let peek = self.parser.peek()?;
                     let first_value = self._check_take_value::<StringCache>(py, peek)?;
                     set_item(first_key, first_value);
                     while let Some(key) = self.parser.object_step::<StringDecoder>(&mut self.tape)? {
-                        let key = StringCache::get(py, key.as_str());
+                        let key = StringCache::get_key(py, key.as_str());
                         let peek = self.parser.peek()?;
                         let value = self._check_take_value::<StringCache>(py, peek)?;
                         set_item(key, value);
@@ -147,55 +144,5 @@ impl<'j> PythonParser<'j> {
 
         self.recursion_limit += 1;
         r
-    }
-}
-
-trait StringMaybeCache {
-    fn get(py: Python, json_str: &str) -> PyObject;
-}
-
-struct StringCache;
-
-impl StringMaybeCache for StringCache {
-    fn get(py: Python, json_str: &str) -> PyObject {
-        static STRINGS_CACHE: GILOnceCell<GILProtected<RefCell<HashMap<String, PyObject>>>> = GILOnceCell::new();
-
-        // from tests, 0 and 1 character strings are faster not cached
-        if (2..64).contains(&json_str.len()) {
-            let cache = STRINGS_CACHE
-                .get_or_init(py, || GILProtected::new(RefCell::new(HashMap::new())))
-                .get(py);
-
-            let mut map = cache.borrow_mut();
-            let entry = map.raw_entry_mut().from_key(json_str);
-
-            let (py_string, inserted) = match entry {
-                RawEntryMut::Vacant(view) => {
-                    let py_string = PyString::new(py, json_str).to_object(py);
-                    view.insert(json_str.to_owned(), py_string.clone_ref(py));
-                    (py_string, true)
-                }
-                RawEntryMut::Occupied(view) => (view.get().clone_ref(py), false),
-            };
-            if inserted {
-                // 500k limit means 1m keys + values, 1m 64 byte strings is ~64mb
-                if map.len() > 500_000 {
-                    // TODO is there a fast way to keep (say) half the cache?
-                    map.clear();
-                }
-            }
-            py_string
-        } else {
-            let key = PyString::new(py, json_str);
-            key.to_object(py)
-        }
-    }
-}
-
-struct StringNoCache;
-
-impl StringMaybeCache for StringNoCache {
-    fn get(py: Python, json_str: &str) -> PyObject {
-        PyString::new(py, json_str).to_object(py)
     }
 }

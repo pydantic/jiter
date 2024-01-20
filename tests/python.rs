@@ -1,7 +1,7 @@
 use pyo3::prelude::*;
 use pyo3::ToPyObject;
 
-use jiter::{map_json_error, python_parse, JsonValue};
+use jiter::{cache_clear, cache_usage, map_json_error, python_parse, JsonValue};
 
 #[test]
 fn test_to_py_object_numeric() {
@@ -136,5 +136,25 @@ fn test_exected_value_error() {
         let r = python_parse(py, bytes, false, true);
         let e = r.map_err(|e| map_json_error(bytes, &e)).unwrap_err();
         assert_eq!(e.to_string(), "ValueError: expected value at line 1 column 1");
+    })
+}
+
+#[test]
+fn test_python_cache_usage() {
+    Python::with_gil(|py| {
+        cache_clear(py);
+        let obj = python_parse(py, br#"["foo", "bar", "spam"]"#, true, true).unwrap();
+        assert_eq!(obj.as_ref(py).to_string(), "['foo', 'bar', 'spam']");
+        assert_eq!(cache_usage(py), 3);
+    })
+}
+
+#[test]
+fn test_python_cache_usage_no_cache() {
+    Python::with_gil(|py| {
+        cache_clear(py);
+        let obj = python_parse(py, br#"["foo", "bar", "spam"]"#, false, false).unwrap();
+        assert_eq!(obj.as_ref(py).to_string(), "['foo', 'bar', 'spam']");
+        assert_eq!(cache_usage(py), 0);
     })
 }

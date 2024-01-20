@@ -6,7 +6,7 @@ use std::io::Read;
 
 use pyo3::Python;
 
-use jiter::python_parse;
+use jiter::{cache_clear, python_parse};
 
 fn python_parse_numeric(bench: &mut Bencher) {
     Python::with_gil(|py| {
@@ -47,6 +47,8 @@ fn _python_parse_file(path: &str, bench: &mut Bencher, cache_strings: bool) {
     let json_data = contents.as_bytes();
 
     Python::with_gil(|py| {
+        cache_clear(py);
+
         bench.iter(|| {
             // Clear PyO3 memory on each loop iteration to avoid long GC traversal overheads.
             let _pool = unsafe { py.new_pool() };
