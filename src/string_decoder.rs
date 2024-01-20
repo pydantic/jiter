@@ -1,4 +1,5 @@
 use std::ops::Range;
+use std::str::{from_utf8, from_utf8_unchecked};
 
 use crate::errors::{json_err, json_error, JsonResult};
 
@@ -45,6 +46,76 @@ impl<'t, 'j> StringOutput<'t, 'j> {
     }
 }
 
+// taken serde-rs/json but altered
+// https://github.com/serde-rs/json/blob/ebaf61709aba7a3f2429a5d95a694514f180f565/src/read.rs#L787-L811
+// this helps the fast path by telling us if something is ascii or not, it also simplifies
+// CharType below by only requiring 4 options in that enum
+static ASCII: [bool; 256] = {
+    const CT: bool = false; // control character \x00..=\x1F
+    const QU: bool = false; // quote \x22
+    const BS: bool = false; // backslash \x5C
+    const __: bool = true; // simple ascii
+    const HI: bool = false; // > \x7F (127)
+    [
+        //   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
+        CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, // 0
+        CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, // 1
+        __, __, QU, __, __, __, __, __, __, __, __, __, __, __, __, __, // 2
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 3
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 4
+        __, __, __, __, __, __, __, __, __, __, __, __, BS, __, __, __, // 5
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 6
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 7
+        HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, // 8
+        HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, // 9
+        HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, // A
+        HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, // B
+        HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, // C
+        HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, // D
+        HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, // E
+        HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, // F
+    ]
+};
+
+enum CharType {
+    // control character \x00..=\x1F
+    ControlChar,
+    // quote \x22
+    Quote,
+    // backslash \x5C
+    Backslash,
+    // all other characters. In reality this will only be > \x7F (127) after the ASCII check
+    Other,
+}
+
+// Lookup table of bytes that must be escaped. A value of true at index i means
+// that byte i requires an escape sequence in the input.
+static CHAR_TYPE: [CharType; 256] = {
+    const CT: CharType = CharType::ControlChar;
+    const QU: CharType = CharType::Quote;
+    const BS: CharType = CharType::Backslash;
+    const __: CharType = CharType::Other;
+    [
+        //   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
+        CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, // 0
+        CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, // 1
+        __, __, QU, __, __, __, __, __, __, __, __, __, __, __, __, __, // 2
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 3
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 4
+        __, __, __, __, __, __, __, __, __, __, __, __, BS, __, __, __, // 5
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 6
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 7
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 8
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 9
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // A
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // B
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // C
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // D
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // E
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // F
+    ]
+};
+
 impl<'t, 'j> AbstractStringDecoder<'t, 'j> for StringDecoder
 where
     'j: 't,
@@ -53,56 +124,23 @@ where
 
     fn decode(data: &'j [u8], mut index: usize, tape: &'t mut Tape) -> JsonResult<(Self::Output, usize)> {
         index += 1;
-        tape.clear();
         let start = index;
-        let mut last_escape = start;
-        let mut found_escape = false;
         let mut ascii_only = true;
 
         while let Some(next) = data.get(index) {
-            match next {
-                b'"' => {
-                    return if found_escape {
-                        tape.extend_from_slice(&data[last_escape..index]);
-                        index += 1;
-                        let s = to_str(tape, ascii_only, start)?;
-                        Ok((StringOutput::Tape(s), index))
-                    } else {
+            if !ASCII[*next as usize] {
+                match &CHAR_TYPE[*next as usize] {
+                    CharType::Quote => {
                         let s = to_str(&data[start..index], ascii_only, start)?;
                         index += 1;
-                        Ok((StringOutput::Data(s), index))
-                    };
-                }
-                b'\\' => {
-                    found_escape = true;
-                    tape.extend_from_slice(&data[last_escape..index]);
-                    index += 1;
-                    if let Some(next_inner) = data.get(index) {
-                        match next_inner {
-                            b'"' | b'\\' | b'/' => tape.push(*next_inner),
-                            b'b' => tape.push(b'\x08'),
-                            b'f' => tape.push(b'\x0C'),
-                            b'n' => tape.push(b'\n'),
-                            b'r' => tape.push(b'\r'),
-                            b't' => tape.push(b'\t'),
-                            b'u' => {
-                                let (c, new_index) = parse_escape(data, index)?;
-                                index = new_index;
-                                tape.extend_from_slice(c.encode_utf8(&mut [0_u8; 4]).as_bytes());
-                            }
-                            _ => return json_err!(InvalidEscape, index),
-                        }
-                        last_escape = index + 1;
-                    } else {
-                        break;
+                        return Ok((StringOutput::Data(s), index));
+                    }
+                    CharType::Backslash => return decode_to_tape(data, index, tape, start, ascii_only),
+                    CharType::ControlChar => return json_err!(ControlCharacterWhileParsingString, index),
+                    CharType::Other => {
+                        ascii_only = false;
                     }
                 }
-                // all values below 32 are invalid
-                next if *next < 32u8 => return json_err!(ControlCharacterWhileParsingString, index),
-                next if *next >= 128u8 && ascii_only => {
-                    ascii_only = false;
-                }
-                _ => (),
             }
             index += 1;
         }
@@ -110,13 +148,73 @@ where
     }
 }
 
+fn decode_to_tape<'t, 'j>(
+    data: &'j [u8],
+    mut index: usize,
+    tape: &'t mut Tape,
+    start: usize,
+    mut ascii_only: bool,
+) -> JsonResult<(StringOutput<'t, 'j>, usize)> {
+    let mut last_escape = start;
+    tape.clear();
+
+    macro_rules! on_backslash {
+        () => {{
+            tape.extend_from_slice(&data[last_escape..index]);
+            index += 1;
+            if let Some(next_inner) = data.get(index) {
+                match next_inner {
+                    b'"' | b'\\' | b'/' => tape.push(*next_inner),
+                    b'b' => tape.push(b'\x08'),
+                    b'f' => tape.push(b'\x0C'),
+                    b'n' => tape.push(b'\n'),
+                    b'r' => tape.push(b'\r'),
+                    b't' => tape.push(b'\t'),
+                    b'u' => {
+                        let (c, new_index) = parse_escape(data, index)?;
+                        index = new_index;
+                        tape.extend_from_slice(c.encode_utf8(&mut [0_u8; 4]).as_bytes());
+                    }
+                    _ => return json_err!(InvalidEscape, index),
+                }
+                last_escape = index + 1;
+            } else {
+                return json_err!(EofWhileParsingString, index);
+            }
+        }};
+    }
+
+    on_backslash!();
+    index += 1;
+
+    while let Some(next) = data.get(index) {
+        if !ASCII[*next as usize] {
+            match &CHAR_TYPE[*next as usize] {
+                CharType::Quote => {
+                    tape.extend_from_slice(&data[last_escape..index]);
+                    index += 1;
+                    let s = to_str(tape, ascii_only, start)?;
+                    return Ok((StringOutput::Tape(s), index));
+                }
+                CharType::Backslash => on_backslash!(),
+                CharType::ControlChar => return json_err!(ControlCharacterWhileParsingString, index),
+                CharType::Other => {
+                    ascii_only = false;
+                }
+            }
+        }
+        index += 1;
+    }
+    json_err!(EofWhileParsingString, index)
+}
+
 fn to_str(bytes: &[u8], ascii_only: bool, start: usize) -> JsonResult<&str> {
     if ascii_only {
         // safety: in this case we've already confirmed that all characters are ascii, we can safely
         // transmute from bytes to str
-        Ok(unsafe { std::str::from_utf8_unchecked(bytes) })
+        Ok(unsafe { from_utf8_unchecked(bytes) })
     } else {
-        std::str::from_utf8(bytes).map_err(|e| json_error!(InvalidUnicodeCodePoint, start + e.valid_up_to() + 1))
+        from_utf8(bytes).map_err(|e| json_error!(InvalidUnicodeCodePoint, start + e.valid_up_to() + 1))
     }
 }
 

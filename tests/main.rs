@@ -347,6 +347,28 @@ fn invalid_unicode_code() {
 }
 
 #[test]
+fn utf8_range() {
+    for c in 0u8..255u8 {
+        let json = vec![34, c, 34];
+        // dbg!(c, json.iter().map(|b| *b as char).collect::<Vec<_>>());
+
+        let jiter_result = JsonValue::parse(&json, false);
+        match serde_json::from_slice::<String>(&json) {
+            Ok(serde_s) => {
+                let jiter_value = jiter_result.unwrap();
+                assert_eq!(jiter_value, JsonValue::Str(serde_s));
+            }
+            Err(serde_err) => {
+                let jiter_err = jiter_result.unwrap_err();
+                let position = jiter_err.get_position(&json);
+                let full_error = format!("{} at {position}", jiter_err.error_type);
+                assert_eq!(full_error, serde_err.to_string());
+            }
+        }
+    }
+}
+
+#[test]
 fn nan_disallowed() {
     let json = r#"[NaN]"#;
     let mut jiter = Jiter::new(json.as_bytes(), false);
