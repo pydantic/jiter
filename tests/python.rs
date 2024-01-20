@@ -1,7 +1,7 @@
 use pyo3::prelude::*;
 use pyo3::ToPyObject;
 
-use jiter::{cache_clear, cache_usage, map_json_error, python_parse, JsonValue};
+use jiter::{cache_clear, cache_usage, map_json_error, python_parse, JsonValue, StringCacheMode};
 
 #[test]
 fn test_to_py_object_numeric() {
@@ -41,7 +41,7 @@ fn test_python_parse_numeric() {
             py,
             br#"  { "int": 1, "bigint": 123456789012345678901234567890, "float": 1.2}  "#,
             false,
-            true,
+            StringCacheMode::All,
         )
         .unwrap();
         assert_eq!(
@@ -58,7 +58,7 @@ fn test_python_parse_other_cached() {
             py,
             br#"["string", true, false, null, NaN, Infinity, -Infinity]"#,
             true,
-            true,
+            StringCacheMode::All,
         )
         .unwrap();
         assert_eq!(
@@ -71,7 +71,7 @@ fn test_python_parse_other_cached() {
 #[test]
 fn test_python_parse_other_no_cache() {
     Python::with_gil(|py| {
-        let obj = python_parse(py, br#"["string", true, false, null]"#, false, false).unwrap();
+        let obj = python_parse(py, br#"["string", true, false, null]"#, false, StringCacheMode::None).unwrap();
         assert_eq!(obj.as_ref(py).to_string(), "['string', True, False, None]");
     })
 }
@@ -79,7 +79,7 @@ fn test_python_parse_other_no_cache() {
 #[test]
 fn test_python_disallow_nan() {
     Python::with_gil(|py| {
-        let r = python_parse(py, br#"[NaN]"#, false, true);
+        let r = python_parse(py, br#"[NaN]"#, false, StringCacheMode::All);
         let e = r.map_err(|e| map_json_error(br#"[NaN]"#, &e)).unwrap_err();
         assert_eq!(e.to_string(), "ValueError: expected value at line 1 column 2");
     })
@@ -89,7 +89,7 @@ fn test_python_disallow_nan() {
 fn test_error() {
     Python::with_gil(|py| {
         let bytes = br#"["string""#;
-        let r = python_parse(py, bytes, false, true);
+        let r = python_parse(py, bytes, false, StringCacheMode::All);
         let e = r.map_err(|e| map_json_error(bytes, &e)).unwrap_err();
         assert_eq!(e.to_string(), "ValueError: EOF while parsing a list at line 1 column 9");
     })
@@ -101,7 +101,7 @@ fn test_recursion_limit() {
     let bytes = json.as_bytes();
 
     Python::with_gil(|py| {
-        let r = python_parse(py, bytes, false, true);
+        let r = python_parse(py, bytes, false, StringCacheMode::All);
         let e = r.map_err(|e| map_json_error(bytes, &e)).unwrap_err();
         assert_eq!(
             e.to_string(),
@@ -117,12 +117,12 @@ fn test_recursion_limit_incr() {
     let bytes = json.as_bytes();
 
     Python::with_gil(|py| {
-        let v = python_parse(py, bytes, false, true).unwrap();
+        let v = python_parse(py, bytes, false, StringCacheMode::All).unwrap();
         assert_eq!(v.as_ref(py).len().unwrap(), 2000);
     });
 
     Python::with_gil(|py| {
-        let v = python_parse(py, bytes, false, true).unwrap();
+        let v = python_parse(py, bytes, false, StringCacheMode::All).unwrap();
         assert_eq!(v.as_ref(py).len().unwrap(), 2000);
     });
 }
@@ -133,28 +133,38 @@ fn test_exected_value_error() {
     let bytes = json.as_bytes();
 
     Python::with_gil(|py| {
-        let r = python_parse(py, bytes, false, true);
+        let r = python_parse(py, bytes, false, StringCacheMode::All);
         let e = r.map_err(|e| map_json_error(bytes, &e)).unwrap_err();
         assert_eq!(e.to_string(), "ValueError: expected value at line 1 column 1");
     })
 }
 
 #[test]
-fn test_python_cache_usage() {
+fn test_python_cache_usage_all() {
     Python::with_gil(|py| {
         cache_clear(py);
-        let obj = python_parse(py, br#"["foo", "bar", "spam"]"#, true, true).unwrap();
-        assert_eq!(obj.as_ref(py).to_string(), "['foo', 'bar', 'spam']");
+        let obj = python_parse(py, br#"{"foo": "bar", "spam": 3}"#, true, StringCacheMode::All).unwrap();
+        assert_eq!(obj.as_ref(py).to_string(), "{'foo': 'bar', 'spam': 3}");
         assert_eq!(cache_usage(py), 3);
     })
 }
 
 #[test]
-fn test_python_cache_usage_no_cache() {
+fn test_python_cache_usage_keys() {
     Python::with_gil(|py| {
         cache_clear(py);
-        let obj = python_parse(py, br#"["foo", "bar", "spam"]"#, false, false).unwrap();
-        assert_eq!(obj.as_ref(py).to_string(), "['foo', 'bar', 'spam']");
+        let obj = python_parse(py, br#"{"foo": "bar", "spam": 3}"#, false, StringCacheMode::Keys).unwrap();
+        assert_eq!(obj.as_ref(py).to_string(), "{'foo': 'bar', 'spam': 3}");
+        assert_eq!(cache_usage(py), 2);
+    })
+}
+
+#[test]
+fn test_python_cache_usage_none() {
+    Python::with_gil(|py| {
+        cache_clear(py);
+        let obj = python_parse(py, br#"{"foo": "bar", "spam": 3}"#, false, StringCacheMode::None).unwrap();
+        assert_eq!(obj.as_ref(py).to_string(), "{'foo': 'bar', 'spam': 3}");
         assert_eq!(cache_usage(py), 0);
     })
 }

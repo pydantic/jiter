@@ -8,7 +8,7 @@ use smallvec::SmallVec;
 use crate::errors::{json_err, json_error, JsonError, JsonResult, DEFAULT_RECURSION_LIMIT};
 use crate::number_decoder::{NumberAny, NumberInt};
 use crate::parse::{Parser, Peek};
-use crate::py_string_cache::{StringCacheAll, StringMaybeCache, StringNoCache};
+use crate::py_string_cache::{StringCacheAll, StringCacheKeys, StringCacheMode, StringMaybeCache, StringNoCache};
 use crate::string_decoder::{StringDecoder, Tape};
 
 /// Parse a JSON value from a byte slice and return a Python object.
@@ -23,7 +23,12 @@ use crate::string_decoder::{StringDecoder, Tape};
 /// # Returns
 ///
 /// A [PyObject](https://docs.rs/pyo3/latest/pyo3/type.PyObject.html) representing the parsed JSON value.
-pub fn python_parse(py: Python, json_data: &[u8], allow_inf_nan: bool, cache_strings: bool) -> JsonResult<PyObject> {
+pub fn python_parse(
+    py: Python,
+    json_data: &[u8],
+    allow_inf_nan: bool,
+    cache_model: StringCacheMode,
+) -> JsonResult<PyObject> {
     let mut python_parser = PythonParser {
         parser: Parser::new(json_data),
         tape: Tape::default(),
@@ -32,10 +37,10 @@ pub fn python_parse(py: Python, json_data: &[u8], allow_inf_nan: bool, cache_str
     };
 
     let peek = python_parser.parser.peek()?;
-    let v = if cache_strings {
-        python_parser.py_take_value::<StringCacheAll>(py, peek)?
-    } else {
-        python_parser.py_take_value::<StringNoCache>(py, peek)?
+    let v = match cache_model {
+        StringCacheMode::All => python_parser.py_take_value::<StringCacheAll>(py, peek)?,
+        StringCacheMode::Keys => python_parser.py_take_value::<StringCacheKeys>(py, peek)?,
+        StringCacheMode::None => python_parser.py_take_value::<StringNoCache>(py, peek)?,
     };
     python_parser.parser.finish()?;
     Ok(v)
