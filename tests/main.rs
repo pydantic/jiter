@@ -408,6 +408,36 @@ fn inf_neg_disallowed() {
 }
 
 #[test]
+fn num_after() {
+    let json = r#"2:"#; // `:` is 58, directly after 9
+    let mut jiter = Jiter::new(json.as_bytes(), false);
+    let num = jiter.next_number().unwrap();
+    assert_eq!(num, NumberAny::Int(NumberInt::Int(2)));
+    let e = jiter.finish().unwrap_err();
+    assert_eq!(
+        e.error_type,
+        JiterErrorType::JsonError(JsonErrorType::TrailingCharacters)
+    );
+    assert_eq!(e.index, 1);
+    assert_eq!(jiter.error_position(e.index), LinePosition::new(1, 2));
+}
+
+#[test]
+fn num_before() {
+    let json = r#"2/"#; // `/` is 47, directly before 0
+    let mut jiter = Jiter::new(json.as_bytes(), false);
+    let num = jiter.next_number().unwrap();
+    assert_eq!(num, NumberAny::Int(NumberInt::Int(2)));
+    let e = jiter.finish().unwrap_err();
+    assert_eq!(
+        e.error_type,
+        JiterErrorType::JsonError(JsonErrorType::TrailingCharacters)
+    );
+    assert_eq!(e.index, 1);
+    assert_eq!(jiter.error_position(e.index), LinePosition::new(1, 2));
+}
+
+#[test]
 fn nan_disallowed_wrong_type() {
     let json = r#"[NaN]"#;
     let mut jiter = Jiter::new(json.as_bytes(), false);
