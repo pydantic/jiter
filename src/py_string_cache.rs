@@ -15,19 +15,27 @@ pub enum StringCacheMode {
     None,
 }
 
-impl TryFrom<&PyAny> for StringCacheMode {
-    type Error = PyErr;
-
-    fn try_from(mode: &PyAny) -> PyResult<Self> {
-        if let Ok(bool_mode) = mode.downcast::<PyBool>() {
-            Ok(if bool_mode.is_true() { Self::All } else { Self::None })
+impl<'py> FromPyObject<'py> for StringCacheMode {
+    fn extract(ob: &'py PyAny) -> PyResult<StringCacheMode> {
+        if let Ok(bool_mode) = ob.downcast::<PyBool>() {
+            Ok(bool_mode.is_true().into())
         } else {
-            match mode.extract()? {
+            match ob.extract()? {
                 "all" => Ok(Self::All),
                 "keys" => Ok(Self::Keys),
                 "none" => Ok(Self::None),
-                _ => Err(PyTypeError::new_err(format!("Invalid string cache mode: {}", mode))),
+                _ => Err(PyTypeError::new_err(format!("Invalid string cache mode: {}", ob))),
             }
+        }
+    }
+}
+
+impl From<bool> for StringCacheMode {
+    fn from(mode: bool) -> Self {
+        if mode {
+            Self::All
+        } else {
+            Self::None
         }
     }
 }
