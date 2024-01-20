@@ -1,0 +1,18 @@
+[package]
+name = "jiter-python"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+pyo3 = { version = "0.20.2", features = ["generate-import-lib", "num-bigint"] }
+jiter = { path = "..", features = ["python"] }
+
+
+[features]
+# must be enabled when building with `cargo build`, maturin enables this automatically
+extension-module = ["pyo3/extension-module"]
+
+[profile.profiling]
+inherits = "release"
+debug = true
+strip = false
