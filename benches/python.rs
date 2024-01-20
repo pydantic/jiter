@@ -55,6 +55,10 @@ fn _python_parse_file(path: &str, bench: &mut Bencher, cache_strings: bool) {
     })
 }
 
+fn python_parse_massive_ints_array(bench: &mut Bencher) {
+    _python_parse_file("./benches/massive_ints_array.json", bench, true);
+}
+
 fn python_parse_medium_response_not_cached(bench: &mut Bencher) {
     _python_parse_file("./benches/medium_response.json", bench, false);
 }
@@ -115,5 +119,6 @@ benchmark_group!(
     python_parse_x100,
     python_parse_true_object,
     python_parse_true_array,
+    python_parse_massive_ints_array,
 );
 benchmark_main!(benches);
