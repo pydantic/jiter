@@ -1,15 +1,16 @@
 use num_bigint::BigInt;
 use num_traits::cast::ToPrimitive;
 use std::ops::{Neg, Range};
+use std::str::from_utf8_unchecked;
 
 use lexical_core::{format as lexical_format, parse_partial_with_options, ParseFloatOptions};
 
 use crate::errors::{json_err, JsonResult};
 
-pub trait AbstractNumberDecoder {
+pub trait AbstractNumberDecoder<'j> {
     type Output;
 
-    fn decode(data: &[u8], index: usize, first: u8, allow_inf_nan: bool) -> JsonResult<(Self::Output, usize)>;
+    fn decode(data: &'j [u8], index: usize, first: u8, allow_inf_nan: bool) -> JsonResult<(Self::Output, usize)>;
 }
 
 /// A number that can be either an [i64] or a [BigInt](num_bigint::BigInt)
@@ -31,10 +32,10 @@ impl From<NumberInt> for f64 {
     }
 }
 
-impl AbstractNumberDecoder for NumberInt {
+impl<'j> AbstractNumberDecoder<'j> for NumberInt {
     type Output = NumberInt;
 
-    fn decode(data: &[u8], index: usize, first: u8, _allow_inf_nan: bool) -> JsonResult<(Self::Output, usize)> {
+    fn decode(data: &'j [u8], index: usize, first: u8, _allow_inf_nan: bool) -> JsonResult<(Self::Output, usize)> {
         let (int_parse, index) = IntParse::<BigIntNum>::parse(data, index, first)?;
         match int_parse {
             IntParse::Int(int) => Ok((NumberInt::Int(int), index)),
@@ -46,10 +47,10 @@ impl AbstractNumberDecoder for NumberInt {
 
 pub struct NumberFloat;
 
-impl AbstractNumberDecoder for NumberFloat {
+impl<'j> AbstractNumberDecoder<'j> for NumberFloat {
     type Output = f64;
 
-    fn decode(data: &[u8], mut index: usize, first: u8, allow_inf_nan: bool) -> JsonResult<(Self::Output, usize)> {
+    fn decode(data: &'j [u8], mut index: usize, first: u8, allow_inf_nan: bool) -> JsonResult<(Self::Output, usize)> {
         let start = index;
 
         let positive = match first {
@@ -104,15 +105,43 @@ impl From<NumberAny> for f64 {
     }
 }
 
-impl AbstractNumberDecoder for NumberAny {
-    type Output = NumberAny;
+impl<'j> AbstractNumberDecoder<'j> for NumberAny {
+    type Output = Self;
 
-    fn decode(data: &[u8], index: usize, first: u8, allow_inf_nan: bool) -> JsonResult<(Self::Output, usize)> {
+    fn decode(data: &'j [u8], index: usize, first: u8, allow_inf_nan: bool) -> JsonResult<(Self::Output, usize)> {
         let start = index;
         let (int_parse, index) = IntParse::<BigIntNum>::parse(data, index, first)?;
         match int_parse {
             IntParse::Int(int) => Ok((Self::Int(NumberInt::Int(int)), index)),
             IntParse::BigInt(big_int) => Ok((Self::Int(NumberInt::BigInt(big_int)), index)),
+            IntParse::Float => {
+                NumberFloat::decode(data, start, first, allow_inf_nan).map(|(f, index)| (Self::Float(f), index))
+            }
+            IntParse::FloatInf(positive) => {
+                consume_inf(data, index, positive, allow_inf_nan).map(|(f, index)| (Self::Float(f), index))
+            }
+            IntParse::FloatNaN => consume_nan(data, index, allow_inf_nan).map(|(f, index)| (Self::Float(f), index)),
+        }
+    }
+}
+
+/// A number that can be either a [NumberInt] or an [f64]
+#[derive(Debug, Clone, PartialEq)]
+pub enum NumberAnyData<'j> {
+    Int(i64),
+    BigInt(&'j str),
+    Float(f64),
+}
+
+impl<'j> AbstractNumberDecoder<'j> for NumberAnyData<'j> {
+    type Output = Self;
+
+    fn decode(data: &'j [u8], index: usize, first: u8, allow_inf_nan: bool) -> JsonResult<(Self::Output, usize)> {
+        let start = index;
+        let (int_parse, index) = IntParse::<BigIntVec>::parse(data, index, first)?;
+        match int_parse {
+            IntParse::Int(int) => Ok((Self::Int(int), index)),
+            IntParse::BigInt(big_int) => Ok((Self::BigInt(big_int), index)),
             IntParse::Float => {
                 NumberFloat::decode(data, start, first, allow_inf_nan).map(|(f, index)| (Self::Float(f), index))
             }
@@ -149,7 +178,7 @@ fn consume_nan(data: &[u8], index: usize, allow_inf_nan: bool) -> JsonResult<(f6
 }
 
 #[derive(Debug)]
-enum IntParse<B: BigIntData> {
+enum IntParse<'j, B: BigIntData<'j>> {
     Int(i64),
     BigInt(B::Output),
     Float,
@@ -157,11 +186,12 @@ enum IntParse<B: BigIntData> {
     FloatNaN,
 }
 
-impl<B: BigIntData> IntParse<B> {
+impl<'j, B: BigIntData<'j>> IntParse<'j, B> {
     /// Turns out this is faster than fancy bit manipulation, see
     /// https://github.com/Alexhuszagh/rust-lexical/blob/main/lexical-parse-integer/docs/Algorithm.md
     /// for some context
-    fn parse(data: &[u8], mut index: usize, first: u8) -> JsonResult<(Self, usize)> {
+    fn parse(data: &'j [u8], mut index: usize, first: u8) -> JsonResult<(Self, usize)> {
+        let start = index;
         let positive = match first {
             b'N' => return Ok((Self::FloatNaN, index)),
             b'-' => false,
@@ -205,20 +235,32 @@ impl<B: BigIntData> IntParse<B> {
                 }
             }
         }
-        B::parse(data, index, positive, value)
+        B::parse(data, index, start, positive, value)
     }
 }
 
-trait BigIntData: Sized {
+trait BigIntData<'j>: Sized {
     type Output;
-    fn parse(data: &[u8], index: usize, positive: bool, value: i64) -> JsonResult<(IntParse<Self>, usize)>;
+    fn parse(
+        data: &'j [u8],
+        index: usize,
+        start: usize,
+        positive: bool,
+        value: i64,
+    ) -> JsonResult<(IntParse<'j, Self>, usize)>;
 }
 
 struct BigIntNum;
 
-impl BigIntData for BigIntNum {
+impl<'j> BigIntData<'j> for BigIntNum {
     type Output = BigInt;
-    fn parse(data: &[u8], mut index: usize, positive: bool, mut value: i64) -> JsonResult<(IntParse<Self>, usize)> {
+    fn parse(
+        data: &'j [u8],
+        mut index: usize,
+        _: usize,
+        positive: bool,
+        mut value: i64,
+    ) -> JsonResult<(IntParse<Self>, usize)> {
         let mut big_value: BigInt = value.into();
         let mut length = 18;
         loop {
@@ -252,12 +294,38 @@ impl BigIntData for BigIntNum {
     }
 }
 
+struct BigIntVec;
+
+impl<'j> BigIntData<'j> for BigIntVec {
+    type Output = &'j str;
+    fn parse(data: &'j [u8], mut index: usize, start: usize, _: bool, _: i64) -> JsonResult<(IntParse<Self>, usize)> {
+        loop {
+            match data.get(index) {
+                Some(digit) if digit.is_ascii_digit() => {}
+                Some(b'.') => return Ok((IntParse::Float, index)),
+                Some(b'e') | Some(b'E') => return Ok((IntParse::Float, index)),
+                _ => {
+                    break;
+                }
+            }
+            index += 1;
+        }
+        let bytes = &data[start..index];
+        if bytes.len() > 4300 {
+            return json_err!(NumberOutOfRange, start + 4301);
+        }
+        // safety: we know the string is valid utf8 as it must be [0-9] or -[0-9]
+        let s = unsafe { from_utf8_unchecked(bytes) };
+        return Ok((IntParse::BigInt(s), index));
+    }
+}
+
 pub struct NumberRange;
 
-impl AbstractNumberDecoder for NumberRange {
+impl<'j> AbstractNumberDecoder<'j> for NumberRange {
     type Output = Range<usize>;
 
-    fn decode(data: &[u8], mut index: usize, first: u8, allow_inf_nan: bool) -> JsonResult<(Self::Output, usize)> {
+    fn decode(data: &'j [u8], mut index: usize, first: u8, allow_inf_nan: bool) -> JsonResult<(Self::Output, usize)> {
         let start = index;
 
         let positive = match first {

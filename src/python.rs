@@ -1,16 +1,17 @@
 use std::cell::RefCell;
+use std::os::raw::c_char;
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::sync::{GILOnceCell, GILProtected};
-use pyo3::types::{PyDict, PyList, PyString};
-use pyo3::{ffi, AsPyPointer};
+use pyo3::types::{PyDict, PyInt, PyList, PyString};
+use pyo3::{ffi, AsPyPointer, FromPyPointer};
 
 use hashbrown::hash_map::{HashMap, RawEntryMut};
 use smallvec::SmallVec;
 
 use crate::errors::{json_err, json_error, JsonError, JsonResult, DEFAULT_RECURSION_LIMIT};
-use crate::number_decoder::{NumberAny, NumberInt};
+use crate::number_decoder::NumberAnyData;
 use crate::parse::{Parser, Peek};
 use crate::string_decoder::{StringDecoder, Tape};
 
@@ -120,11 +121,18 @@ impl<'j> PythonParser<'j> {
             _ => {
                 let n = self
                     .parser
-                    .consume_number::<NumberAny>(peek.into_inner(), self.allow_inf_nan);
+                    .consume_number::<NumberAnyData>(peek.into_inner(), self.allow_inf_nan);
                 match n {
-                    Ok(NumberAny::Int(NumberInt::Int(int))) => Ok(int.to_object(py)),
-                    Ok(NumberAny::Int(NumberInt::BigInt(big_int))) => Ok(big_int.to_object(py)),
-                    Ok(NumberAny::Float(float)) => Ok(float.to_object(py)),
+                    Ok(NumberAnyData::Int(int)) => Ok(int.to_object(py)),
+                    Ok(NumberAnyData::BigInt(s)) => {
+                        // safety: we know the string is valid utf8 as it must be [0-9] or -[0-9]
+                        let c_str = unsafe { std::ffi::CString::from_vec_unchecked(s.into()) };
+                        let ptr = c_str.as_ptr() as *const c_char;
+                        let null: *mut *mut c_char = std::ptr::null::<*mut c_char>() as *mut _;
+                        let py_int = unsafe { PyInt::from_owned_ptr(py, ffi::PyLong_FromString(ptr, null, 0)) };
+                        Ok(py_int.to_object(py))
+                    }
+                    Ok(NumberAnyData::Float(float)) => Ok(float.to_object(py)),
                     Err(e) => {
                         if !peek.is_num() {
                             Err(json_error!(ExpectedSomeValue, self.parser.index))

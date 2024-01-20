@@ -182,7 +182,7 @@ impl<'j> Parser<'j> {
         Ok(output)
     }
 
-    pub fn consume_number<D: AbstractNumberDecoder>(
+    pub fn consume_number<D: AbstractNumberDecoder<'j>>(
         &mut self,
         first: u8,
         allow_inf_nan: bool,
