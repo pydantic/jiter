@@ -119,22 +119,37 @@ impl PyStringCache {
     fn get_or_insert(&mut self, py: Python, s: &str) -> PyObject {
         let hash = self.hash_builder.hash_one(s);
 
-        let index = hash as usize % CAPACITY;
+        let hash_index = hash as usize % CAPACITY;
 
-        let entry = unsafe { self.entries.get_unchecked_mut(index) };
-        if let Some((h, ref py_str_ob)) = entry {
-            // to avoid a string comparison, we first compare the hashes
-            if *h == hash {
-                // if the hashes match, we compare the strings to be correct - as hashmap would do
-                if py_str_ob.as_ref(py).to_str().ok() == Some(s) {
-                    return py_str_ob.to_object(py);
+        let set_entry = |entry: &mut Option<(u64, Py<PyString>)>| {
+            let py_str = PyString::new(py, s);
+            *entry = Some((hash, py_str.into_py(py)));
+            py_str.to_object(py)
+        };
+
+        for index in hash_index..(hash_index + 5) {
+            if let Some(entry) = self.entries.get_mut(index) {
+                if let Some((entry_hash, ref py_str_ob)) = entry {
+                    // to avoid a string comparison, we first compare the hashes
+                    if *entry_hash == hash {
+                        // if the hashes match, we compare the strings to be absolutely sure - as a hashmap would do
+                        if py_str_ob.as_ref(py).to_str().ok() == Some(s) {
+                            return py_str_ob.to_object(py);
+                        }
+                    }
+                } else {
+                    // we got to an empty entry, use it
+                    return set_entry(entry);
                 }
+            } else {
+                // we reached the end of entries, break
+                break;
             }
         }
-
-        let py_str = PyString::new(py, s);
-        *entry = Some((hash, py_str.into_py(py)));
-        py_str.to_object(py)
+        // we tried all 5 slots (or got to the end of entries) without finding a match
+        // or an empty slot, make this LRU by replacing the first entry
+        let entry = unsafe { self.entries.get_unchecked_mut(hash_index) };
+        set_entry(entry)
     }
 
     /// get the number of entries in the cache that are set
