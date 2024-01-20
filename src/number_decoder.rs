@@ -2,8 +2,8 @@ use num_bigint::BigInt;
 use num_traits::cast::ToPrimitive;
 use std::ops::Range;
 
-use lexical_parse_float::{FromLexicalWithOptions, format as lexical_format, Options as ParseFloatOptions};
 use crate::errors::{json_err, JsonResult};
+use lexical_parse_float::{format as lexical_format, FromLexicalWithOptions, Options as ParseFloatOptions};
 
 pub trait AbstractNumberDecoder {
     type Output;
