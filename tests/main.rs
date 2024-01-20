@@ -347,27 +347,25 @@ fn invalid_unicode_code() {
 }
 
 #[test]
-fn invalid_unicode_127() {
-    let json = vec![34, 127, 34];
-    // dbg!(json.iter().map(|b| *b as char).collect::<Vec<_>>());
-    let mut jiter = Jiter::new(&json, false);
-    let s = jiter.next_str().unwrap();
-    assert_eq!(s, "\u{7f}");
+fn utf8_range() {
+    for c in 0u8..255u8 {
+        let json = vec![34, c, 34];
+        // dbg!(c, json.iter().map(|b| *b as char).collect::<Vec<_>>());
 
-    let s = serde_json::from_slice::<&str>(&json).unwrap();
-    assert_eq!(s, "\u{7f}");
-}
-
-#[test]
-fn invalid_unicode_128() {
-    let json = vec![34, 128, 34];
-    // dbg!(json.iter().map(|b| *b as char).collect::<Vec<_>>());
-    // let mut jiter = Jiter::new(&json, false);
-    // let s = jiter.next_str().unwrap();
-    // assert_eq!(s, "\u{7f}");
-
-    let serde_err = serde_json::from_slice::<&str>(&json).unwrap_err();
-    assert_eq!(serde_err.to_string(), "invalid unicode code point at line 1 column 3");
+        let jiter_result = JsonValue::parse(&json, false);
+        match serde_json::from_slice::<String>(&json) {
+            Ok(serde_s) => {
+                let jiter_value = jiter_result.unwrap();
+                assert_eq!(jiter_value, JsonValue::Str(serde_s));
+            }
+            Err(serde_err) => {
+                let jiter_err = jiter_result.unwrap_err();
+                let position = jiter_err.get_position(&json);
+                let full_error = format!("{} at {position}", jiter_err.error_type);
+                assert_eq!(full_error, serde_err.to_string());
+            }
+        }
+    }
 }
 
 #[test]
