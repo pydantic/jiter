@@ -20,14 +20,12 @@ cases = [
 def run_bench(func, d):
     if isinstance(d, str):
         d = d.encode()
-    # assert func(d) == json.loads(d)
-    # assert repr(func(json_data)) == repr(json.loads(json_data))
     timer = timeit.Timer(
         'func(json_data)', setup='', globals={'func': func, 'json_data': d}
     )
     n, t = timer.autorange()
     iter_time = t / n
-    # print(f'{func.__module__}.{func.__name__}', n)
+    # print(f'{func.__module__}.{func.__name__}', iter_time)
     return iter_time
 
 
@@ -35,7 +33,7 @@ for name, json_data in cases:
     print(f'Case: {name}')
     times = [
         ('orjson', run_bench(orjson.loads, json_data)),
-        ('pydantic', run_bench(jiter_python.from_json, json_data)),
+        ('jiter', run_bench(jiter_python.from_json, json_data)),
         ('ujson', run_bench(ujson.loads, json_data)),
         ('json', run_bench(json.loads, json_data)),
     ]
