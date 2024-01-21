@@ -1,4 +1,4 @@
-use std::borrow::Borrow;
+use std::borrow::{Borrow, Cow};
 use std::cmp::{Eq, PartialEq};
 use std::fmt;
 use std::hash::Hash;
@@ -30,7 +30,7 @@ impl<K: Clone, V: Clone> Clone for LazyIndexMap<K, V> {
     fn clone(&self) -> Self {
         Self {
             vec: self.vec.clone(),
-            map: OnceLock::new(),
+            map: self.map.clone(),
             last_find: AtomicUsize::new(0),
         }
     }
@@ -127,6 +127,20 @@ where
                 .map(|(index, (key, _))| (key.clone(), index))
                 .collect()
         })
+    }
+}
+
+impl<'j> LazyIndexMap<Cow<'j, str>, crate::JsonValue<'j>> {
+    pub(crate) fn into_owned(self) -> LazyIndexMap<Cow<'static, str>, crate::JsonValue<'static>> {
+        LazyIndexMap {
+            vec: self
+                .vec
+                .into_iter()
+                .map(|(k, v)| (k.to_string().into(), v.into_static()))
+                .collect(),
+            map: OnceLock::new(),
+            last_find: self.last_find,
+        }
     }
 }
 

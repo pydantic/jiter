@@ -1109,14 +1109,14 @@ fn jiter_invalid_numbers_expected_some_value() {
     );
 }
 
-fn get_owned_json() -> JsonValue<'static> {
+fn value_owned() -> JsonValue<'static> {
     let s = r#"  { "int": 1, "const": true, "float": 1.2, "array": [1, false, null]}"#.to_string();
     JsonValue::parse_owned(s.as_bytes(), false).unwrap()
 }
 
 #[test]
 fn test_owned_value() {
-    let value = get_owned_json();
+    let value = value_owned();
     let obj = match value {
         JsonValue::Object(obj) => obj,
         _ => panic!("expected object"),
@@ -1128,10 +1128,36 @@ fn test_owned_value() {
         JsonValue::Array(array) => array,
         _ => panic!("expected array"),
     };
-    assert_eq!(array.len(), 3);
-    assert_eq!(array[0], JsonValue::Int(1));
-    assert_eq!(array[1], JsonValue::Bool(false));
-    assert_eq!(array[2], JsonValue::Null);
+    assert_eq!(
+        array,
+        &Arc::new(smallvec![JsonValue::Int(1), JsonValue::Bool(false), JsonValue::Null])
+    );
+}
+
+fn value_into_static() -> JsonValue<'static> {
+    let s = r#"{ "int": 1, "const": true, "float": 1.2, "array": [1, false, null]}"#.to_string();
+    let jiter = JsonValue::parse(s.as_bytes(), false).unwrap();
+    jiter.into_static()
+}
+
+#[test]
+fn test_into_static() {
+    let value = crate::value_into_static();
+    let obj = match value {
+        JsonValue::Object(obj) => obj,
+        _ => panic!("expected object"),
+    };
+    assert_eq!(obj.get("int").unwrap(), &JsonValue::Int(1));
+    assert_eq!(obj.get("const").unwrap(), &JsonValue::Bool(true));
+    assert_eq!(obj.get("float").unwrap(), &JsonValue::Float(1.2));
+    let array = match obj.get("array").unwrap() {
+        JsonValue::Array(array) => array,
+        _ => panic!("expected array"),
+    };
+    assert_eq!(
+        array,
+        &Arc::new(smallvec![JsonValue::Int(1), JsonValue::Bool(false), JsonValue::Null])
+    );
 }
 
 #[test]

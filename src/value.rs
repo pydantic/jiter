@@ -61,6 +61,31 @@ impl<'j> JsonValue<'j> {
         parser.finish()?;
         Ok(v)
     }
+
+    pub fn into_static(self) -> JsonValue<'static> {
+        value_static(self)
+    }
+}
+
+fn value_static(v: JsonValue<'_>) -> JsonValue<'static> {
+    match v {
+        JsonValue::Null => JsonValue::Null,
+        JsonValue::Bool(b) => JsonValue::Bool(b),
+        JsonValue::Int(i) => JsonValue::Int(i),
+        JsonValue::BigInt(b) => JsonValue::BigInt(b),
+        JsonValue::Float(f) => JsonValue::Float(f),
+        JsonValue::Str(s) => JsonValue::Str(s.into_owned().into()),
+        JsonValue::Array(v) => {
+            // TODO is try_unwrap the right thing to do here?
+            let vec = Arc::try_unwrap(v).unwrap();
+            JsonValue::Array(Arc::new(vec.into_iter().map(value_static).collect::<SmallVec<_>>()))
+        }
+        JsonValue::Object(o) => {
+            // TODO is try_unwrap the right thing to do here?
+            let map = Arc::try_unwrap(o).unwrap();
+            JsonValue::Object(Arc::new(map.into_owned()))
+        } // JsonValue::Object(_) => todo!(),
+    }
 }
 
 impl JsonValue<'static> {
