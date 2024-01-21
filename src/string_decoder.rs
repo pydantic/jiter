@@ -1,5 +1,7 @@
 use std::ops::Range;
-use std::str::{from_utf8, from_utf8_unchecked};
+use std::str::from_utf8_unchecked;
+
+use simdutf8::compat::from_utf8;
 
 use crate::errors::{json_err, json_error, JsonResult};
 

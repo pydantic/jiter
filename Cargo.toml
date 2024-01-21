@@ -18,6 +18,7 @@ smallvec = "1.11.0"
 pyo3 = { version = "0.20.0", features = ["num-bigint"], optional = true }
 lexical-core = { version = "0.8.5", features = ["format"] }
 hashbrown = "0.14.3"
+simdutf8 = { version = "0.1.4", features = ["aarch64_neon"] }
 
 [features]
 python = ["dep:pyo3"]
