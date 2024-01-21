@@ -4,7 +4,7 @@ use std::hint::black_box;
 use std::fs::File;
 use std::io::Read;
 
-use jiter::{Jiter, JsonValueBase, LazyIndexMap, Peek};
+use jiter::{Jiter, JsonValue, LazyIndexMap, Peek};
 use serde_json::Value;
 
 fn read_file(path: &str) -> String {
@@ -18,7 +18,7 @@ fn jiter_value(path: &str, bench: &mut Bencher) {
     let json = read_file(path);
     let json_data = json.as_bytes();
     bench.iter(|| {
-        let v = JsonValueBase::parse(black_box(json_data), false).unwrap();
+        let v = JsonValue::parse(black_box(json_data), false).unwrap();
         black_box(v)
     })
 }
@@ -239,16 +239,34 @@ test_cases!(medium_response);
 test_cases!(x100);
 test_cases!(sentence);
 
+fn string_array_jiter_value_owned(bench: &mut Bencher) {
+    let json = read_file("./benches/string_array.json");
+    let json_data = json.as_bytes();
+    bench.iter(|| {
+        let v = JsonValue::parse_owned(black_box(json_data), false).unwrap();
+        black_box(v)
+    })
+}
+
+fn medium_response_jiter_value_owned(bench: &mut Bencher) {
+    let json = read_file("./benches/medium_response.json");
+    let json_data = json.as_bytes();
+    bench.iter(|| {
+        let v = JsonValue::parse_owned(black_box(json_data), false).unwrap();
+        black_box(v)
+    })
+}
+
 fn x100_serde_iter(bench: &mut Bencher) {
     serde_str("./benches/x100.json", bench);
 }
 
 fn lazy_map_lookup(length: i64, bench: &mut Bencher) {
     bench.iter(|| {
-        let mut map: LazyIndexMap<String, JsonValueBase> = LazyIndexMap::new();
+        let mut map: LazyIndexMap<String, JsonValue> = LazyIndexMap::new();
         for i in 0..length {
             let key = i.to_string();
-            map.insert(key, JsonValueBase::Int(i));
+            map.insert(key, JsonValue::Int(i));
         }
 
         // best case we get the next value each time
@@ -286,6 +304,7 @@ benchmark_group!(
     massive_ints_array_serde_value,
     medium_response_jiter_iter,
     medium_response_jiter_value,
+    medium_response_jiter_value_owned,
     medium_response_serde_value,
     x100_jiter_iter,
     x100_jiter_value,
@@ -302,6 +321,7 @@ benchmark_group!(
     pass2_serde_value,
     string_array_jiter_iter,
     string_array_jiter_value,
+    string_array_jiter_value_owned,
     string_array_serde_value,
     true_array_jiter_iter,
     true_array_jiter_value,

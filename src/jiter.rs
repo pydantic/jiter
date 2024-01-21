@@ -2,7 +2,7 @@ use crate::errors::{json_error, JiterError, JsonType, LinePosition, DEFAULT_RECU
 use crate::number_decoder::{NumberAny, NumberFloat, NumberInt, NumberRange};
 use crate::parse::{Parser, Peek};
 use crate::string_decoder::{StringDecoder, StringDecoderRange, Tape};
-use crate::value::{take_value, JsonValueBase, StrOwnership};
+use crate::value::{take_value_borrowed, take_value_owned, JsonValue};
 use crate::{JsonError, JsonErrorType};
 
 pub type JiterResult<T> = Result<T, JiterError>;
@@ -198,7 +198,7 @@ impl<'j> Jiter<'j> {
     }
 
     /// Parse the next JSON value and return it as a [JsonValueBase]. Error if it is invalid JSON.
-    pub fn next_value<S: StrOwnership>(&mut self) -> JiterResult<JsonValueBase<S>> {
+    pub fn next_value(&mut self) -> JiterResult<JsonValue<'j>> {
         let peek = self.peek()?;
         self.known_value(peek)
     }
@@ -207,8 +207,29 @@ impl<'j> Jiter<'j> {
     ///
     /// # Arguments
     /// - `peek`: The [Peek] of the next JSON value.
-    pub fn known_value<S: StrOwnership>(&mut self, peek: Peek) -> JiterResult<JsonValueBase<S>> {
-        take_value(
+    pub fn known_value(&mut self, peek: Peek) -> JiterResult<JsonValue<'j>> {
+        take_value_borrowed(
+            peek,
+            &mut self.parser,
+            &mut self.tape,
+            DEFAULT_RECURSION_LIMIT,
+            self.allow_inf_nan,
+        )
+        .map_err(Into::into)
+    }
+
+    /// Parse the next JSON value and return it as a [JsonValueBase] with static lifetime. Error if it is invalid JSON.
+    pub fn next_value_owned(&mut self) -> JiterResult<JsonValue<'static>> {
+        let peek = self.peek()?;
+        self.known_value_owned(peek)
+    }
+
+    /// Parse the next JSON value and return it as a [JsonValueBase] with static lifetime. Error if it is invalid JSON.
+    ///
+    /// # Arguments
+    /// - `peek`: The [Peek] of the next JSON value.
+    pub fn known_value_owned(&mut self, peek: Peek) -> JiterResult<JsonValue<'static>> {
+        take_value_owned(
             peek,
             &mut self.parser,
             &mut self.tape,

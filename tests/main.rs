@@ -8,8 +8,8 @@ use num_bigint::BigInt;
 use smallvec::smallvec;
 
 use jiter::{
-    Jiter, JiterErrorType, JiterResult, JsonErrorType, JsonType, JsonValue, JsonValueOwned, LazyIndexMap, LinePosition,
-    NumberAny, NumberInt, Peek, StrBorrowed,
+    Jiter, JiterErrorType, JiterResult, JsonErrorType, JsonType, JsonValue, LazyIndexMap, LinePosition, NumberAny,
+    NumberInt, Peek,
 };
 
 fn json_vec(jiter: &mut Jiter, peek: Option<Peek>) -> JiterResult<Vec<String>> {
@@ -1015,7 +1015,7 @@ fn jiter_clone() {
 #[test]
 fn jiter_invalid_value() {
     let mut jiter = Jiter::new(b" bar", false);
-    let e = jiter.next_value::<StrBorrowed>().unwrap_err();
+    let e = jiter.next_value().unwrap_err();
     assert_eq!(
         e.error_type,
         JiterErrorType::JsonError(JsonErrorType::ExpectedSomeValue)
@@ -1109,28 +1109,34 @@ fn jiter_invalid_numbers_expected_some_value() {
     );
 }
 
-fn get_owned_json() -> JsonValueOwned {
-    let mut s = r#"  { "int": 1, "const": true, "float": 1.2, "array": [1, false, null]"#.to_string();
-    s.push('}');
-    JsonValueOwned::parse(s.as_bytes(), false).unwrap()
+fn get_owned_json() -> JsonValue<'static> {
+    let s = r#"  { "int": 1, "const": true, "float": 1.2, "array": [1, false, null]}"#.to_string();
+    JsonValue::parse_owned(s.as_bytes(), false).unwrap()
 }
 
 #[test]
 fn test_owned_value() {
     let value = get_owned_json();
     let obj = match value {
-        JsonValueOwned::Object(obj) => obj,
+        JsonValue::Object(obj) => obj,
         _ => panic!("expected object"),
     };
-    assert_eq!(obj.get("int").unwrap(), &JsonValueOwned::Int(1));
-    assert_eq!(obj.get("const").unwrap(), &JsonValueOwned::Bool(true));
-    assert_eq!(obj.get("float").unwrap(), &JsonValueOwned::Float(1.2));
+    assert_eq!(obj.get("int").unwrap(), &JsonValue::Int(1));
+    assert_eq!(obj.get("const").unwrap(), &JsonValue::Bool(true));
+    assert_eq!(obj.get("float").unwrap(), &JsonValue::Float(1.2));
     let array = match obj.get("array").unwrap() {
-        JsonValueOwned::Array(array) => array,
+        JsonValue::Array(array) => array,
         _ => panic!("expected array"),
     };
     assert_eq!(array.len(), 3);
-    assert_eq!(array[0], JsonValueOwned::Int(1));
-    assert_eq!(array[1], JsonValueOwned::Bool(false));
-    assert_eq!(array[2], JsonValueOwned::Null);
+    assert_eq!(array[0], JsonValue::Int(1));
+    assert_eq!(array[1], JsonValue::Bool(false));
+    assert_eq!(array[2], JsonValue::Null);
+}
+
+#[test]
+fn jiter_next_value_owned() {
+    let mut jiter = Jiter::new(br#" "v"  "#, false);
+    let v = jiter.next_value().unwrap();
+    assert_eq!(v, JsonValue::Str("v".into()));
 }
