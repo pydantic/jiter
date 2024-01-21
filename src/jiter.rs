@@ -2,7 +2,7 @@ use crate::errors::{json_error, JiterError, JsonType, LinePosition, DEFAULT_RECU
 use crate::number_decoder::{NumberAny, NumberFloat, NumberInt, NumberRange};
 use crate::parse::{Parser, Peek};
 use crate::string_decoder::{StringDecoder, StringDecoderRange, Tape};
-use crate::value::{take_value, JsonValue};
+use crate::value::{take_value, JsonValueBase, StrOwnership};
 use crate::{JsonError, JsonErrorType};
 
 pub type JiterResult<T> = Result<T, JiterError>;
@@ -197,17 +197,17 @@ impl<'j> Jiter<'j> {
         Ok(&self.data[range])
     }
 
-    /// Parse the next JSON value and return it as a [JsonValue]. Error if it is invalid JSON.
-    pub fn next_value(&mut self) -> JiterResult<JsonValue<'j>> {
+    /// Parse the next JSON value and return it as a [JsonValueBase]. Error if it is invalid JSON.
+    pub fn next_value<S: StrOwnership>(&mut self) -> JiterResult<JsonValueBase<S>> {
         let peek = self.peek()?;
         self.known_value(peek)
     }
 
-    /// Parse the next JSON value and return it as a [JsonValue]. Error if it is invalid JSON.
+    /// Parse the next JSON value and return it as a [JsonValueBase]. Error if it is invalid JSON.
     ///
     /// # Arguments
     /// - `peek`: The [Peek] of the next JSON value.
-    pub fn known_value(&mut self, peek: Peek) -> JiterResult<JsonValue<'j>> {
+    pub fn known_value<S: StrOwnership>(&mut self, peek: Peek) -> JiterResult<JsonValueBase<S>> {
         take_value(
             peek,
             &mut self.parser,

@@ -8,8 +8,8 @@ use num_bigint::BigInt;
 use smallvec::smallvec;
 
 use jiter::{
-    Jiter, JiterErrorType, JiterResult, JsonErrorType, JsonType, JsonValue, LazyIndexMap, LinePosition, NumberAny,
-    NumberInt, Peek,
+    Jiter, JiterErrorType, JiterResult, JsonErrorType, JsonType, JsonValue, JsonValueOwned, LazyIndexMap, LinePosition,
+    NumberAny, NumberInt, Peek, StrBorrowed,
 };
 
 fn json_vec(jiter: &mut Jiter, peek: Option<Peek>) -> JiterResult<Vec<String>> {
@@ -1015,7 +1015,7 @@ fn jiter_clone() {
 #[test]
 fn jiter_invalid_value() {
     let mut jiter = Jiter::new(b" bar", false);
-    let e = jiter.next_value().unwrap_err();
+    let e = jiter.next_value::<StrBorrowed>().unwrap_err();
     assert_eq!(
         e.error_type,
         JiterErrorType::JsonError(JsonErrorType::ExpectedSomeValue)
@@ -1107,4 +1107,30 @@ fn jiter_invalid_numbers_expected_some_value() {
         e.error_type,
         JiterErrorType::JsonError(JsonErrorType::ExpectedSomeValue)
     );
+}
+
+fn get_owned_json() -> JsonValueOwned {
+    let mut s = r#"  { "int": 1, "const": true, "float": 1.2, "array": [1, false, null]"#.to_string();
+    s.push('}');
+    JsonValueOwned::parse(s.as_bytes(), false).unwrap()
+}
+
+#[test]
+fn test_owned_value() {
+    let value = get_owned_json();
+    let obj = match value {
+        JsonValueOwned::Object(obj) => obj,
+        _ => panic!("expected object"),
+    };
+    assert_eq!(obj.get("int").unwrap(), &JsonValueOwned::Int(1));
+    assert_eq!(obj.get("const").unwrap(), &JsonValueOwned::Bool(true));
+    assert_eq!(obj.get("float").unwrap(), &JsonValueOwned::Float(1.2));
+    let array = match obj.get("array").unwrap() {
+        JsonValueOwned::Array(array) => array,
+        _ => panic!("expected array"),
+    };
+    assert_eq!(array.len(), 3);
+    assert_eq!(array[0], JsonValueOwned::Int(1));
+    assert_eq!(array[1], JsonValueOwned::Bool(false));
+    assert_eq!(array[2], JsonValueOwned::Null);
 }

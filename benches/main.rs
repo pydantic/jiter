@@ -4,7 +4,7 @@ use std::hint::black_box;
 use std::fs::File;
 use std::io::Read;
 
-use jiter::{Jiter, JsonValue, LazyIndexMap, Peek};
+use jiter::{Jiter, JsonValueBase, LazyIndexMap, Peek};
 use serde_json::Value;
 
 fn read_file(path: &str) -> String {
@@ -18,7 +18,7 @@ fn jiter_value(path: &str, bench: &mut Bencher) {
     let json = read_file(path);
     let json_data = json.as_bytes();
     bench.iter(|| {
-        let v = JsonValue::parse(black_box(json_data), false).unwrap();
+        let v = JsonValueBase::parse(black_box(json_data), false).unwrap();
         black_box(v)
     })
 }
@@ -245,10 +245,10 @@ fn x100_serde_iter(bench: &mut Bencher) {
 
 fn lazy_map_lookup(length: i64, bench: &mut Bencher) {
     bench.iter(|| {
-        let mut map: LazyIndexMap<String, JsonValue> = LazyIndexMap::new();
+        let mut map: LazyIndexMap<String, JsonValueBase> = LazyIndexMap::new();
         for i in 0..length {
             let key = i.to_string();
-            map.insert(key, JsonValue::Int(i));
+            map.insert(key, JsonValueBase::Int(i));
         }
 
         // best case we get the next value each time

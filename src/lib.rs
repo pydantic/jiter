@@ -15,7 +15,7 @@ pub use jiter::{Jiter, JiterResult};
 pub use lazy_index_map::LazyIndexMap;
 pub use number_decoder::{NumberAny, NumberInt};
 pub use parse::Peek;
-pub use value::{JsonArray, JsonObject, JsonValue};
+pub use value::{JsonArray, JsonObject, JsonValue, JsonValueBase, JsonValueOwned, StrBorrowed, StrOwned};
 
 #[cfg(feature = "python")]
 pub use python::{map_json_error, python_parse};
