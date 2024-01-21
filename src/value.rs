@@ -50,7 +50,8 @@ impl<'s> pyo3::ToPyObject for JsonValue<'s> {
 }
 
 impl<'j> JsonValue<'j> {
-    /// Parse a JSON enum from a byte slice.
+    /// Parse a JSON enum from a byte slice, returning a borrowed version of the enum - e.g. strings can be
+    /// references into the original byte slice.
     pub fn parse(data: &'j [u8], allow_inf_nan: bool) -> Result<Self, JsonError> {
         let mut parser = Parser::new(data);
 
@@ -60,8 +61,11 @@ impl<'j> JsonValue<'j> {
         parser.finish()?;
         Ok(v)
     }
+}
 
-    pub fn parse_owned(data: &'j [u8], allow_inf_nan: bool) -> Result<JsonValue<'static>, JsonError> {
+impl JsonValue<'static> {
+    /// Parse a JSON enum from a byte slice, returning an owned version of the enum.
+    pub fn parse_owned(data: &[u8], allow_inf_nan: bool) -> Result<Self, JsonError> {
         let mut parser = Parser::new(data);
 
         let mut tape = Tape::default();
@@ -119,13 +123,13 @@ pub(crate) fn take_value_owned<'j>(
     )
 }
 
-fn take_value<'j, 's, F: Fn(StringOutput<'_, 'j>) -> Cow<'s, str>>(
+fn take_value<'j, 's>(
     peek: Peek,
     parser: &mut Parser<'j>,
     tape: &mut Tape,
     mut recursion_limit: u8,
     allow_inf_nan: bool,
-    create_cow: &F,
+    create_cow: &impl Fn(StringOutput<'_, 'j>) -> Cow<'s, str>,
 ) -> JsonResult<JsonValue<'s>> {
     match peek {
         Peek::True => {
