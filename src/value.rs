@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use num_bigint::BigInt;
@@ -7,26 +8,26 @@ use crate::errors::{json_error, JsonError, JsonResult, DEFAULT_RECURSION_LIMIT};
 use crate::lazy_index_map::LazyIndexMap;
 use crate::number_decoder::{NumberAny, NumberInt};
 use crate::parse::{Parser, Peek};
-use crate::string_decoder::{StringDecoder, Tape};
+use crate::string_decoder::{StringDecoder, StringOutput, Tape};
 
 /// Enum representing a JSON value.
 #[derive(Clone, Debug, PartialEq)]
-pub enum JsonValue {
+pub enum JsonValue<'j> {
     Null,
     Bool(bool),
     Int(i64),
     BigInt(BigInt),
     Float(f64),
-    Str(String),
-    Array(JsonArray),
-    Object(JsonObject),
+    Str(Cow<'j, str>),
+    Array(JsonArray<'j>),
+    Object(JsonObject<'j>),
 }
 
-pub type JsonArray = Arc<SmallVec<[JsonValue; 8]>>;
-pub type JsonObject = Arc<LazyIndexMap<String, JsonValue>>;
+pub type JsonArray<'j> = Arc<SmallVec<[JsonValue<'j>; 8]>>;
+pub type JsonObject<'j> = Arc<LazyIndexMap<Cow<'j, str>, JsonValue<'j>>>;
 
 #[cfg(feature = "python")]
-impl pyo3::ToPyObject for JsonValue {
+impl<'j> pyo3::ToPyObject for JsonValue<'j> {
     fn to_object(&self, py: pyo3::Python<'_>) -> pyo3::PyObject {
         match self {
             Self::Null => py.None(),
@@ -47,9 +48,9 @@ impl pyo3::ToPyObject for JsonValue {
     }
 }
 
-impl JsonValue {
-    /// Parse a JSON value from a byte slice.
-    pub fn parse(data: &[u8], allow_inf_nan: bool) -> Result<Self, JsonError> {
+impl<'j> JsonValue<'j> {
+    /// Parse a JSON enum from a byte slice.
+    pub fn parse(data: &'j [u8], allow_inf_nan: bool) -> Result<Self, JsonError> {
         let mut parser = Parser::new(data);
 
         let mut tape = Tape::default();
@@ -73,13 +74,13 @@ macro_rules! check_recursion {
     };
 }
 
-pub(crate) fn take_value(
+pub(crate) fn take_value<'j>(
     peek: Peek,
-    parser: &mut Parser,
+    parser: &mut Parser<'j>,
     tape: &mut Tape,
     mut recursion_limit: u8,
     allow_inf_nan: bool,
-) -> JsonResult<JsonValue> {
+) -> JsonResult<JsonValue<'j>> {
     match peek {
         Peek::True => {
             parser.consume_true()?;
@@ -94,7 +95,7 @@ pub(crate) fn take_value(
             Ok(JsonValue::Null)
         }
         Peek::String => {
-            let s = parser.consume_string::<StringDecoder>(tape)?;
+            let s: StringOutput<'_, 'j> = parser.consume_string::<StringDecoder>(tape)?;
             Ok(JsonValue::Str(s.into()))
         }
         Peek::Array => {
@@ -116,7 +117,7 @@ pub(crate) fn take_value(
         }
         Peek::Object => {
             // same for objects
-            let mut object: LazyIndexMap<String, JsonValue> = LazyIndexMap::new();
+            let mut object: LazyIndexMap<Cow<'j, str>, JsonValue<'j>> = LazyIndexMap::new();
             if let Some(first_key) = parser.object_first::<StringDecoder>(tape)? {
                 let first_key = first_key.into();
                 let peek = parser.peek()?;

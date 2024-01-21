@@ -198,7 +198,7 @@ impl<'j> Jiter<'j> {
     }
 
     /// Parse the next JSON value and return it as a [JsonValue]. Error if it is invalid JSON.
-    pub fn next_value(&mut self) -> JiterResult<JsonValue> {
+    pub fn next_value(&mut self) -> JiterResult<JsonValue<'j>> {
         let peek = self.peek()?;
         self.known_value(peek)
     }
@@ -207,7 +207,7 @@ impl<'j> Jiter<'j> {
     ///
     /// # Arguments
     /// - `peek`: The [Peek] of the next JSON value.
-    pub fn known_value(&mut self, peek: Peek) -> JiterResult<JsonValue> {
+    pub fn known_value(&mut self, peek: Peek) -> JiterResult<JsonValue<'j>> {
         take_value(
             peek,
             &mut self.parser,
