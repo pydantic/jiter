@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 
 mod errors;
+mod int_parser;
 mod jiter;
 mod lazy_index_map;
 mod number_decoder;

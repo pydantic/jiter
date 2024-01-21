@@ -5,6 +5,7 @@ use std::ops::Range;
 use lexical_core::{format as lexical_format, parse_partial_with_options, ParseFloatOptions};
 
 use crate::errors::{json_err, JsonResult};
+use crate::int_parser::{IntParse, INT_CHAR_MAP};
 
 pub trait AbstractNumberDecoder {
     type Output;
@@ -63,7 +64,7 @@ impl AbstractNumberDecoder for NumberFloat {
         let first2 = if positive { Some(&first) } else { data.get(index) };
 
         if let Some(digit) = first2 {
-            if CHAR_MAP[*digit as usize] {
+            if INT_CHAR_MAP[*digit as usize] {
                 const JSON: u128 = lexical_format::JSON;
                 let options = ParseFloatOptions::new();
                 match parse_partial_with_options::<f64, JSON>(&data[start..], &options) {
@@ -148,148 +149,6 @@ fn consume_nan(data: &[u8], index: usize, allow_inf_nan: bool) -> JsonResult<(f6
         json_err!(ExpectedSomeValue, index)
     }
 }
-
-#[derive(Debug)]
-enum IntParse {
-    Int(NumberInt),
-    Float,
-    FloatInf(bool),
-    FloatNaN,
-}
-
-impl IntParse {
-    /// Turns out this is faster than fancy bit manipulation, see
-    /// https://github.com/Alexhuszagh/rust-lexical/blob/main/lexical-parse-integer/docs/Algorithm.md
-    /// for some context
-    fn parse(data: &[u8], mut index: usize, first: u8) -> JsonResult<(Self, usize)> {
-        let start = index;
-        let positive = match first {
-            b'N' => return Ok((Self::FloatNaN, index)),
-            b'-' => false,
-            _ => true,
-        };
-        if !positive {
-            // we started with a minus sign, so the first digit is at index + 1
-            index += 1;
-        };
-        let first2 = if positive { Some(&first) } else { data.get(index) };
-        let mut value = match first2 {
-            Some(b'0') => {
-                index += 1;
-                return match data.get(index) {
-                    Some(b'.') => Ok((Self::Float, index)),
-                    Some(b'e') | Some(b'E') => Ok((Self::Float, index)),
-                    Some(digit) if digit.is_ascii_digit() => json_err!(InvalidNumber, index),
-                    _ => Ok((Self::Int(NumberInt::Int(0)), index)),
-                };
-            }
-            Some(b'I') => return Ok((Self::FloatInf(positive), index)),
-            Some(digit) if (b'1'..=b'9').contains(digit) => (digit & 0x0f) as i64,
-            Some(_) => return json_err!(InvalidNumber, index),
-            None => return json_err!(EofWhileParsingValue, index),
-        };
-
-        macro_rules! consume_digit {
-            ($value:ident, $tp:ty) => {
-                if let Some(digit) = data.get(index) {
-                    if CHAR_MAP[*digit as usize] {
-                        // we use wrapping add to avoid branching - we know the value cannot wrap
-                        $value = $value.wrapping_mul(10).wrapping_add((digit & 0x0f) as $tp);
-                        false
-                    } else if matches!(digit, b'.' | b'e' | b'E') {
-                        return Ok((Self::Float, index));
-                    } else {
-                        true
-                    }
-                } else {
-                    true
-                }
-            };
-        }
-
-        // i64::MAX = 9223372036854775807 - 18 chars
-        for _ in 1..18 {
-            index += 1;
-            let done = consume_digit!(value, i64);
-            if done {
-                // reached the end of the string, return i64
-                if !positive {
-                    value = -value;
-                }
-                return Ok((Self::Int(NumberInt::Int(value)), index));
-            }
-        }
-
-        // number is too big for i64, we need ot use a big int
-        let mut big_value: BigInt = value.into();
-        loop {
-            let mut chunk_value: u64 = 0;
-            for pow in POW_10 {
-                index += 1;
-                let done = consume_digit!(chunk_value, u64);
-                if done {
-                    // reached the end of the string, return bigint
-                    if (index - start) > 4300 {
-                        return json_err!(NumberOutOfRange, start + 4301);
-                    }
-                    big_value *= pow;
-                    big_value += chunk_value;
-                    if !positive {
-                        big_value = -big_value;
-                    }
-                    return Ok((Self::Int(NumberInt::BigInt(big_value)), index));
-                }
-            }
-            big_value *= 10u64.pow(18);
-            big_value += chunk_value;
-        }
-    }
-}
-
-static POW_10: [u64; 18] = [
-    1,
-    10,
-    100,
-    1000,
-    10_000,
-    100_000,
-    1_000_000,
-    10_000_000,
-    100_000_000,
-    1_000_000_000,
-    10_000_000_000,
-    100_000_000_000,
-    1_000_000_000_000,
-    10_000_000_000_000,
-    100_000_000_000_000,
-    1_000_000_000_000_000,
-    10_000_000_000_000_000,
-    100_000_000_000_000_000,
-];
-
-static CHAR_MAP: [bool; 256] = {
-    const NU: bool = true;
-    const __: bool = false;
-    [
-        //   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
-        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 0
-        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 1
-        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 2
-        NU, NU, NU, NU, NU, NU, NU, NU, NU, NU, __, __, __, __, __, __, // 3
-        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 4
-        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 5
-        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 6
-        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 7
-        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 8
-        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 9
-        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // A
-        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // B
-        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // C
-        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // D
-        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // E
-        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // F
-    ]
-};
 
 pub struct NumberRange;
 
