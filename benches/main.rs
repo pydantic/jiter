@@ -207,7 +207,7 @@ macro_rules! test_cases {
                     jiter_iter_ints_array(&file_path, bench);
                 } else if file_name == "floats_array" {
                     jiter_iter_floats_array(&file_path, bench);
-                } else if file_name == "x100" || file_name == "sentence" {
+                } else if file_name == "x100" || file_name == "sentence" || file_name == "unicode" {
                     jiter_string(&file_path, bench);
                 }
             }
@@ -238,6 +238,7 @@ test_cases!(floats_array);
 test_cases!(medium_response);
 test_cases!(x100);
 test_cases!(sentence);
+test_cases!(unicode);
 
 fn x100_serde_iter(bench: &mut Bencher) {
     serde_str("./benches/x100.json", bench);
@@ -294,6 +295,9 @@ benchmark_group!(
     sentence_jiter_iter,
     sentence_jiter_value,
     sentence_serde_value,
+    unicode_jiter_iter,
+    unicode_jiter_value,
+    unicode_serde_value,
     pass1_jiter_iter,
     pass1_jiter_value,
     pass1_serde_value,
