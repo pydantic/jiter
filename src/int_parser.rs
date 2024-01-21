@@ -1,7 +1,6 @@
 use crate::errors::json_err;
 use crate::{JsonResult, NumberInt};
 use num_bigint::BigInt;
-use std::mem;
 
 #[derive(Debug)]
 pub(crate) enum IntParse {
@@ -128,7 +127,7 @@ impl ParseChunk {
 
 #[cfg(target_arch = "aarch64")]
 fn parse_int_chunk_aarch64(data: &[u8], index: usize) -> (ParseChunk, usize) {
-    use core::mem::transmute;
+    use std::mem::transmute;
     #[rustfmt::skip]
     use std::arch::aarch64::{
         uint8x16_t,
@@ -200,7 +199,7 @@ fn parse_int_chunk_aarch64(data: &[u8], index: usize) -> (ParseChunk, usize) {
         let digits = match last_digit {
             0 => return 0,
             1 => {
-                let t: [u8; 8] = mem::transmute(digits);
+                let t: [u8; 8] = transmute(digits);
                 return t[0] as u64;
             }
             2 => combine_vecs_8::<2>(ZERO_VAL_U8_8, digits),
@@ -225,7 +224,7 @@ fn parse_int_chunk_aarch64(data: &[u8], index: usize) -> (ParseChunk, usize) {
         // add the value together and combine the 2x32-bit lanes into 1x64-bit lane
         let x: SimdVecu64_1 = simd_add_u32_2(x);
         // transmute the 64-bit lane into a u64
-        mem::transmute(x)
+        transmute(x)
     }
 
     const ZERO_VAL_U8_16: SimdVecu8_16 = unsafe { transmute([0u8; 16]) };
@@ -265,7 +264,7 @@ fn parse_int_chunk_aarch64(data: &[u8], index: usize) -> (ParseChunk, usize) {
         let x: SimdVecu64_2 = simd_add_u32_4(x);
 
         // transmute the 2x64-bit lane into an array;
-        let t: [u64; 2] = mem::transmute(x);
+        let t: [u64; 2] = transmute(x);
         // since the data started out as digits, it's safe to assume the result fits in a u64
         t[0] * 100000000 + t[1]
     }
@@ -286,7 +285,7 @@ fn parse_int_chunk_aarch64(data: &[u8], index: usize) -> (ParseChunk, usize) {
                 (ParseChunk::Ongoing(value), index + SIMD_STEP)
             } else {
                 // some lanes are not digits, transmute to a pair of u64 and find the first non-digit
-                let t: [u64; 2] = mem::transmute(digit_mask);
+                let t: [u64; 2] = transmute(digit_mask);
                 if t[0] != 0 {
                     // none-digit in the first 8 bytes
                     let last_digit = t[0].trailing_zeros() / 8;
