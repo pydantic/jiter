@@ -75,6 +75,14 @@ fn python_parse_string_array(bench: &mut Bencher) {
     _python_parse_file("./benches/string_array.json", bench, true);
 }
 
+fn python_parse_x100_not_cached(bench: &mut Bencher) {
+    _python_parse_file("./benches/x100.json", bench, false);
+}
+
+fn python_parse_x100(bench: &mut Bencher) {
+    _python_parse_file("./benches/x100.json", bench, true);
+}
+
 fn python_parse_string_array_unique_not_cached(bench: &mut Bencher) {
     _python_parse_file("./benches/string_array_unique.json", bench, false);
 }
@@ -103,6 +111,8 @@ benchmark_group!(
     python_parse_string_array,
     python_parse_string_array_unique_not_cached,
     python_parse_string_array_unique,
+    python_parse_x100_not_cached,
+    python_parse_x100,
     python_parse_true_object,
     python_parse_true_array,
 );
