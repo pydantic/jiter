@@ -1135,7 +1135,8 @@ fn test_owned_value() {
 }
 
 fn value_into_static() -> JsonValue<'static> {
-    let s = r#"{ "int": 1, "const": true, "float": 1.2, "array": [1, false, null]}"#.to_string();
+    let s = r#"{ "big_int": 92233720368547758070, "const": true, "float": 1.2, "array": [1, false, null, "x"]}"#
+        .to_string();
     let jiter = JsonValue::parse(s.as_bytes(), false).unwrap();
     jiter.into_static()
 }
@@ -1147,7 +1148,8 @@ fn test_into_static() {
         JsonValue::Object(obj) => obj,
         _ => panic!("expected object"),
     };
-    assert_eq!(obj.get("int").unwrap(), &JsonValue::Int(1));
+    let expected_big_int = BigInt::from_str("92233720368547758070").unwrap();
+    assert_eq!(obj.get("big_int").unwrap(), &JsonValue::BigInt(expected_big_int));
     assert_eq!(obj.get("const").unwrap(), &JsonValue::Bool(true));
     assert_eq!(obj.get("float").unwrap(), &JsonValue::Float(1.2));
     let array = match obj.get("array").unwrap() {
@@ -1156,13 +1158,35 @@ fn test_into_static() {
     };
     assert_eq!(
         array,
-        &Arc::new(smallvec![JsonValue::Int(1), JsonValue::Bool(false), JsonValue::Null])
+        &Arc::new(smallvec![
+            JsonValue::Int(1),
+            JsonValue::Bool(false),
+            JsonValue::Null,
+            JsonValue::Str("x".into())
+        ])
     );
+}
+
+#[test]
+fn jiter_next_value_borrowed() {
+    let mut jiter = Jiter::new(br#" "v"  "#, false);
+    let v = jiter.next_value().unwrap();
+    let s = match v {
+        JsonValue::Str(s) => s,
+        _ => panic!("expected string"),
+    };
+    assert_eq!(s, "v");
+    assert!(matches!(s, Cow::Borrowed(_)));
 }
 
 #[test]
 fn jiter_next_value_owned() {
     let mut jiter = Jiter::new(br#" "v"  "#, false);
-    let v = jiter.next_value().unwrap();
-    assert_eq!(v, JsonValue::Str("v".into()));
+    let v = jiter.next_value_owned().unwrap();
+    let s = match v {
+        JsonValue::Str(s) => s,
+        _ => panic!("expected string"),
+    };
+    assert_eq!(s, "v");
+    assert!(matches!(s, Cow::Owned(_)));
 }

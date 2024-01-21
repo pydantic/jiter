@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::fmt::Debug;
 use std::sync::Arc;
 
 use num_bigint::BigInt;
@@ -28,7 +27,7 @@ pub type JsonArray<'s> = Arc<SmallVec<[JsonValue<'s>; 8]>>;
 pub type JsonObject<'s> = Arc<LazyIndexMap<Cow<'s, str>, JsonValue<'s>>>;
 
 #[cfg(feature = "python")]
-impl<'s> pyo3::ToPyObject for JsonValue<'s> {
+impl pyo3::ToPyObject for JsonValue<'_> {
     fn to_object(&self, py: pyo3::Python<'_>) -> pyo3::PyObject {
         match self {
             Self::Null => py.None(),
@@ -62,6 +61,7 @@ impl<'j> JsonValue<'j> {
         Ok(v)
     }
 
+    /// Convert a borrowed JSON enum into an owned JSON enum.
     pub fn into_static(self) -> JsonValue<'static> {
         value_static(self)
     }

@@ -197,13 +197,13 @@ impl<'j> Jiter<'j> {
         Ok(&self.data[range])
     }
 
-    /// Parse the next JSON value and return it as a [JsonValueBase]. Error if it is invalid JSON.
+    /// Parse the next JSON value and return it as a [JsonValue]. Error if it is invalid JSON.
     pub fn next_value(&mut self) -> JiterResult<JsonValue<'j>> {
         let peek = self.peek()?;
         self.known_value(peek)
     }
 
-    /// Parse the next JSON value and return it as a [JsonValueBase]. Error if it is invalid JSON.
+    /// Parse the next JSON value and return it as a [JsonValue]. Error if it is invalid JSON.
     ///
     /// # Arguments
     /// - `peek`: The [Peek] of the next JSON value.
@@ -218,13 +218,13 @@ impl<'j> Jiter<'j> {
         .map_err(Into::into)
     }
 
-    /// Parse the next JSON value and return it as a [JsonValueBase] with static lifetime. Error if it is invalid JSON.
+    /// Parse the next JSON value and return it as a [JsonValue] with static lifetime. Error if it is invalid JSON.
     pub fn next_value_owned(&mut self) -> JiterResult<JsonValue<'static>> {
         let peek = self.peek()?;
         self.known_value_owned(peek)
     }
 
-    /// Parse the next JSON value and return it as a [JsonValueBase] with static lifetime. Error if it is invalid JSON.
+    /// Parse the next JSON value and return it as a [JsonValue] with static lifetime. Error if it is invalid JSON.
     ///
     /// # Arguments
     /// - `peek`: The [Peek] of the next JSON value.
