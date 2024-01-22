@@ -266,7 +266,7 @@ fn parse_int_chunk_aarch64(data: &[u8], index: usize) -> (ParseChunk, usize) {
         // transmute the 2x64-bit lane into an array;
         let t: [u64; 2] = transmute(x);
         // since the data started out as digits, it's safe to assume the result fits in a u64
-        t[0] * 100000000 + t[1]
+        t[0].wrapping_mul(100000000).wrapping_add(t[1])
     }
 
     unsafe fn next_is_float(data: &[u8], index: usize) -> bool {
@@ -300,7 +300,7 @@ fn parse_int_chunk_aarch64(data: &[u8], index: usize) -> (ParseChunk, usize) {
                     // none-digit in the last 8 bytes
                     let last_digit = t[1].trailing_zeros() / 8 + 8;
                     if last_digit == 8 {
-                        // all bytes in the second half are digits
+                        // all bytes in the first half are digits
                         let index = index + 8;
                         if next_is_float(data, index) {
                             (ParseChunk::Float, index)
