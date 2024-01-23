@@ -1,13 +1,14 @@
 #![doc = include_str!("../README.md")]
 
 mod errors;
-mod int_parser;
 mod jiter;
 mod lazy_index_map;
 mod number_decoder;
 mod parse;
 #[cfg(feature = "python")]
 mod python;
+#[cfg(target_arch = "aarch64")]
+mod simd_aarch64;
 mod string_decoder;
 mod value;
 
