@@ -189,31 +189,31 @@ impl IntParse {
             None => return json_err!(EofWhileParsingValue, index),
         };
 
-        let (chunk, new_index) = ParseChunk::parse(data, index);
+        let (chunk, new_index) = IntChunk::parse(data, index);
 
         let mut big_value: BigInt = match chunk {
-            ParseChunk::Ongoing(value) => value.into(),
-            ParseChunk::Done(value) => {
+            IntChunk::Ongoing(value) => value.into(),
+            IntChunk::Done(value) => {
                 let mut value_i64 = value as i64;
                 if !positive {
                     value_i64 = -value_i64
                 }
                 return Ok((Self::Int(NumberInt::Int(value_i64)), new_index));
             }
-            ParseChunk::Float => return Ok((Self::Float, new_index)),
+            IntChunk::Float => return Ok((Self::Float, new_index)),
         };
         index = new_index;
 
         // number is too big for i64, we need ot use a big int
         loop {
-            let (chunk, new_index) = ParseChunk::parse(data, index);
+            let (chunk, new_index) = IntChunk::parse(data, index);
             match chunk {
-                ParseChunk::Ongoing(value) => {
+                IntChunk::Ongoing(value) => {
                     big_value *= POW_10[new_index - index];
                     big_value += value;
                     index = new_index;
                 }
-                ParseChunk::Done(value) => {
+                IntChunk::Done(value) => {
                     if (new_index - start) > 4300 {
                         return json_err!(NumberOutOfRange, start + 4301);
                     }
@@ -224,7 +224,7 @@ impl IntParse {
                     }
                     return Ok((Self::Int(NumberInt::BigInt(big_value)), new_index));
                 }
-                ParseChunk::Float => return Ok((Self::Float, new_index)),
+                IntChunk::Float => return Ok((Self::Float, new_index)),
             }
         }
     }
@@ -251,28 +251,28 @@ static POW_10: [u64; 18] = [
     100_000_000_000_000_000,
 ];
 
-pub(crate) enum ParseChunk {
+pub(crate) enum IntChunk {
     Ongoing(u64),
     Done(u64),
     Float,
 }
 
-impl ParseChunk {
+impl IntChunk {
     fn parse(data: &[u8], index: usize) -> (Self, usize) {
         // TODO x86_64: use simd
 
         #[cfg(target_arch = "aarch64")]
         {
-            crate::simd_aarch64::parse_int_chunk_aarch64(data, index)
+            crate::simd_aarch64::decode_int_chunk(data, index)
         }
         #[cfg(not(target_arch = "aarch64"))]
         {
-            parse_int_chunk_fallback(data, index)
+            decode_int_chunk_fallback(data, index)
         }
     }
 }
 
-pub(crate) fn parse_int_chunk_fallback(data: &[u8], mut index: usize) -> (ParseChunk, usize) {
+pub(crate) fn decode_int_chunk_fallback(data: &[u8], mut index: usize) -> (IntChunk, usize) {
     let mut value = 0u64;
     // i64::MAX = 9223372036854775807 - 18 chars is always enough
     for _ in 1..18 {
@@ -283,12 +283,12 @@ pub(crate) fn parse_int_chunk_fallback(data: &[u8], mut index: usize) -> (ParseC
                 index += 1;
                 continue;
             } else if matches!(digit, b'.' | b'e' | b'E') {
-                return (ParseChunk::Float, index);
+                return (IntChunk::Float, index);
             }
         }
-        return (ParseChunk::Done(value), index);
+        return (IntChunk::Done(value), index);
     }
-    (ParseChunk::Ongoing(value), index)
+    (IntChunk::Ongoing(value), index)
 }
 
 pub(crate) static INT_CHAR_MAP: [bool; 256] = {

@@ -678,6 +678,19 @@ fn pass1_to_value() {
 }
 
 #[test]
+fn escaped_string() {
+    let json_data = br#""&#34; \u0022 %22 0x22 034 &#x22;""#;
+    // let json_data = br#"  "\n"  "#;
+    let v = JsonValue::parse(json_data, false).unwrap();
+    let s = match v {
+        JsonValue::Str(s) => s,
+        v => panic!("expected array, not {:?}", v),
+    };
+    dbg!(s);
+    // assert_eq!(s, r#"&#34; " %22 0x22 034 &#x22;"#);
+}
+
+#[test]
 fn jiter_object() {
     let mut jiter = Jiter::new(br#"{"foo": "bar", "spam": [   1, -2, "x"]}"#, false);
     assert_eq!(jiter.next_object().unwrap(), Some("foo"));

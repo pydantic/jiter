@@ -46,11 +46,131 @@ impl<'t, 'j> StringOutput<'t, 'j> {
     }
 }
 
+impl<'t, 'j> AbstractStringDecoder<'t, 'j> for StringDecoder
+where
+    'j: 't,
+{
+    type Output = StringOutput<'t, 'j>;
+
+    fn decode(data: &'j [u8], index: usize, tape: &'t mut Tape) -> JsonResult<(Self::Output, usize)> {
+        let start = index + 1;
+
+        match decode_chunk(data, start, true)? {
+            (StringChunk::Quote, ascii_only, index) => {
+                let s = to_str(&data[start..index], ascii_only, start)?;
+                Ok((StringOutput::Data(s), index + 1))
+            }
+            (StringChunk::Backslash, ascii_only, index) => decode_to_tape(data, index, tape, start, ascii_only),
+        }
+    }
+}
+
+fn decode_to_tape<'t, 'j>(
+    data: &'j [u8],
+    mut index: usize,
+    tape: &'t mut Tape,
+    start: usize,
+    mut ascii_only: bool,
+) -> JsonResult<(StringOutput<'t, 'j>, usize)> {
+    tape.clear();
+
+    // TODO should be a function or closure
+    macro_rules! on_backslash {
+        ($start:ident) => {{
+            tape.extend_from_slice(&data[$start..index]);
+            index += 1;
+            if let Some(next_inner) = data.get(index) {
+                match next_inner {
+                    b'"' | b'\\' | b'/' => tape.push(*next_inner),
+                    b'b' => tape.push(b'\x08'),
+                    b'f' => tape.push(b'\x0C'),
+                    b'n' => tape.push(b'\n'),
+                    b'r' => tape.push(b'\r'),
+                    b't' => tape.push(b'\t'),
+                    b'u' => {
+                        let (c, new_index) = parse_escape(data, index)?;
+                        index = new_index;
+                        tape.extend_from_slice(c.encode_utf8(&mut [0_u8; 4]).as_bytes());
+                    }
+                    _ => return json_err!(InvalidEscape, index),
+                }
+                index += 1;
+            } else {
+                return json_err!(EofWhileParsingString, index);
+            }
+        }};
+    }
+
+    on_backslash!(start);
+
+    loop {
+        match decode_chunk(data, index, ascii_only)? {
+            (StringChunk::Quote, ascii_only, new_index) => {
+                tape.extend_from_slice(&data[index..new_index]);
+                index = new_index + 1;
+                let s = to_str(tape, ascii_only, start)?;
+                return Ok((StringOutput::Tape(s), index));
+            }
+            (StringChunk::Backslash, ascii_only_new, index_new) => {
+                ascii_only = ascii_only_new;
+                let chunk_start = index;
+                index = index_new;
+                on_backslash!(chunk_start);
+            }
+        }
+    }
+}
+
+pub fn decode_chunk(data: &[u8], index: usize, ascii_only: bool) -> JsonResult<(StringChunk, bool, usize)> {
+    // TODO x86_64: use simd
+
+    #[cfg(target_arch = "aarch64")]
+    {
+        crate::simd_aarch64::decode_string_chunk(data, index, ascii_only)
+    }
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        StringChunk::decode_fallback(data, index, ascii_only)
+    }
+}
+
+pub(crate) enum StringChunk {
+    Quote,
+    Backslash,
+}
+
+impl StringChunk {
+    pub fn decode_fallback(data: &[u8], mut index: usize, mut ascii_only: bool) -> JsonResult<(Self, bool, usize)> {
+        while let Some(next) = data.get(index) {
+            if !JSON_ASCII[*next as usize] {
+                match &CHAR_TYPE[*next as usize] {
+                    CharType::Quote => return Ok((Self::Quote, ascii_only, index)),
+                    CharType::Backslash => return Ok((Self::Backslash, ascii_only, index)),
+                    CharType::ControlChar => return json_err!(ControlCharacterWhileParsingString, index),
+                    CharType::Other => {
+                        ascii_only = false;
+                    }
+                }
+            }
+            index += 1;
+        }
+        json_err!(EofWhileParsingString, index)
+    }
+    pub fn decode_finish(last_char: u8, ascii_only: bool, return_index: usize) -> JsonResult<(Self, bool, usize)> {
+        match CHAR_TYPE[last_char as usize] {
+            CharType::Quote => Ok((StringChunk::Quote, ascii_only, return_index)),
+            CharType::Backslash => Ok((StringChunk::Backslash, ascii_only, return_index)),
+            CharType::ControlChar => json_err!(ControlCharacterWhileParsingString, return_index),
+            CharType::Other => unreachable!(),
+        }
+    }
+}
+
 // taken serde-rs/json but altered
 // https://github.com/serde-rs/json/blob/ebaf61709aba7a3f2429a5d95a694514f180f565/src/read.rs#L787-L811
 // this helps the fast path by telling us if something is ascii or not, it also simplifies
 // CharType below by only requiring 4 options in that enum
-static ASCII: [bool; 256] = {
+static JSON_ASCII: [bool; 256] = {
     const CT: bool = false; // control character \x00..=\x1F
     const QU: bool = false; // quote \x22
     const BS: bool = false; // backslash \x5C
@@ -84,7 +204,7 @@ enum CharType {
     Quote,
     // backslash \x5C
     Backslash,
-    // all other characters. In reality this will only be > \x7F (127) after the ASCII check
+    // all other characters. In reality this will only be > \x7F (127) after the JSON_ASCII check
     Other,
 }
 
@@ -115,98 +235,6 @@ static CHAR_TYPE: [CharType; 256] = {
         __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // F
     ]
 };
-
-impl<'t, 'j> AbstractStringDecoder<'t, 'j> for StringDecoder
-where
-    'j: 't,
-{
-    type Output = StringOutput<'t, 'j>;
-
-    fn decode(data: &'j [u8], mut index: usize, tape: &'t mut Tape) -> JsonResult<(Self::Output, usize)> {
-        index += 1;
-        let start = index;
-        let mut ascii_only = true;
-
-        while let Some(next) = data.get(index) {
-            if !ASCII[*next as usize] {
-                match &CHAR_TYPE[*next as usize] {
-                    CharType::Quote => {
-                        let s = to_str(&data[start..index], ascii_only, start)?;
-                        index += 1;
-                        return Ok((StringOutput::Data(s), index));
-                    }
-                    CharType::Backslash => return decode_to_tape(data, index, tape, start, ascii_only),
-                    CharType::ControlChar => return json_err!(ControlCharacterWhileParsingString, index),
-                    CharType::Other => {
-                        ascii_only = false;
-                    }
-                }
-            }
-            index += 1;
-        }
-        json_err!(EofWhileParsingString, index)
-    }
-}
-
-fn decode_to_tape<'t, 'j>(
-    data: &'j [u8],
-    mut index: usize,
-    tape: &'t mut Tape,
-    start: usize,
-    mut ascii_only: bool,
-) -> JsonResult<(StringOutput<'t, 'j>, usize)> {
-    let mut last_escape = start;
-    tape.clear();
-
-    macro_rules! on_backslash {
-        () => {{
-            tape.extend_from_slice(&data[last_escape..index]);
-            index += 1;
-            if let Some(next_inner) = data.get(index) {
-                match next_inner {
-                    b'"' | b'\\' | b'/' => tape.push(*next_inner),
-                    b'b' => tape.push(b'\x08'),
-                    b'f' => tape.push(b'\x0C'),
-                    b'n' => tape.push(b'\n'),
-                    b'r' => tape.push(b'\r'),
-                    b't' => tape.push(b'\t'),
-                    b'u' => {
-                        let (c, new_index) = parse_escape(data, index)?;
-                        index = new_index;
-                        tape.extend_from_slice(c.encode_utf8(&mut [0_u8; 4]).as_bytes());
-                    }
-                    _ => return json_err!(InvalidEscape, index),
-                }
-                last_escape = index + 1;
-            } else {
-                return json_err!(EofWhileParsingString, index);
-            }
-        }};
-    }
-
-    on_backslash!();
-    index += 1;
-
-    while let Some(next) = data.get(index) {
-        if !ASCII[*next as usize] {
-            match &CHAR_TYPE[*next as usize] {
-                CharType::Quote => {
-                    tape.extend_from_slice(&data[last_escape..index]);
-                    index += 1;
-                    let s = to_str(tape, ascii_only, start)?;
-                    return Ok((StringOutput::Tape(s), index));
-                }
-                CharType::Backslash => on_backslash!(),
-                CharType::ControlChar => return json_err!(ControlCharacterWhileParsingString, index),
-                CharType::Other => {
-                    ascii_only = false;
-                }
-            }
-        }
-        index += 1;
-    }
-    json_err!(EofWhileParsingString, index)
-}
 
 fn to_str(bytes: &[u8], ascii_only: bool, start: usize) -> JsonResult<&str> {
     if ascii_only {
