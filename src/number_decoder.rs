@@ -5,7 +5,6 @@ use num_traits::cast::ToPrimitive;
 use lexical_parse_float::{format as lexical_format, FromLexicalWithOptions, Options as ParseFloatOptions};
 
 use crate::errors::{json_err, JsonResult};
-use crate::int_parser::{IntParse, INT_CHAR_MAP};
 
 pub trait AbstractNumberDecoder {
     type Output;
@@ -149,6 +148,172 @@ fn consume_nan(data: &[u8], index: usize, allow_inf_nan: bool) -> JsonResult<(f6
         json_err!(ExpectedSomeValue, index)
     }
 }
+
+#[derive(Debug)]
+pub(crate) enum IntParse {
+    Int(NumberInt),
+    Float,
+    FloatInf(bool),
+    FloatNaN,
+}
+
+impl IntParse {
+    /// Turns out this is faster than fancy bit manipulation, see
+    /// https://github.com/Alexhuszagh/rust-lexical/blob/main/lexical-parse-integer/docs/Algorithm.md
+    /// for some context
+    pub(crate) fn parse(data: &[u8], mut index: usize, first: u8) -> JsonResult<(Self, usize)> {
+        let start = index;
+        let positive = match first {
+            b'N' => return Ok((Self::FloatNaN, index)),
+            b'-' => false,
+            _ => true,
+        };
+        if !positive {
+            // we started with a minus sign, so the first digit is at index + 1
+            index += 1;
+        };
+        let first2 = if positive { Some(&first) } else { data.get(index) };
+        match first2 {
+            Some(b'0') => {
+                index += 1;
+                return match data.get(index) {
+                    Some(b'.') => Ok((Self::Float, index)),
+                    Some(b'e') | Some(b'E') => Ok((Self::Float, index)),
+                    Some(digit) if digit.is_ascii_digit() => json_err!(InvalidNumber, index),
+                    _ => Ok((Self::Int(NumberInt::Int(0)), index)),
+                };
+            }
+            Some(b'I') => return Ok((Self::FloatInf(positive), index)),
+            Some(digit) if (b'1'..=b'9').contains(digit) => (),
+            Some(_) => return json_err!(InvalidNumber, index),
+            None => return json_err!(EofWhileParsingValue, index),
+        };
+
+        let (chunk, new_index) = ParseChunk::parse(data, index);
+
+        let mut big_value: BigInt = match chunk {
+            ParseChunk::Ongoing(value) => value.into(),
+            ParseChunk::Done(value) => {
+                let mut value_i64 = value as i64;
+                if !positive {
+                    value_i64 = -value_i64
+                }
+                return Ok((Self::Int(NumberInt::Int(value_i64)), new_index));
+            }
+            ParseChunk::Float => return Ok((Self::Float, new_index)),
+        };
+        index = new_index;
+
+        // number is too big for i64, we need ot use a big int
+        loop {
+            let (chunk, new_index) = ParseChunk::parse(data, index);
+            match chunk {
+                ParseChunk::Ongoing(value) => {
+                    big_value *= POW_10[new_index - index];
+                    big_value += value;
+                    index = new_index;
+                }
+                ParseChunk::Done(value) => {
+                    if (new_index - start) > 4300 {
+                        return json_err!(NumberOutOfRange, start + 4301);
+                    }
+                    big_value *= POW_10[new_index - index];
+                    big_value += value;
+                    if !positive {
+                        big_value = -big_value;
+                    }
+                    return Ok((Self::Int(NumberInt::BigInt(big_value)), new_index));
+                }
+                ParseChunk::Float => return Ok((Self::Float, new_index)),
+            }
+        }
+    }
+}
+
+static POW_10: [u64; 18] = [
+    1,
+    10,
+    100,
+    1000,
+    10_000,
+    100_000,
+    1_000_000,
+    10_000_000,
+    100_000_000,
+    1_000_000_000,
+    10_000_000_000,
+    100_000_000_000,
+    1_000_000_000_000,
+    10_000_000_000_000,
+    100_000_000_000_000,
+    1_000_000_000_000_000,
+    10_000_000_000_000_000,
+    100_000_000_000_000_000,
+];
+
+pub(crate) enum ParseChunk {
+    Ongoing(u64),
+    Done(u64),
+    Float,
+}
+
+impl ParseChunk {
+    fn parse(data: &[u8], index: usize) -> (Self, usize) {
+        // TODO x86_64: use simd
+
+        #[cfg(target_arch = "aarch64")]
+        {
+            crate::simd_aarch64::parse_int_chunk_aarch64(data, index)
+        }
+        #[cfg(not(target_arch = "aarch64"))]
+        {
+            parse_int_chunk_fallback(data, index)
+        }
+    }
+}
+
+pub(crate) fn parse_int_chunk_fallback(data: &[u8], mut index: usize) -> (ParseChunk, usize) {
+    let mut value = 0u64;
+    // i64::MAX = 9223372036854775807 - 18 chars is always enough
+    for _ in 1..18 {
+        if let Some(digit) = data.get(index) {
+            if INT_CHAR_MAP[*digit as usize] {
+                // we use wrapping add to avoid branching - we know the value cannot wrap
+                value = value.wrapping_mul(10).wrapping_add((digit & 0x0f) as u64);
+                index += 1;
+                continue;
+            } else if matches!(digit, b'.' | b'e' | b'E') {
+                return (ParseChunk::Float, index);
+            }
+        }
+        return (ParseChunk::Done(value), index);
+    }
+    (ParseChunk::Ongoing(value), index)
+}
+
+pub(crate) static INT_CHAR_MAP: [bool; 256] = {
+    const NU: bool = true;
+    const __: bool = false;
+    [
+        //   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 0
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 1
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 2
+        NU, NU, NU, NU, NU, NU, NU, NU, NU, NU, __, __, __, __, __, __, // 3
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 4
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 5
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 6
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 7
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 8
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 9
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // A
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // B
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // C
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // D
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // E
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // F
+    ]
+};
 
 pub struct NumberRange;
 
