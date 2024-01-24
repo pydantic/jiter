@@ -166,6 +166,9 @@ impl StringChunk {
         }
         json_err!(EofWhileParsingString, index)
     }
+
+    /// allow dead code since this method is called from SIMD methods only which are not available during linting
+    #[allow(dead_code)]
     pub fn decode_finish(last_char: u8, ascii_only: bool, return_index: usize) -> JsonResult<(Self, bool, usize)> {
         match CHAR_TYPE[last_char as usize] {
             CharType::Quote => Ok((StringChunk::Quote, ascii_only, return_index)),
