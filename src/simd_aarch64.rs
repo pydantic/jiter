@@ -16,7 +16,6 @@ use std::arch::aarch64::{
     vorrq_u8 as simd_or_16,
     vandq_u8 as simd_and_16,
     vceqq_u8 as simd_eq_16,
-    vmaxvq_u8 as simd_max_16,
     vextq_u8 as combine_vecs_16,
     vsubq_u8 as simd_sub_16,
     vmulq_u8 as simd_mul_16,
@@ -72,6 +71,7 @@ const ALT_MUL_U8_16: SimdVecu8_16 =
 const ALT_MUL_U16_8: SimdVecu16_8 = simd_const!([100u16, 1u16, 100u16, 1u16, 100u16, 1u16, 100u16, 1u16]);
 const ALT_MUL_U32_4: SimdVecu32_4 = simd_const!([10000u32, 1u32, 10000u32, 1u32]);
 
+#[inline(always)]
 pub(crate) fn decode_int_chunk(data: &[u8], index: usize) -> (IntChunk, usize) {
     #[rustfmt::skip]
     fn get_digit_mask(byte_vec: SimdVecu8_16) -> SimdVecu8_16 {
@@ -210,6 +210,7 @@ const ASCII_MAX_16: SimdVecu8_16 = simd_const!([127u8; 16]);
 const QUOTE_16: SimdVecu8_16 = simd_const!([b'"'; 16]);
 const BACKSLASH_16: SimdVecu8_16 = simd_const!([b'\\'; 16]);
 
+#[inline(always)]
 pub fn decode_string_chunk(
     data: &[u8],
     mut index: usize,
@@ -297,7 +298,8 @@ const STOP_MASKS: [SimdVecu8_16; 16] = {
 
 /// return true if all bytes are zero
 fn is_zero(vec: SimdVecu8_16) -> bool {
-    unsafe { simd_max_16(vec) == 0 }
+    let t: [u64; 2] = unsafe { transmute(vec) };
+    t[0] == 0 && t[1] == 0
 }
 
 fn load_slice(bytes: &[u8]) -> SimdVecu8_16 {

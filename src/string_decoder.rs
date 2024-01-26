@@ -131,6 +131,7 @@ fn decode_to_tape<'t, 'j>(
     }
 }
 
+#[inline(always)]
 pub fn decode_chunk(data: &[u8], index: usize, ascii_only: bool) -> JsonResult<(StringChunk, bool, usize)> {
     // TODO x86_64: use simd
 
@@ -150,6 +151,7 @@ pub(crate) enum StringChunk {
 }
 
 impl StringChunk {
+    #[inline(always)]
     pub fn decode_fallback(data: &[u8], mut index: usize, mut ascii_only: bool) -> JsonResult<(Self, bool, usize)> {
         while let Some(next) = data.get(index) {
             if !JSON_ASCII[*next as usize] {

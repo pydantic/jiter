@@ -258,6 +258,7 @@ pub(crate) enum IntChunk {
 }
 
 impl IntChunk {
+    #[inline(always)]
     fn parse(data: &[u8], index: usize) -> (Self, usize) {
         // TODO x86_64: use simd
 
@@ -272,6 +273,7 @@ impl IntChunk {
     }
 }
 
+#[inline(always)]
 pub(crate) fn decode_int_chunk_fallback(data: &[u8], mut index: usize) -> (IntChunk, usize) {
     let mut value = 0u64;
     // i64::MAX = 9223372036854775807 - 18 chars is always enough
