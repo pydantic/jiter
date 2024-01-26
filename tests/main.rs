@@ -325,6 +325,8 @@ string_test_errors! {
     u4_unclosed: r#""\uxx"# => "EofWhileParsingString @ 5 - 1:5";
     u4_unclosed2: r#""\udBdd"# => "EofWhileParsingString @ 7 - 1:7";
     line_leading_surrogate: r#""\uddBd""# => "LoneLeadingSurrogateInHexEscape @ 6 - 1:7";
+    // needs the long tail so SIMD is used to parse the string
+    line_leading_surrogate_tail: r#""\uddBd"                     "# => "LoneLeadingSurrogateInHexEscape @ 6 - 1:7";
     unexpected_hex_escape1: r#""\udBd8x"# => "UnexpectedEndOfHexEscape @ 7 - 1:8";
     unexpected_hex_escape2: r#""\udBd8xx"# => "UnexpectedEndOfHexEscape @ 7 - 1:8";
     unexpected_hex_escape3: "\"un\\uDBBB\0" => "UnexpectedEndOfHexEscape @ 9 - 1:10";
@@ -557,6 +559,18 @@ fn bad_lower_value_in_string() {
 #[test]
 fn bad_high_order_string() {
     let bytes: Vec<u8> = vec![34, 32, 32, 210, 34];
+    let e = JsonValue::parse(&bytes, false).unwrap_err();
+    assert_eq!(e.error_type, JsonErrorType::InvalidUnicodeCodePoint);
+    assert_eq!(e.index, 4);
+    assert_eq!(e.description(&bytes), "invalid unicode code point at line 1 column 5")
+}
+
+#[test]
+fn bad_high_order_string_tail() {
+    // needs the long tail so SIMD is used to parse the string
+    let mut bytes: Vec<u8> = vec![34, 32, 32, 210, 34];
+    bytes.extend(vec![b' '; 100]);
+    // dbg!(json.iter().map(|b| *b as char).collect::<Vec<_>>());
     let e = JsonValue::parse(&bytes, false).unwrap_err();
     assert_eq!(e.error_type, JsonErrorType::InvalidUnicodeCodePoint);
     assert_eq!(e.index, 4);
