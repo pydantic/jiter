@@ -259,23 +259,121 @@ pub(crate) enum IntChunk {
 
 impl IntChunk {
     fn parse(data: &[u8], index: usize) -> (Self, usize) {
-        // TODO x86_64: use simd
-
-        #[cfg(target_arch = "aarch64")]
-        {
-            crate::simd_aarch64::decode_int_chunk(data, index)
+        let (chunk, index) = decode_8(data, index);
+        if let IntChunk::Ongoing(left_value) = chunk {
+            let (chunk, new_index) = decode_8(data, index);
+            match chunk {
+                IntChunk::Ongoing(right_value) => {
+                    let value = left_value * POW_10[new_index - index] + right_value;
+                    (IntChunk::Ongoing(value), new_index)
+                }
+                IntChunk::Done(right_value) => {
+                    let value = left_value * POW_10[new_index - index] + right_value;
+                    (IntChunk::Done(value), new_index)
+                }
+                IntChunk::Float => (IntChunk::Float, new_index),
+            }
+        } else {
+            (chunk, index)
         }
-        #[cfg(not(target_arch = "aarch64"))]
-        {
-            decode_int_chunk_fallback(data, index)
-        }
+        // // TODO x86_64: use simd
+        //
+        // #[cfg(target_arch = "aarch64")]
+        // {
+        //     crate::simd_aarch64::decode_int_chunk(data, index)
+        // }
+        // #[cfg(not(target_arch = "aarch64"))]
+        // {
+        //     decode_int_chunk_fallback(data, index)
+        // }
     }
+}
+
+// 11000000 * 8 - if either of the highest two bits are set, then the byte is not a digit
+const MASK_HIGH: u64 = 0xc0c0c0c0c0c0c0c0;
+// 00110000 * 8 - if either of the next two bits are NOT set, then the byte is not a digit
+const MASK_LOW: u64 = 0x3030303030303030;
+
+pub(crate) fn decode_8(data: &[u8], mut index: usize) -> (IntChunk, usize) {
+    if let Some(digits) = data.get(index..index + 8) {
+        let digits_number = u64::from_le_bytes(digits.try_into().unwrap());
+
+        let mask_high = digits_number & MASK_HIGH;
+
+        let inverted = !digits_number;
+        let mask_low = inverted & MASK_LOW;
+
+        let mask_either = mask_high | mask_low;
+        if mask_either == 0 {
+            (IntChunk::Ongoing(calc_8(digits_number)), index + 8)
+        } else {
+            let stop_byte_id = mask_either.trailing_zeros() / 8;
+            let stop_byte = digits[stop_byte_id as usize];
+            let return_index = index + stop_byte_id as usize;
+            if matches!(stop_byte, b'.' | b'e' | b'E') {
+                (IntChunk::Float, return_index)
+            } else {
+                let shifted = digits_number << ((8 - stop_byte_id) * 8);
+                (IntChunk::Done(calc_8(shifted)), return_index)
+            }
+        }
+    } else {
+        decode_int_chunk_fallback(data, index)
+    }
+}
+
+/// See https://rust-malaysia.github.io/code/2020/07/11/faster-integer-parsing.html#the-divide-and-conquer-insight
+/// for explanation of the technique.
+/// Assuming the number is `12345678`, the bytes are reversed as we look at them (because we're on LE),
+/// so we have `87654321` - 8 the least significant digit is first.
+/// `dbg!(format!("{eight_numbers:#018x}"));`
+/// `eight_numbers = 0x38|37|36|35|34|33|32|31`
+fn calc_8(raw: u64) -> u64 {
+    // take 8, 6, 4, 2, apply mask to get their numeric values and shift them to the right by 1 byte
+    let lower = (raw & 0x0f000f000f000f00) >> 8;
+    // dbg!(format!("{lower:#018x}"));
+    // lower = 0x00|08|00|06|00|04|00|02
+
+    // take 7, 5, 3, 1, apply mask to get their numeric values and multiply them by 10
+    let upper = (raw & 0x000f000f000f000f) * 10;
+    // dbg!(format!("{upper:#018x}"));
+    // upper = 0x46|00|32|00|1e|00|0a|00 = 0x46 is 70 - 7 * 10 ... 0x0a is 10 - 1 * 10
+    let four_numbers = lower + upper;
+    // dbg!(format!("{four_numbers:#018x}"), four_numbers.to_be_bytes());
+    // four_numbers = 0x00|4e|00|38|00|22|00|0c = 0x4e is 78 - 70 + 8 ... we're turned 8 numbers into 8
+
+    // take 78 and 34, apply mask to get their numeric values and shift them to the right by 2 bytes
+    let lower = (four_numbers & 0x00ff000000ff0000) >> 16;
+    // dbg!(format!("{lower:#018x}"), lower.to_be_bytes());
+    // lower = 0x00|00|00|4e|00|00|00|22 - 0x4e is 78, 0x22 is 34
+
+    // take 56 and 12, apply mask to get their numeric values and multiply them by 100
+    let upper = (four_numbers & 0x000000ff000000ff) * 100;
+    // dbg!(format!("{upper:#018x}"));
+    // upper = 0x000015e0|000004b0 - 0x000015e0 is 5600, 0x000004b0 is 1200
+
+    let two_numbers = lower + upper;
+    // dbg!(format!("{two_numbers:#018x}"));
+    // two_numbers = 0x0000162e|000004d2 - 0x0000162e is 5678, 0x000004d2 is 1234
+
+    // take 5678, apply mask to get it's numeric values and shift it to the right by 4 bytes
+    let lower = (two_numbers & 0x0000ffff00000000) >> 32;
+    // dbg!(format!("{lower:#018x}"));
+    // lower = 0x000000000000162e - in base 10 is 5678
+
+    let upper = (two_numbers & 0x000000000000ffff) * 10000;
+    // dbg!(format!("{upper:#018x}"));
+    // upper = 0x0000000000bc4b20 - in base 10 is 1234_0000
+
+    // combine to get the result!
+    // we know this can't wrap around because we're only dealing with 8 digits
+    lower.wrapping_add(upper)
 }
 
 pub(crate) fn decode_int_chunk_fallback(data: &[u8], mut index: usize) -> (IntChunk, usize) {
     let mut value = 0u64;
-    // i64::MAX = 9223372036854775807 - 18 chars is always enough
-    for _ in 1..18 {
+    // 8 to match decode_8
+    for _ in 1..8 {
         if let Some(digit) = data.get(index) {
             if INT_CHAR_MAP[*digit as usize] {
                 // we use wrapping add to avoid branching - we know the value cannot wrap
