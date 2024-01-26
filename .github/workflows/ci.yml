@@ -60,7 +60,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runs-on: [macos, macos-latest-xlarge]
+        runs-on: [macos-latest, macos-latest-xlarge]
 
     runs-on: ${{ matrix.runs-on }}
 
