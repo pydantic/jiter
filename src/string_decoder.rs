@@ -169,15 +169,22 @@ impl StringChunk {
         json_err!(EofWhileParsingString, index)
     }
 
-    /// allow dead code since this method is called from SIMD methods only which are not available during linting
+    #[inline(always)]
     #[allow(dead_code)]
-    pub fn decode_finish(last_char: u8, ascii_only: bool, return_index: usize) -> JsonResult<(Self, bool, usize)> {
-        match CHAR_TYPE[last_char as usize] {
-            CharType::Quote => Ok((StringChunk::Quote, ascii_only, return_index)),
-            CharType::Backslash => Ok((StringChunk::Backslash, ascii_only, return_index)),
-            CharType::ControlChar => json_err!(ControlCharacterWhileParsingString, return_index),
-            CharType::Other => unreachable!(),
+    pub fn decode_array(data: [u8; 16], index: usize, mut ascii_only: bool) -> JsonResult<(Self, bool, usize)> {
+        for (arr_index, u8_char) in data.into_iter().enumerate() {
+            if !JSON_ASCII[u8_char as usize] {
+                match &CHAR_TYPE[u8_char as usize] {
+                    CharType::Quote => return Ok((Self::Quote, ascii_only, index + arr_index)),
+                    CharType::Backslash => return Ok((Self::Backslash, ascii_only, index + arr_index)),
+                    CharType::ControlChar => return json_err!(ControlCharacterWhileParsingString, index + arr_index),
+                    CharType::Other => {
+                        ascii_only = false;
+                    }
+                }
+            }
         }
+        json_err!(EofWhileParsingString, index + 16)
     }
 }
 

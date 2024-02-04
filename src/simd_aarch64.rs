@@ -14,7 +14,6 @@ use std::arch::aarch64::{
     vcgtq_u8 as simd_gt_16,
     vcltq_u8 as simd_lt_16,
     vorrq_u8 as simd_or_16,
-    vandq_u8 as simd_and_16,
     vceqq_u8 as simd_eq_16,
     vextq_u8 as combine_vecs_16,
     vsubq_u8 as simd_sub_16,
@@ -205,7 +204,7 @@ pub fn decode_string_chunk(
     for byte_chunk in chunks {
         let byte_vec = load_slice(byte_chunk);
 
-        let stop_mask = json_stop_mask(byte_vec);
+        let stop_mask = string_stop_mask(byte_vec);
         if is_zero(stop_mask) {
             if ascii_only {
                 // check if there are any non-ascii bytes
@@ -213,20 +212,10 @@ pub fn decode_string_chunk(
                 ascii_only = is_zero(non_ascii_mask);
             }
             index += SIMD_STEP;
-            continue;
+        } else {
+            let a: [u8; 16] = unsafe { transmute(byte_vec) };
+            return StringChunk::decode_array(a, index, ascii_only);
         }
-        // some lane(s) are a stop character, means we have to stop and find the first non-zero byte
-        let stop_index = find_end(stop_mask) as usize;
-        if ascii_only {
-            // we need to mask out the bit after the last char, then check if there are any non-ascii bytes
-            let stop_mask = unsafe { STOP_MASKS.get_unchecked(stop_index) };
-            let bytes_masked = unsafe { simd_and_16(byte_vec, *stop_mask) };
-            let non_ascii_mask = unsafe { simd_gt_16(bytes_masked, ASCII_MAX_16) };
-            ascii_only = is_zero(non_ascii_mask);
-        }
-
-        let last_char = unsafe { byte_chunk.get_unchecked(stop_index) };
-        return StringChunk::decode_finish(*last_char, ascii_only, index + stop_index);
     }
     // we got near the end of the string, fall back to the slow path
     StringChunk::decode_fallback(data, index, ascii_only)
@@ -234,7 +223,7 @@ pub fn decode_string_chunk(
 
 #[rustfmt::skip]
 /// returns a mask where any non-zero byte means we should stop parsing a JSON string
-fn json_stop_mask(byte_vec: SimdVecu8_16) -> SimdVecu8_16 {
+fn string_stop_mask(byte_vec: SimdVecu8_16) -> SimdVecu8_16 {
     unsafe {
         simd_or_16(
             simd_eq_16(byte_vec, QUOTE_16),
@@ -245,30 +234,6 @@ fn json_stop_mask(byte_vec: SimdVecu8_16) -> SimdVecu8_16 {
         )
     }
 }
-
-/// mask for each position of the stop char
-const STOP_MASKS: [SimdVecu8_16; 16] = {
-    const XX: u8 = 255;
-    const __: u8 = 0;
-    [
-        simd_const!([__, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __]),
-        simd_const!([XX, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __]),
-        simd_const!([XX, XX, __, __, __, __, __, __, __, __, __, __, __, __, __, __]),
-        simd_const!([XX, XX, XX, __, __, __, __, __, __, __, __, __, __, __, __, __]),
-        simd_const!([XX, XX, XX, XX, __, __, __, __, __, __, __, __, __, __, __, __]),
-        simd_const!([XX, XX, XX, XX, XX, __, __, __, __, __, __, __, __, __, __, __]),
-        simd_const!([XX, XX, XX, XX, XX, XX, __, __, __, __, __, __, __, __, __, __]),
-        simd_const!([XX, XX, XX, XX, XX, XX, XX, __, __, __, __, __, __, __, __, __]),
-        simd_const!([XX, XX, XX, XX, XX, XX, XX, XX, __, __, __, __, __, __, __, __]),
-        simd_const!([XX, XX, XX, XX, XX, XX, XX, XX, XX, __, __, __, __, __, __, __]),
-        simd_const!([XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, __, __, __, __, __, __]),
-        simd_const!([XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, __, __, __, __, __]),
-        simd_const!([XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, __, __, __, __]),
-        simd_const!([XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, __, __, __]),
-        simd_const!([XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, __, __]),
-        simd_const!([XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, __]),
-    ]
-};
 
 fn find_end(digit_mask: SimdVecu8_16) -> u32 {
     let t: [u64; 2] = unsafe { transmute(digit_mask) };

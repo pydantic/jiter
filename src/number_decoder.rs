@@ -1,6 +1,6 @@
-use std::ops::Range;
 use num_bigint::BigInt;
 use num_traits::cast::ToPrimitive;
+use std::ops::Range;
 
 use lexical_parse_float::{format as lexical_format, FromLexicalWithOptions, Options as ParseFloatOptions};
 
