@@ -185,10 +185,11 @@ fn next_is_float(data: &[u8], index: usize) -> bool {
     matches!(next, b'.' | b'e' | b'E')
 }
 
-const JSON_MIN_16: SimdVecu8_16 = simd_const!([32u8; 16]);
-const ASCII_MAX_16: SimdVecu8_16 = simd_const!([127u8; 16]);
 const QUOTE_16: SimdVecu8_16 = simd_const!([b'"'; 16]);
 const BACKSLASH_16: SimdVecu8_16 = simd_const!([b'\\'; 16]);
+// values below 32 are control characters
+const CONTROL_16: SimdVecu8_16 = simd_const!([32u8; 16]);
+const ASCII_MAX_16: SimdVecu8_16 = simd_const!([127u8; 16]);
 
 #[inline(always)]
 pub fn decode_string_chunk(
@@ -206,11 +207,9 @@ pub fn decode_string_chunk(
 
         let stop_mask = string_stop_mask(byte_vec);
         if is_zero(stop_mask) {
-            if ascii_only {
-                // check if there are any non-ascii bytes
-                let non_ascii_mask = unsafe { simd_gt_16(byte_vec, ASCII_MAX_16) };
-                ascii_only = is_zero(non_ascii_mask);
-            }
+            // check if there are any non-ascii bytes
+            let non_ascii_mask = unsafe { simd_gt_16(byte_vec, ASCII_MAX_16) };
+            ascii_only &= is_zero(non_ascii_mask);
             index += SIMD_STEP;
         } else {
             let a: [u8; 16] = unsafe { transmute(byte_vec) };
@@ -229,7 +228,7 @@ fn string_stop_mask(byte_vec: SimdVecu8_16) -> SimdVecu8_16 {
             simd_eq_16(byte_vec, QUOTE_16),
             simd_or_16(
                 simd_eq_16(byte_vec, BACKSLASH_16),
-                simd_lt_16(byte_vec, JSON_MIN_16),
+                simd_lt_16(byte_vec, CONTROL_16),
             )
         )
     }

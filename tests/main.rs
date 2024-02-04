@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::fs::File;
 use std::io::Read;
+use std::iter;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -349,6 +350,20 @@ fn invalid_unicode_code() {
     assert_eq!(jiter.error_position(e.index), LinePosition::new(1, 4));
 }
 
+// #[test]
+// fn invalid_control() {
+//     let json = vec![34, 48, 34];
+//     // dbg!(json.iter().map(|b| *b as char).collect::<Vec<_>>());
+//     let mut jiter = Jiter::new(&json, false);
+//     let e = jiter.next_str().unwrap_err();
+//     assert_eq!(
+//         e.error_type,
+//         JiterErrorType::JsonError(JsonErrorType::InvalidUnicodeCodePoint)
+//     );
+//     assert_eq!(e.index, 3);
+//     assert_eq!(jiter.error_position(e.index), LinePosition::new(1, 4));
+// }
+
 #[test]
 fn utf8_range() {
     for c in 0u8..255u8 {
@@ -366,6 +381,29 @@ fn utf8_range() {
                 let position = jiter_err.get_position(&json);
                 let full_error = format!("{} at {position}", jiter_err.error_type);
                 assert_eq!(full_error, serde_err.to_string());
+            }
+        }
+    }
+}
+
+#[test]
+fn utf8_range_long() {
+    for c in 0u8..255u8 {
+        let mut json = vec![b'"', b':', c];
+        json.extend(iter::repeat(b' ').take(20));
+        json.push(b'"');
+        // dbg!(c, json.iter().map(|b| *b as char).collect::<Vec<_>>());
+
+        let jiter_result = JsonValue::parse(&json, false);
+        match serde_json::from_slice::<String>(&json) {
+            Ok(serde_s) => {
+                let jiter_value = jiter_result.unwrap();
+                assert_eq!(jiter_value, JsonValue::Str(serde_s));
+            }
+            Err(serde_err) => {
+                let jiter_err = jiter_result.unwrap_err();
+                // just compare the start of the error - https://github.com/serde-rs/json/issues/1110
+                assert!(serde_err.to_string().starts_with(&jiter_err.error_type.to_string()));
             }
         }
     }

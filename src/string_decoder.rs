@@ -171,20 +171,25 @@ impl StringChunk {
 
     #[inline(always)]
     #[allow(dead_code)]
-    pub fn decode_array(data: [u8; 16], index: usize, mut ascii_only: bool) -> JsonResult<(Self, bool, usize)> {
-        for (arr_index, u8_char) in data.into_iter().enumerate() {
+    pub fn decode_array<const T: usize>(
+        data: [u8; T],
+        mut index: usize,
+        mut ascii_only: bool,
+    ) -> JsonResult<(Self, bool, usize)> {
+        for u8_char in data {
             if !JSON_ASCII[u8_char as usize] {
                 match &CHAR_TYPE[u8_char as usize] {
-                    CharType::Quote => return Ok((Self::Quote, ascii_only, index + arr_index)),
-                    CharType::Backslash => return Ok((Self::Backslash, ascii_only, index + arr_index)),
-                    CharType::ControlChar => return json_err!(ControlCharacterWhileParsingString, index + arr_index),
+                    CharType::Quote => return Ok((Self::Quote, ascii_only, index)),
+                    CharType::Backslash => return Ok((Self::Backslash, ascii_only, index)),
+                    CharType::ControlChar => return json_err!(ControlCharacterWhileParsingString, index),
                     CharType::Other => {
                         ascii_only = false;
                     }
                 }
             }
+            index += 1;
         }
-        json_err!(EofWhileParsingString, index + 16)
+        json_err!(EofWhileParsingString, index)
     }
 }
 
