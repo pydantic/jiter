@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::hash::{BuildHasher, BuildHasherDefault};
 
-use pyo3::exceptions::PyTypeError;
+use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::sync::{GILOnceCell, GILProtected};
 use pyo3::types::{PyBool, PyString};
@@ -19,13 +19,19 @@ impl<'py> FromPyObject<'py> for StringCacheMode {
     fn extract(ob: &'py PyAny) -> PyResult<StringCacheMode> {
         if let Ok(bool_mode) = ob.downcast::<PyBool>() {
             Ok(bool_mode.is_true().into())
-        } else {
-            match ob.extract()? {
+        } else if let Ok(str_mode) = ob.extract::<&str>() {
+            match str_mode {
                 "all" => Ok(Self::All),
                 "keys" => Ok(Self::Keys),
                 "none" => Ok(Self::None),
-                _ => Err(PyTypeError::new_err(format!("Invalid string cache mode: {}", ob))),
+                _ => Err(PyValueError::new_err(
+                    "Invalid string cache mode, should be `'all'`, '`keys`', `'none`' or a `bool`",
+                )),
             }
+        } else {
+            Err(PyTypeError::new_err(
+                "Invalid string cache mode, should be `'all'`, '`keys`', `'none`' or a `bool`",
+            ))
         }
     }
 }
@@ -106,6 +112,8 @@ fn cache_get_or_insert(py: Python, json_str: &str) -> PyObject {
 // capacity should be a power of 2 so the compiler can convert `%` to a right shift below
 const CAPACITY: usize = 65536;
 
+/// This is a Fully associative cache with LRU replacement policy.
+/// See https://en.wikipedia.org/wiki/Cache_placement_policies#Fully_associative_cache
 #[derive(Debug)]
 struct PyStringCache {
     entries: [Option<(u64, Py<PyString>)>; CAPACITY],
@@ -137,13 +145,15 @@ impl PyStringCache {
             py_str.to_object(py)
         };
 
-        for index in hash_index..(hash_index + 5) {
+        // we try up to 5 contiguous slots to find a match or an empty slot
+        for index in hash_index..hash_index.wrapping_add(5) {
             if let Some(entry) = self.entries.get_mut(index) {
                 if let Some((entry_hash, ref py_str_ob)) = entry {
                     // to avoid a string comparison, we first compare the hashes
                     if *entry_hash == hash {
                         // if the hashes match, we compare the strings to be absolutely sure - as a hashmap would do
                         if py_str_ob.as_ref(py).to_str().ok() == Some(s) {
+                            // the strings matched, return the cached string object
                             return py_str_ob.to_object(py);
                         }
                     }
@@ -158,7 +168,7 @@ impl PyStringCache {
         }
         // we tried all 5 slots (or got to the end of entries) without finding a match
         // or an empty slot, make this LRU by replacing the first entry
-        let entry = unsafe { self.entries.get_unchecked_mut(hash_index) };
+        let entry = self.entries.get_mut(hash_index).unwrap();
         set_entry(entry)
     }
 
