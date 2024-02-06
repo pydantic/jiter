@@ -104,7 +104,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
-    - uses: moonrepo/setup-rust@v0
+    - uses: moonrepo/setup-rust@v1
       with:
         channel: stable
         cache-target: release
@@ -120,11 +120,18 @@ jobs:
         token: ${{ secrets.CODSPEED_TOKEN }}
 
   fuzz:
-    runs-on: ubuntu-latest
+    name: fuzz on ${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runs-on: [ubuntu-latest, macos-latest-xlarge]
+
+    runs-on: ${{ matrix.runs-on }}
+
     steps:
     - uses: actions/checkout@v3
 
-    - uses: moonrepo/setup-rust@v0
+    - uses: moonrepo/setup-rust@v1
       with:
         channel: nightly
         cache-target: release
@@ -138,7 +145,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
-    - uses: moonrepo/setup-rust@v0
+    - uses: moonrepo/setup-rust@v1
       with:
         channel: stable
         components: rustfmt, clippy
