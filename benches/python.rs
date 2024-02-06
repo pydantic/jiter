@@ -18,6 +18,7 @@ fn python_parse_numeric(bench: &mut Bencher) {
                 black_box(br#"  { "int": 1, "bigint": 123456789012345678901234567890, "float": 1.2}  "#),
                 false,
                 true,
+                false,
             ))
             .unwrap()
         });
@@ -34,6 +35,7 @@ fn python_parse_other(bench: &mut Bencher) {
                 black_box(br#"["string", true, false, null]"#),
                 false,
                 true,
+                false,
             ))
             .unwrap()
         });
@@ -50,7 +52,7 @@ fn _python_parse_file(path: &str, bench: &mut Bencher, cache_strings: bool) {
         bench.iter(|| {
             // Clear PyO3 memory on each loop iteration to avoid long GC traversal overheads.
             let _pool = unsafe { py.new_pool() };
-            black_box(python_parse(py, black_box(json_data), false, cache_strings)).unwrap()
+            black_box(python_parse(py, black_box(json_data), false, cache_strings, false)).unwrap()
         });
     })
 }

@@ -13,6 +13,7 @@ use crate::errors::{json_err, json_error, JsonError, JsonResult, DEFAULT_RECURSI
 use crate::number_decoder::{NumberAny, NumberInt};
 use crate::parse::{Parser, Peek};
 use crate::string_decoder::{StringDecoder, Tape};
+use crate::JsonErrorType;
 
 /// Parse a JSON value from a byte slice and return a Python object.
 ///
@@ -26,12 +27,19 @@ use crate::string_decoder::{StringDecoder, Tape};
 /// # Returns
 ///
 /// A [PyObject](https://docs.rs/pyo3/latest/pyo3/type.PyObject.html) representing the parsed JSON value.
-pub fn python_parse(py: Python, json_data: &[u8], allow_inf_nan: bool, cache_strings: bool) -> JsonResult<PyObject> {
+pub fn python_parse(
+    py: Python,
+    json_data: &[u8],
+    allow_inf_nan: bool,
+    cache_strings: bool,
+    allow_partial: bool,
+) -> JsonResult<PyObject> {
     let mut python_parser = PythonParser {
         parser: Parser::new(json_data),
         tape: Tape::default(),
         recursion_limit: DEFAULT_RECURSION_LIMIT,
         allow_inf_nan,
+        allow_partial,
     };
 
     let peek = python_parser.parser.peek()?;
@@ -40,7 +48,9 @@ pub fn python_parse(py: Python, json_data: &[u8], allow_inf_nan: bool, cache_str
     } else {
         python_parser.py_take_value::<StringNoCache>(py, peek)?
     };
-    python_parser.parser.finish()?;
+    if !allow_partial {
+        python_parser.parser.finish()?;
+    }
     Ok(v)
 }
 
@@ -54,10 +64,34 @@ struct PythonParser<'j> {
     tape: Tape,
     recursion_limit: u8,
     allow_inf_nan: bool,
+    allow_partial: bool,
 }
 
 impl<'j> PythonParser<'j> {
     fn py_take_value<StringCache: StringMaybeCache>(&mut self, py: Python, peek: Peek) -> JsonResult<PyObject> {
+        macro_rules! tri {
+            ($result:expr, $partial_value:expr) => {
+                match $result {
+                    Ok(k) => k,
+                    Err(e) => {
+                        return if self.allow_partial {
+                            match e.error_type {
+                                JsonErrorType::EofWhileParsingList
+                                | JsonErrorType::EofWhileParsingObject
+                                | JsonErrorType::EofWhileParsingString
+                                | JsonErrorType::EofWhileParsingValue
+                                | JsonErrorType::ExpectedListCommaOrEnd
+                                | JsonErrorType::ExpectedObjectCommaOrEnd => Ok($partial_value.to_object(py)),
+                                _ => Err(e),
+                            }
+                        } else {
+                            Err(e)
+                        }
+                    }
+                }
+            };
+        }
+
         match peek {
             Peek::Null => {
                 self.parser.consume_null()?;
@@ -76,12 +110,12 @@ impl<'j> PythonParser<'j> {
                 Ok(StringCache::get(py, s.as_str()))
             }
             Peek::Array => {
-                let list = if let Some(peek_first) = self.parser.array_first()? {
+                let list = if let Some(peek_first) = tri!(self.parser.array_first(), PyList::empty(py)) {
                     let mut vec: SmallVec<[PyObject; 8]> = SmallVec::with_capacity(8);
-                    let v = self._check_take_value::<StringCache>(py, peek_first)?;
+                    let v = tri!(self._check_take_value::<StringCache>(py, peek_first), PyList::empty(py));
                     vec.push(v);
-                    while let Some(peek) = self.parser.array_step()? {
-                        let v = self._check_take_value::<StringCache>(py, peek)?;
+                    while let Some(peek) = tri!(self.parser.array_step(), PyList::new(py, vec)) {
+                        let v = tri!(self._check_take_value::<StringCache>(py, peek), PyList::new(py, vec));
                         vec.push(v);
                     }
                     PyList::new(py, vec)
@@ -102,16 +136,15 @@ impl<'j> PythonParser<'j> {
                         panic!("PyDict_SetItem failed")
                     }
                 };
-
-                if let Some(first_key) = self.parser.object_first::<StringDecoder>(&mut self.tape)? {
+                if let Some(first_key) = tri!(self.parser.object_first::<StringDecoder>(&mut self.tape), dict) {
                     let first_key = StringCache::get(py, first_key.as_str());
-                    let peek = self.parser.peek()?;
-                    let first_value = self._check_take_value::<StringCache>(py, peek)?;
+                    let peek = tri!(self.parser.peek(), dict);
+                    let first_value = tri!(self._check_take_value::<StringCache>(py, peek), dict);
                     set_item(first_key, first_value);
-                    while let Some(key) = self.parser.object_step::<StringDecoder>(&mut self.tape)? {
+                    while let Some(key) = tri!(self.parser.object_step::<StringDecoder>(&mut self.tape), dict) {
                         let key = StringCache::get(py, key.as_str());
-                        let peek = self.parser.peek()?;
-                        let value = self._check_take_value::<StringCache>(py, peek)?;
+                        let peek = tri!(self.parser.peek(), dict);
+                        let value = tri!(self._check_take_value::<StringCache>(py, peek), dict);
                         set_item(key, value);
                     }
                 }
