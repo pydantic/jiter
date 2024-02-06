@@ -98,7 +98,7 @@ pub(crate) fn decode_int_chunk(data: &[u8], index: usize) -> (IntChunk, usize) {
         }
     } else {
         // we got near the end of the string, fall back to the slow path
-        decode_int_chunk_fallback(data, index)
+        decode_int_chunk_fallback(data, index, 0)
     }
 }
 

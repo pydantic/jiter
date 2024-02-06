@@ -239,6 +239,7 @@ test_cases!(medium_response);
 test_cases!(x100);
 test_cases!(sentence);
 test_cases!(unicode);
+test_cases!(short_numbers);
 
 fn string_array_jiter_value_owned(bench: &mut Bencher) {
     let json = read_file("./benches/string_array.json");
@@ -336,5 +337,8 @@ benchmark_group!(
     lazy_map_lookup_1_10,
     lazy_map_lookup_2_20,
     lazy_map_lookup_3_50,
+    short_numbers_jiter_iter,
+    short_numbers_jiter_value,
+    short_numbers_serde_value,
 );
 benchmark_main!(benches);

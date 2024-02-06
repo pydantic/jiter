@@ -173,7 +173,7 @@ impl IntParse {
             index += 1;
         };
         let first2 = if positive { Some(&first) } else { data.get(index) };
-        match first2 {
+        let first_value = match first2 {
             Some(b'0') => {
                 index += 1;
                 return match data.get(index) {
@@ -184,12 +184,13 @@ impl IntParse {
                 };
             }
             Some(b'I') => return Ok((Self::FloatInf(positive), index)),
-            Some(digit) if (b'1'..=b'9').contains(digit) => (),
+            Some(digit) if (b'1'..=b'9').contains(digit) => (digit & 0x0f) as u64,
             Some(_) => return json_err!(InvalidNumber, index),
             None => return json_err!(EofWhileParsingValue, index),
         };
 
-        let (chunk, new_index) = IntChunk::parse(data, index);
+        index += 1;
+        let (chunk, new_index) = IntChunk::parse_small(data, index, first_value);
 
         let mut big_value: BigInt = match chunk {
             IntChunk::Ongoing(value) => value.into(),
@@ -206,7 +207,7 @@ impl IntParse {
 
         // number is too big for i64, we need ot use a big int
         loop {
-            let (chunk, new_index) = IntChunk::parse(data, index);
+            let (chunk, new_index) = IntChunk::parse_big(data, index);
             match chunk {
                 IntChunk::Ongoing(value) => {
                     big_value *= POW_10[new_index - index];
@@ -259,7 +260,12 @@ pub(crate) enum IntChunk {
 
 impl IntChunk {
     #[inline(always)]
-    fn parse(data: &[u8], index: usize) -> (Self, usize) {
+    fn parse_small(data: &[u8], index: usize, value: u64) -> (Self, usize) {
+        decode_int_chunk_fallback(data, index, value)
+    }
+
+    #[inline(always)]
+    fn parse_big(data: &[u8], index: usize) -> (Self, usize) {
         // TODO x86_64: use simd
 
         #[cfg(target_arch = "aarch64")]
@@ -268,14 +274,13 @@ impl IntChunk {
         }
         #[cfg(not(target_arch = "aarch64"))]
         {
-            decode_int_chunk_fallback(data, index)
+            decode_int_chunk_fallback(data, index, 0)
         }
     }
 }
 
 #[inline(always)]
-pub(crate) fn decode_int_chunk_fallback(data: &[u8], mut index: usize) -> (IntChunk, usize) {
-    let mut value = 0u64;
+pub(crate) fn decode_int_chunk_fallback(data: &[u8], mut index: usize, mut value: u64) -> (IntChunk, usize) {
     // i64::MAX = 9223372036854775807 - 18 chars is always enough
     for _ in 1..18 {
         if let Some(digit) = data.get(index) {
