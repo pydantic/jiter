@@ -111,16 +111,17 @@ fn cache_get_or_insert(py: Python, json_str: &str) -> PyObject {
 
 // capacity should be a power of 2 so the compiler can convert `%` to a right shift below
 const CAPACITY: usize = 65536;
+type Entry = Option<(u64, Py<PyString>)>;
 
 /// This is a Fully associative cache with LRU replacement policy.
 /// See https://en.wikipedia.org/wiki/Cache_placement_policies#Fully_associative_cache
 #[derive(Debug)]
 struct PyStringCache {
-    entries: Box<[Option<(u64, Py<PyString>)>; CAPACITY]>,
+    entries: Box<[Entry; CAPACITY]>,
     hash_builder: BuildHasherDefault<AHasher>,
 }
 
-const ARRAY_REPEAT_VALUE: Option<(u64, Py<PyString>)> = None;
+const ARRAY_REPEAT_VALUE: Entry = None;
 
 impl Default for PyStringCache {
     fn default() -> Self {
@@ -139,7 +140,7 @@ impl PyStringCache {
 
         let hash_index = hash as usize % CAPACITY;
 
-        let set_entry = |entry: &mut Option<(u64, Py<PyString>)>| {
+        let set_entry = |entry: &mut Entry| {
             let py_str = PyString::new(py, s);
             *entry = Some((hash, py_str.into_py(py)));
             py_str.to_object(py)
