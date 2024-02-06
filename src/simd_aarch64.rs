@@ -197,23 +197,21 @@ pub fn decode_string_chunk(
     mut index: usize,
     mut ascii_only: bool,
 ) -> JsonResult<(StringChunk, bool, usize)> {
-    let chunks = data
-        .get(index..)
-        .into_iter()
-        .flat_map(|remaining| remaining.chunks_exact(SIMD_STEP));
-
-    for byte_chunk in chunks {
+    while let Some(byte_chunk) = data.get(index..index + SIMD_STEP) {
         let byte_vec = load_slice(byte_chunk);
 
-        let stop_mask = string_stop_mask(byte_vec);
-        if is_zero(stop_mask) {
-            // check if there are any non-ascii bytes
-            let non_ascii_mask = unsafe { simd_gt_16(byte_vec, ASCII_MAX_16) };
-            ascii_only &= is_zero(non_ascii_mask);
+        let ascii_mask = string_ascii_mask(byte_vec);
+        if is_zero(ascii_mask) {
+            // this chunk is just ascii, continue to the next chunk
             index += SIMD_STEP;
         } else {
+            // this chunk contains either a stop character or a non-ascii character
             let a: [u8; 16] = unsafe { transmute(byte_vec) };
-            return StringChunk::decode_array(a, index, ascii_only);
+            if let Some(r) = StringChunk::decode_array(a, &mut index, ascii_only) {
+                return r;
+            } else {
+                ascii_only = false;
+            }
         }
     }
     // we got near the end of the string, fall back to the slow path
@@ -221,14 +219,18 @@ pub fn decode_string_chunk(
 }
 
 #[rustfmt::skip]
-/// returns a mask where any non-zero byte means we should stop parsing a JSON string
-fn string_stop_mask(byte_vec: SimdVecu8_16) -> SimdVecu8_16 {
+/// returns a mask where any non-zero byte means we don't have a simple ascii character, either
+/// quote, backslash, control character, or non-ascii (above 127)
+fn string_ascii_mask(byte_vec: SimdVecu8_16) -> SimdVecu8_16 {
     unsafe {
         simd_or_16(
             simd_eq_16(byte_vec, QUOTE_16),
             simd_or_16(
                 simd_eq_16(byte_vec, BACKSLASH_16),
-                simd_lt_16(byte_vec, CONTROL_16),
+                simd_or_16(
+                    simd_gt_16(byte_vec, ASCII_MAX_16),
+                    simd_lt_16(byte_vec, CONTROL_16),
+                )
             )
         )
     }

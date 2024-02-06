@@ -169,27 +169,30 @@ impl StringChunk {
         json_err!(EofWhileParsingString, index)
     }
 
+    /// decode an array (generally from SIMD) return the result of the chunk, or none if the non-ascii character
+    /// is just > \x7F (127)
     #[inline(always)]
     #[allow(dead_code)]
     pub fn decode_array<const T: usize>(
         data: [u8; T],
-        mut index: usize,
-        mut ascii_only: bool,
-    ) -> JsonResult<(Self, bool, usize)> {
+        index: &mut usize,
+        ascii_only: bool,
+    ) -> Option<JsonResult<(Self, bool, usize)>> {
         for u8_char in data {
             if !JSON_ASCII[u8_char as usize] {
-                match &CHAR_TYPE[u8_char as usize] {
-                    CharType::Quote => return Ok((Self::Quote, ascii_only, index)),
-                    CharType::Backslash => return Ok((Self::Backslash, ascii_only, index)),
-                    CharType::ControlChar => return json_err!(ControlCharacterWhileParsingString, index),
+                return match &CHAR_TYPE[u8_char as usize] {
+                    CharType::Quote => Some(Ok((Self::Quote, ascii_only, *index))),
+                    CharType::Backslash => Some(Ok((Self::Backslash, ascii_only, *index))),
+                    CharType::ControlChar => Some(json_err!(ControlCharacterWhileParsingString, *index)),
                     CharType::Other => {
-                        ascii_only = false;
+                        *index += 1;
+                        None
                     }
-                }
+                };
             }
-            index += 1;
+            *index += 1;
         }
-        json_err!(EofWhileParsingString, index)
+        unreachable!("error decoding SIMD string chunk")
     }
 }
 
