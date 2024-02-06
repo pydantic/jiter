@@ -116,7 +116,7 @@ const CAPACITY: usize = 65536;
 /// See https://en.wikipedia.org/wiki/Cache_placement_policies#Fully_associative_cache
 #[derive(Debug)]
 struct PyStringCache {
-    entries: [Option<(u64, Py<PyString>)>; CAPACITY],
+    entries: Box<[Option<(u64, Py<PyString>)>; CAPACITY]>,
     hash_builder: BuildHasherDefault<AHasher>,
 }
 
@@ -125,7 +125,7 @@ const ARRAY_REPEAT_VALUE: Option<(u64, Py<PyString>)> = None;
 impl Default for PyStringCache {
     fn default() -> Self {
         Self {
-            entries: [ARRAY_REPEAT_VALUE; CAPACITY],
+            entries: Box::new([ARRAY_REPEAT_VALUE; CAPACITY]),
             hash_builder: BuildHasherDefault::default(),
         }
     }
@@ -179,6 +179,6 @@ impl PyStringCache {
 
     /// clear the cache by resetting all entries to `None`
     fn clear(&mut self) {
-        self.entries = [ARRAY_REPEAT_VALUE; CAPACITY];
+        self.entries.fill(None);
     }
 }
