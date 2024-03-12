@@ -32,10 +32,11 @@ def run_bench(func, d):
 for name, json_data in cases:
     print(f'Case: {name}')
     times = [
-        ('orjson', run_bench(orjson.loads, json_data)),
-        ('jiter', run_bench(jiter_python.from_json, json_data)),
-        ('ujson', run_bench(ujson.loads, json_data)),
-        ('json', run_bench(json.loads, json_data)),
+        ('orjson', run_bench(lambda d: orjson.loads(d), json_data)),
+        ('jiter-cache', run_bench(lambda d: jiter_python.from_json(d), json_data)),
+        ('jiter', run_bench(lambda d: jiter_python.from_json(d, cache_strings=False), json_data)),
+        ('ujson', run_bench(lambda d: ujson.loads(d), json_data)),
+        ('json', run_bench(lambda d: json.loads(d), json_data)),
     ]
 
     times.sort(key=lambda x: x[1])
