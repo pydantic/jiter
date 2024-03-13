@@ -1,4 +1,3 @@
-use bencher::black_box;
 use codspeed_bencher_compat::{benchmark_group, benchmark_main, Bencher};
 
 use std::fs::File;
@@ -10,15 +9,14 @@ use jiter::{cache_clear, python_parse, StringCacheMode};
 
 fn python_parse_numeric(bench: &mut Bencher) {
     Python::with_gil(|py| {
+        cache_clear(py);
         bench.iter(|| {
-            // Clear PyO3 memory on each loop iteration to avoid long GC traversal overheads.
-            let _pool = unsafe { py.new_pool() };
-            black_box(python_parse(
+            python_parse(
                 py,
-                black_box(br#"  { "int": 1, "bigint": 123456789012345678901234567890, "float": 1.2}  "#),
+                br#"  { "int": 1, "bigint": 123456789012345678901234567890, "float": 1.2}  "#,
                 false,
                 StringCacheMode::All,
-            ))
+            )
             .unwrap()
         });
     })
@@ -26,17 +24,8 @@ fn python_parse_numeric(bench: &mut Bencher) {
 
 fn python_parse_other(bench: &mut Bencher) {
     Python::with_gil(|py| {
-        bench.iter(|| {
-            // Clear PyO3 memory on each loop iteration to avoid long GC traversal overheads.
-            let _pool = unsafe { py.new_pool() };
-            black_box(python_parse(
-                py,
-                black_box(br#"["string", true, false, null]"#),
-                false,
-                StringCacheMode::All,
-            ))
-            .unwrap()
-        });
+        cache_clear(py);
+        bench.iter(|| python_parse(py, br#"["string", true, false, null]"#, false, StringCacheMode::All).unwrap());
     })
 }
 
@@ -48,12 +37,7 @@ fn _python_parse_file(path: &str, bench: &mut Bencher, cache_mode: StringCacheMo
 
     Python::with_gil(|py| {
         cache_clear(py);
-
-        bench.iter(|| {
-            // Clear PyO3 memory on each loop iteration to avoid long GC traversal overheads.
-            let _pool = unsafe { py.new_pool() };
-            black_box(python_parse(py, black_box(json_data), false, cache_mode)).unwrap()
-        });
+        bench.iter(|| python_parse(py, json_data, false, cache_mode).unwrap());
     })
 }
 

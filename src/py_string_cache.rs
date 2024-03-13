@@ -16,7 +16,7 @@ pub enum StringCacheMode {
 }
 
 impl<'py> FromPyObject<'py> for StringCacheMode {
-    fn extract(ob: &'py PyAny) -> PyResult<StringCacheMode> {
+    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<StringCacheMode> {
         if let Ok(bool_mode) = ob.downcast::<PyBool>() {
             Ok(bool_mode.is_true().into())
         } else if let Ok(str_mode) = ob.extract::<&str>() {
@@ -47,9 +47,9 @@ impl From<bool> for StringCacheMode {
 }
 
 pub trait StringMaybeCache {
-    fn get_key(py: Python, json_str: &str) -> PyObject;
+    fn get_key<'py>(py: Python<'py>, json_str: &str) -> Bound<'py, PyAny>;
 
-    fn get_value(py: Python, json_str: &str) -> PyObject {
+    fn get_value<'py>(py: Python<'py>, json_str: &str) -> Bound<'py, PyAny> {
         Self::get_key(py, json_str)
     }
 }
@@ -57,7 +57,7 @@ pub trait StringMaybeCache {
 pub struct StringCacheAll;
 
 impl StringMaybeCache for StringCacheAll {
-    fn get_key(py: Python, json_str: &str) -> PyObject {
+    fn get_key<'py>(py: Python<'py>, json_str: &str) -> Bound<'py, PyAny> {
         cache_get_or_insert(py, json_str)
     }
 }
@@ -65,20 +65,20 @@ impl StringMaybeCache for StringCacheAll {
 pub struct StringCacheKeys;
 
 impl StringMaybeCache for StringCacheKeys {
-    fn get_key(py: Python, json_str: &str) -> PyObject {
+    fn get_key<'py>(py: Python<'py>, json_str: &str) -> Bound<'py, PyAny> {
         cache_get_or_insert(py, json_str)
     }
 
-    fn get_value(py: Python, json_str: &str) -> PyObject {
-        PyString::new(py, json_str).to_object(py)
+    fn get_value<'py>(py: Python<'py>, json_str: &str) -> Bound<'py, PyAny> {
+        PyString::new_bound(py, json_str).into_any()
     }
 }
 
 pub struct StringNoCache;
 
 impl StringMaybeCache for StringNoCache {
-    fn get_key(py: Python, json_str: &str) -> PyObject {
-        PyString::new(py, json_str).to_object(py)
+    fn get_key<'py>(py: Python<'py>, json_str: &str) -> Bound<'py, PyAny> {
+        PyString::new_bound(py, json_str).into_any()
     }
 }
 
@@ -100,12 +100,12 @@ pub fn cache_clear(py: Python) {
     get_string_cache!(py).borrow_mut().clear()
 }
 
-fn cache_get_or_insert(py: Python, json_str: &str) -> PyObject {
+fn cache_get_or_insert<'py>(py: Python<'py>, json_str: &str) -> Bound<'py, PyAny> {
     // from tests, 0 and 1 character strings are faster not cached
     if (2..64).contains(&json_str.len()) {
         get_string_cache!(py).borrow_mut().get_or_insert(py, json_str)
     } else {
-        PyString::new(py, json_str).to_object(py)
+        PyString::new_bound(py, json_str).into_any()
     }
 }
 
@@ -135,15 +135,15 @@ impl Default for PyStringCache {
 impl PyStringCache {
     /// Lookup the cache for an entry with the given string. If it exists, return it.
     /// If it is not set or has a different string, insert it and return it.
-    fn get_or_insert(&mut self, py: Python, s: &str) -> PyObject {
+    fn get_or_insert<'py>(&mut self, py: Python<'py>, s: &str) -> Bound<'py, PyAny> {
         let hash = self.hash_builder.hash_one(s);
 
         let hash_index = hash as usize % CAPACITY;
 
         let set_entry = |entry: &mut Entry| {
-            let py_str = PyString::new(py, s);
-            *entry = Some((hash, py_str.into_py(py)));
-            py_str.to_object(py)
+            let py_str = PyString::new_bound(py, s);
+            *entry = Some((hash, py_str.to_owned().unbind()));
+            py_str.into_any()
         };
 
         // we try up to 5 contiguous slots to find a match or an empty slot
@@ -153,9 +153,9 @@ impl PyStringCache {
                     // to avoid a string comparison, we first compare the hashes
                     if *entry_hash == hash {
                         // if the hashes match, we compare the strings to be absolutely sure - as a hashmap would do
-                        if py_str_ob.as_ref(py).to_str().ok() == Some(s) {
+                        if py_str_ob.bind(py).to_str().ok() == Some(s) {
                             // the strings matched, return the cached string object
-                            return py_str_ob.to_object(py);
+                            return py_str_ob.bind(py).to_owned().into_any();
                         }
                     }
                 } else {

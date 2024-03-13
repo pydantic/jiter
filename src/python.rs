@@ -1,7 +1,7 @@
 use pyo3::exceptions::PyValueError;
+use pyo3::ffi;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
-use pyo3::{ffi, AsPyPointer};
 
 use smallvec::SmallVec;
 
@@ -23,12 +23,12 @@ use crate::string_decoder::{StringDecoder, Tape};
 /// # Returns
 ///
 /// A [PyObject](https://docs.rs/pyo3/latest/pyo3/type.PyObject.html) representing the parsed JSON value.
-pub fn python_parse(
-    py: Python,
+pub fn python_parse<'py>(
+    py: Python<'py>,
     json_data: &[u8],
     allow_inf_nan: bool,
-    cache_model: StringCacheMode,
-) -> JsonResult<PyObject> {
+    cache_mode: StringCacheMode,
+) -> JsonResult<Bound<'py, PyAny>> {
     let mut python_parser = PythonParser {
         parser: Parser::new(json_data),
         tape: Tape::default(),
@@ -37,7 +37,7 @@ pub fn python_parse(
     };
 
     let peek = python_parser.parser.peek()?;
-    let v = match cache_model {
+    let v = match cache_mode {
         StringCacheMode::All => python_parser.py_take_value::<StringCacheAll>(py, peek)?,
         StringCacheMode::Keys => python_parser.py_take_value::<StringCacheKeys>(py, peek)?,
         StringCacheMode::None => python_parser.py_take_value::<StringNoCache>(py, peek)?,
@@ -59,19 +59,23 @@ struct PythonParser<'j> {
 }
 
 impl<'j> PythonParser<'j> {
-    fn py_take_value<StringCache: StringMaybeCache>(&mut self, py: Python, peek: Peek) -> JsonResult<PyObject> {
+    fn py_take_value<'py, StringCache: StringMaybeCache>(
+        &mut self,
+        py: Python<'py>,
+        peek: Peek,
+    ) -> JsonResult<Bound<'py, PyAny>> {
         match peek {
             Peek::Null => {
                 self.parser.consume_null()?;
-                Ok(py.None())
+                Ok(py.None().into_bound(py))
             }
             Peek::True => {
                 self.parser.consume_true()?;
-                Ok(true.to_object(py))
+                Ok(true.to_object(py).into_bound(py))
             }
             Peek::False => {
                 self.parser.consume_false()?;
-                Ok(false.to_object(py))
+                Ok(false.to_object(py).into_bound(py))
             }
             Peek::String => {
                 let s = self.parser.consume_string::<StringDecoder>(&mut self.tape)?;
@@ -79,23 +83,23 @@ impl<'j> PythonParser<'j> {
             }
             Peek::Array => {
                 let list = if let Some(peek_first) = self.parser.array_first()? {
-                    let mut vec: SmallVec<[PyObject; 8]> = SmallVec::with_capacity(8);
+                    let mut vec: SmallVec<[Bound<'_, PyAny>; 8]> = SmallVec::with_capacity(8);
                     let v = self._check_take_value::<StringCache>(py, peek_first)?;
                     vec.push(v);
                     while let Some(peek) = self.parser.array_step()? {
                         let v = self._check_take_value::<StringCache>(py, peek)?;
                         vec.push(v);
                     }
-                    PyList::new(py, vec)
+                    PyList::new_bound(py, vec)
                 } else {
-                    PyList::empty(py)
+                    PyList::empty_bound(py)
                 };
-                Ok(list.to_object(py))
+                Ok(list.into_any())
             }
             Peek::Object => {
-                let dict = PyDict::new(py);
+                let dict = PyDict::new_bound(py);
 
-                let set_item = |key: PyObject, value: PyObject| {
+                let set_item = |key: Bound<'py, PyAny>, value: Bound<'py, PyAny>| {
                     let r = unsafe { ffi::PyDict_SetItem(dict.as_ptr(), key.as_ptr(), value.as_ptr()) };
                     // AFAIK this shouldn't happen since the key will always be a string  which is hashable
                     // we panic here rather than returning a result and using `?` below as it's up to 14% faster
@@ -117,16 +121,16 @@ impl<'j> PythonParser<'j> {
                         set_item(key, value);
                     }
                 }
-                Ok(dict.to_object(py))
+                Ok(dict.into_any())
             }
             _ => {
                 let n = self
                     .parser
                     .consume_number::<NumberAny>(peek.into_inner(), self.allow_inf_nan);
                 match n {
-                    Ok(NumberAny::Int(NumberInt::Int(int))) => Ok(int.to_object(py)),
-                    Ok(NumberAny::Int(NumberInt::BigInt(big_int))) => Ok(big_int.to_object(py)),
-                    Ok(NumberAny::Float(float)) => Ok(float.to_object(py)),
+                    Ok(NumberAny::Int(NumberInt::Int(int))) => Ok(int.to_object(py).into_bound(py)),
+                    Ok(NumberAny::Int(NumberInt::BigInt(big_int))) => Ok(big_int.to_object(py).into_bound(py)),
+                    Ok(NumberAny::Float(float)) => Ok(float.to_object(py).into_bound(py)),
                     Err(e) => {
                         if !peek.is_num() {
                             Err(json_error!(ExpectedSomeValue, self.parser.index))
@@ -139,7 +143,11 @@ impl<'j> PythonParser<'j> {
         }
     }
 
-    fn _check_take_value<StringCache: StringMaybeCache>(&mut self, py: Python, peek: Peek) -> JsonResult<PyObject> {
+    fn _check_take_value<'py, StringCache: StringMaybeCache>(
+        &mut self,
+        py: Python<'py>,
+        peek: Peek,
+    ) -> JsonResult<Bound<'py, PyAny>> {
         self.recursion_limit = match self.recursion_limit.checked_sub(1) {
             Some(limit) => limit,
             None => return json_err!(RecursionLimitExceeded, self.parser.index),

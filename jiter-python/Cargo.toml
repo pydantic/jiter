@@ -4,9 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-pyo3 = { version = "0.20.2", features = ["generate-import-lib", "num-bigint"] }
+pyo3 = { git = "https://github.com/davidhewitt/pyo3", branch="complete-py2", version = "0.21.0-dev", default-features=false, features = ["generate-import-lib", "auto-initialize", "num-bigint", "macros"] }
 jiter = { path = "..", features = ["python"] }
-
 
 [features]
 # must be enabled when building with `cargo build`, maturin enables this automatically
@@ -16,3 +15,7 @@ extension-module = ["pyo3/extension-module"]
 inherits = "release"
 debug = true
 strip = false
+
+[lib]
+name = "jiter_python"
+crate-type = ["cdylib", "rlib"]
