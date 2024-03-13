@@ -70,7 +70,7 @@ impl<'j> PythonParser<'j> {
         match peek {
             Peek::Null => {
                 self.parser.consume_null()?;
-                Ok(py.None().to_object(py).into_bound(py))
+                Ok(py.None().into_bound(py))
             }
             Peek::True => {
                 self.parser.consume_true()?;
@@ -97,7 +97,7 @@ impl<'j> PythonParser<'j> {
                 } else {
                     PyList::empty_bound(py)
                 };
-                Ok(list.to_object(py).into_bound(py))
+                Ok(list.into_any())
             }
             Peek::Object => {
                 let dict = PyDict::new_bound(py);
@@ -124,7 +124,7 @@ impl<'j> PythonParser<'j> {
                         set_item(key, value);
                     }
                 }
-                Ok(dict.to_object(py).into_bound(py))
+                Ok(dict.into_any())
             }
             _ => {
                 let n = self
