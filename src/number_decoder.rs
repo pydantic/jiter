@@ -1,8 +1,8 @@
-use num_bigint::BigInt;
-use num_traits::cast::ToPrimitive;
 use std::ops::Range;
 
-use lexical_core::{format as lexical_format, parse_partial_with_options, ParseFloatOptions};
+use lexical_parse_float::{format as lexical_format, FromLexicalWithOptions, Options as ParseFloatOptions};
+use num_bigint::BigInt;
+use num_traits::cast::ToPrimitive;
 
 use crate::errors::{json_err, JsonResult};
 
@@ -82,7 +82,7 @@ impl AbstractNumberDecoder for NumberFloat {
             Some(digit) if digit.is_ascii_digit() => {
                 const JSON: u128 = lexical_format::JSON;
                 let options = ParseFloatOptions::new();
-                match parse_partial_with_options::<f64, JSON>(&data[start..], &options) {
+                match f64::from_lexical_partial_with_options::<JSON>(&data[start..], &options) {
                     Ok((float, index)) => Ok((float, index + start)),
                     Err(_) => {
                         // it's impossible to work out the right error from LexicalError here, so we parse again

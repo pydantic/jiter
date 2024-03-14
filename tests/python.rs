@@ -12,7 +12,7 @@ fn test_to_py_object_numeric() {
     .unwrap();
     Python::with_gil(|py| {
         let python_value = value.to_object(py);
-        let string = python_value.as_ref(py).to_string();
+        let string = python_value.bind(py).to_string();
         assert_eq!(
             string,
             "{'int': 1, 'bigint': 123456789012345678901234567890, 'float': 1.2}"
@@ -29,7 +29,7 @@ fn test_to_py_object_other() {
     .unwrap();
     Python::with_gil(|py| {
         let python_value = value.to_object(py);
-        let string = python_value.as_ref(py).to_string();
+        let string = python_value.bind(py).to_string();
         assert_eq!(string, "['string', '£', True, False, None, nan, inf, -inf]");
     })
 }
@@ -45,7 +45,7 @@ fn test_python_parse_numeric() {
         )
         .unwrap();
         assert_eq!(
-            obj.as_ref(py).to_string(),
+            obj.to_string(),
             "{'int': 1, 'bigint': 123456789012345678901234567890, 'float': 1.2}"
         );
     })
@@ -61,10 +61,7 @@ fn test_python_parse_other_cached() {
             true,
         )
         .unwrap();
-        assert_eq!(
-            obj.as_ref(py).to_string(),
-            "['string', True, False, None, nan, inf, -inf]"
-        );
+        assert_eq!(obj.to_string(), "['string', True, False, None, nan, inf, -inf]");
     })
 }
 
@@ -72,7 +69,7 @@ fn test_python_parse_other_cached() {
 fn test_python_parse_other_no_cache() {
     Python::with_gil(|py| {
         let obj = python_parse(py, br#"["string", true, false, null]"#, false, false).unwrap();
-        assert_eq!(obj.as_ref(py).to_string(), "['string', True, False, None]");
+        assert_eq!(obj.to_string(), "['string', True, False, None]");
     })
 }
 
@@ -118,12 +115,12 @@ fn test_recursion_limit_incr() {
 
     Python::with_gil(|py| {
         let v = python_parse(py, bytes, false, true).unwrap();
-        assert_eq!(v.as_ref(py).len().unwrap(), 2000);
+        assert_eq!(v.len().unwrap(), 2000);
     });
 
     Python::with_gil(|py| {
         let v = python_parse(py, bytes, false, true).unwrap();
-        assert_eq!(v.as_ref(py).len().unwrap(), 2000);
+        assert_eq!(v.len().unwrap(), 2000);
     });
 }
 

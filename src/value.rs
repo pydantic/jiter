@@ -29,16 +29,17 @@ pub type JsonObject<'s> = Arc<LazyIndexMap<Cow<'s, str>, JsonValue<'s>>>;
 #[cfg(feature = "python")]
 impl pyo3::ToPyObject for JsonValue<'_> {
     fn to_object(&self, py: pyo3::Python<'_>) -> pyo3::PyObject {
+        use pyo3::prelude::*;
         match self {
-            Self::Null => py.None(),
+            Self::Null => py.None().to_object(py),
             Self::Bool(b) => b.to_object(py),
             Self::Int(i) => i.to_object(py),
             Self::BigInt(b) => b.to_object(py),
             Self::Float(f) => f.to_object(py),
             Self::Str(s) => s.to_object(py),
-            Self::Array(v) => pyo3::types::PyList::new(py, v.iter().map(|v| v.to_object(py))).to_object(py),
+            Self::Array(v) => pyo3::types::PyList::new_bound(py, v.iter().map(|v| v.to_object(py))).to_object(py),
             Self::Object(o) => {
-                let dict = pyo3::types::PyDict::new(py);
+                let dict = pyo3::types::PyDict::new_bound(py);
                 for (k, v) in o.iter() {
                     dict.set_item(k, v.to_object(py)).unwrap();
                 }
