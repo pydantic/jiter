@@ -131,15 +131,15 @@ where
 }
 
 impl<'j> LazyIndexMap<Cow<'j, str>, crate::JsonValue<'j>> {
-    pub(crate) fn into_owned(self) -> LazyIndexMap<Cow<'static, str>, crate::JsonValue<'static>> {
+    pub(crate) fn to_static(&self) -> LazyIndexMap<Cow<'static, str>, crate::JsonValue<'static>> {
         LazyIndexMap {
             vec: self
                 .vec
-                .into_iter()
-                .map(|(k, v)| (k.to_string().into(), v.into_static()))
+                .iter()
+                .map(|(k, v)| (k.to_string().into(), v.to_static()))
                 .collect(),
             map: OnceLock::new(),
-            last_find: self.last_find,
+            last_find: AtomicUsize::new(0),
         }
     }
 }

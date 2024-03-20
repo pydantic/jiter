@@ -66,6 +66,11 @@ impl<'j> JsonValue<'j> {
     pub fn into_static(self) -> JsonValue<'static> {
         value_static(self)
     }
+
+    /// Copy a borrowed JSON enum into an owned JSON enum.
+    pub fn to_static(&self) -> JsonValue<'static> {
+        value_static(self.clone())
+    }
 }
 
 fn value_static(v: JsonValue<'_>) -> JsonValue<'static> {
@@ -76,16 +81,8 @@ fn value_static(v: JsonValue<'_>) -> JsonValue<'static> {
         JsonValue::BigInt(b) => JsonValue::BigInt(b),
         JsonValue::Float(f) => JsonValue::Float(f),
         JsonValue::Str(s) => JsonValue::Str(s.into_owned().into()),
-        JsonValue::Array(v) => {
-            // TODO is try_unwrap the right thing to do here?
-            let vec = Arc::try_unwrap(v).unwrap();
-            JsonValue::Array(Arc::new(vec.into_iter().map(value_static).collect::<SmallVec<_>>()))
-        }
-        JsonValue::Object(o) => {
-            // TODO is try_unwrap the right thing to do here?
-            let map = Arc::try_unwrap(o).unwrap();
-            JsonValue::Object(Arc::new(map.into_owned()))
-        } // JsonValue::Object(_) => todo!(),
+        JsonValue::Array(v) => JsonValue::Array(Arc::new(v.iter().map(JsonValue::to_static).collect::<SmallVec<_>>())),
+        JsonValue::Object(o) => JsonValue::Object(Arc::new(o.to_static())),
     }
 }
 
