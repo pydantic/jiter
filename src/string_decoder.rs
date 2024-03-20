@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::ops::Range;
 use std::str::{from_utf8, from_utf8_unchecked};
 
@@ -33,6 +34,15 @@ impl From<StringOutput<'_, '_>> for String {
         match val {
             StringOutput::Tape(s) => s.to_owned(),
             StringOutput::Data(s) => s.to_owned(),
+        }
+    }
+}
+
+impl<'t, 'j> From<StringOutput<'t, 'j>> for Cow<'j, str> {
+    fn from(val: StringOutput<'t, 'j>) -> Self {
+        match val {
+            StringOutput::Tape(s) => s.to_owned().into(),
+            StringOutput::Data(s) => s.into(),
         }
     }
 }

@@ -240,6 +240,24 @@ test_cases!(x100);
 test_cases!(sentence);
 test_cases!(unicode);
 
+fn string_array_jiter_value_owned(bench: &mut Bencher) {
+    let json = read_file("./benches/string_array.json");
+    let json_data = json.as_bytes();
+    bench.iter(|| {
+        let v = JsonValue::parse_owned(black_box(json_data), false).unwrap();
+        black_box(v)
+    })
+}
+
+fn medium_response_jiter_value_owned(bench: &mut Bencher) {
+    let json = read_file("./benches/medium_response.json");
+    let json_data = json.as_bytes();
+    bench.iter(|| {
+        let v = JsonValue::parse_owned(black_box(json_data), false).unwrap();
+        black_box(v)
+    })
+}
+
 fn x100_serde_iter(bench: &mut Bencher) {
     serde_str("./benches/x100.json", bench);
 }
@@ -287,6 +305,7 @@ benchmark_group!(
     massive_ints_array_serde_value,
     medium_response_jiter_iter,
     medium_response_jiter_value,
+    medium_response_jiter_value_owned,
     medium_response_serde_value,
     x100_jiter_iter,
     x100_jiter_value,
@@ -306,6 +325,7 @@ benchmark_group!(
     pass2_serde_value,
     string_array_jiter_iter,
     string_array_jiter_value,
+    string_array_jiter_value_owned,
     string_array_serde_value,
     true_array_jiter_iter,
     true_array_jiter_value,
