@@ -1,12 +1,10 @@
 use std::cell::RefCell;
-use std::hash::{BuildHasher, BuildHasherDefault};
 
+use ahash::random_state::RandomState;
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::sync::{GILOnceCell, GILProtected};
 use pyo3::types::{PyBool, PyString};
-
-use ahash::AHasher;
 
 #[derive(Debug, Clone, Copy)]
 pub enum StringCacheMode {
@@ -118,7 +116,7 @@ type Entry = Option<(u64, Py<PyString>)>;
 #[derive(Debug)]
 struct PyStringCache {
     entries: Box<[Entry; CAPACITY]>,
-    hash_builder: BuildHasherDefault<AHasher>,
+    hash_builder: RandomState,
 }
 
 const ARRAY_REPEAT_VALUE: Entry = None;
@@ -127,7 +125,7 @@ impl Default for PyStringCache {
     fn default() -> Self {
         Self {
             entries: Box::new([ARRAY_REPEAT_VALUE; CAPACITY]),
-            hash_builder: BuildHasherDefault::default(),
+            hash_builder: RandomState::default(),
         }
     }
 }
