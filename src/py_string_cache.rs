@@ -47,9 +47,9 @@ impl From<bool> for StringCacheMode {
 }
 
 pub trait StringMaybeCache {
-    fn get_key<'py>(py: Python<'py>, json_str: &str) -> Bound<'py, PyAny>;
+    fn get_key<'py>(py: Python<'py>, json_str: &str) -> Bound<'py, PyString>;
 
-    fn get_value<'py>(py: Python<'py>, json_str: &str) -> Bound<'py, PyAny> {
+    fn get_value<'py>(py: Python<'py>, json_str: &str) -> Bound<'py, PyString> {
         Self::get_key(py, json_str)
     }
 }
@@ -57,28 +57,28 @@ pub trait StringMaybeCache {
 pub struct StringCacheAll;
 
 impl StringMaybeCache for StringCacheAll {
-    fn get_key<'py>(py: Python<'py>, json_str: &str) -> Bound<'py, PyAny> {
-        cache_get_or_insert(py, json_str)
+    fn get_key<'py>(py: Python<'py>, json_str: &str) -> Bound<'py, PyString> {
+        cached_py_string(py, json_str)
     }
 }
 
 pub struct StringCacheKeys;
 
 impl StringMaybeCache for StringCacheKeys {
-    fn get_key<'py>(py: Python<'py>, json_str: &str) -> Bound<'py, PyAny> {
-        cache_get_or_insert(py, json_str)
+    fn get_key<'py>(py: Python<'py>, json_str: &str) -> Bound<'py, PyString> {
+        cached_py_string(py, json_str)
     }
 
-    fn get_value<'py>(py: Python<'py>, json_str: &str) -> Bound<'py, PyAny> {
-        PyString::new_bound(py, json_str).into_any()
+    fn get_value<'py>(py: Python<'py>, json_str: &str) -> Bound<'py, PyString> {
+        PyString::new_bound(py, json_str)
     }
 }
 
 pub struct StringNoCache;
 
 impl StringMaybeCache for StringNoCache {
-    fn get_key<'py>(py: Python<'py>, json_str: &str) -> Bound<'py, PyAny> {
-        PyString::new_bound(py, json_str).into_any()
+    fn get_key<'py>(py: Python<'py>, json_str: &str) -> Bound<'py, PyString> {
+        PyString::new_bound(py, json_str)
     }
 }
 
@@ -100,12 +100,12 @@ pub fn cache_clear(py: Python) {
     get_string_cache!(py).borrow_mut().clear()
 }
 
-fn cache_get_or_insert<'py>(py: Python<'py>, json_str: &str) -> Bound<'py, PyAny> {
+pub fn cached_py_string<'py>(py: Python<'py>, raw_str: &str) -> Bound<'py, PyString> {
     // from tests, 0 and 1 character strings are faster not cached
-    if (2..64).contains(&json_str.len()) {
-        get_string_cache!(py).borrow_mut().get_or_insert(py, json_str)
+    if (2..64).contains(&raw_str.len()) {
+        get_string_cache!(py).borrow_mut().get_or_insert(py, raw_str)
     } else {
-        PyString::new_bound(py, json_str).into_any()
+        PyString::new_bound(py, raw_str)
     }
 }
 
@@ -135,7 +135,7 @@ impl Default for PyStringCache {
 impl PyStringCache {
     /// Lookup the cache for an entry with the given string. If it exists, return it.
     /// If it is not set or has a different string, insert it and return it.
-    fn get_or_insert<'py>(&mut self, py: Python<'py>, s: &str) -> Bound<'py, PyAny> {
+    fn get_or_insert<'py>(&mut self, py: Python<'py>, s: &str) -> Bound<'py, PyString> {
         let hash = self.hash_builder.hash_one(s);
 
         let hash_index = hash as usize % CAPACITY;
@@ -143,7 +143,7 @@ impl PyStringCache {
         let set_entry = |entry: &mut Entry| {
             let py_str = PyString::new_bound(py, s);
             *entry = Some((hash, py_str.to_owned().unbind()));
-            py_str.into_any()
+            py_str
         };
 
         // we try up to 5 contiguous slots to find a match or an empty slot
@@ -155,7 +155,7 @@ impl PyStringCache {
                         // if the hashes match, we compare the strings to be absolutely sure - as a hashmap would do
                         if py_str_ob.bind(py).to_str().ok() == Some(s) {
                             // the strings matched, return the cached string object
-                            return py_str_ob.bind(py).to_owned().into_any();
+                            return py_str_ob.bind(py).to_owned();
                         }
                     }
                 } else {
