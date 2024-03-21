@@ -1,6 +1,6 @@
 [package]
 name = "jiter"
-version = "0.0.7"
+version = "0.1.0"
 edition = "2021"
 description = "Iterable JSON parser"
 readme = "README.md"

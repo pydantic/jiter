@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use num_bigint::BigInt;
@@ -7,26 +8,26 @@ use crate::errors::{json_error, JsonError, JsonResult, DEFAULT_RECURSION_LIMIT};
 use crate::lazy_index_map::LazyIndexMap;
 use crate::number_decoder::{NumberAny, NumberInt};
 use crate::parse::{Parser, Peek};
-use crate::string_decoder::{StringDecoder, Tape};
+use crate::string_decoder::{StringDecoder, StringOutput, Tape};
 
 /// Enum representing a JSON value.
 #[derive(Clone, Debug, PartialEq)]
-pub enum JsonValue {
+pub enum JsonValue<'s> {
     Null,
     Bool(bool),
     Int(i64),
     BigInt(BigInt),
     Float(f64),
-    Str(String),
-    Array(JsonArray),
-    Object(JsonObject),
+    Str(Cow<'s, str>),
+    Array(JsonArray<'s>),
+    Object(JsonObject<'s>),
 }
 
-pub type JsonArray = Arc<SmallVec<[JsonValue; 8]>>;
-pub type JsonObject = Arc<LazyIndexMap<String, JsonValue>>;
+pub type JsonArray<'s> = Arc<SmallVec<[JsonValue<'s>; 8]>>;
+pub type JsonObject<'s> = Arc<LazyIndexMap<Cow<'s, str>, JsonValue<'s>>>;
 
 #[cfg(feature = "python")]
-impl pyo3::ToPyObject for JsonValue {
+impl pyo3::ToPyObject for JsonValue<'_> {
     fn to_object(&self, py: pyo3::Python<'_>) -> pyo3::PyObject {
         use pyo3::prelude::*;
         match self {
@@ -48,14 +49,51 @@ impl pyo3::ToPyObject for JsonValue {
     }
 }
 
-impl JsonValue {
-    /// Parse a JSON value from a byte slice.
-    pub fn parse(data: &[u8], allow_inf_nan: bool) -> Result<Self, JsonError> {
+impl<'j> JsonValue<'j> {
+    /// Parse a JSON enum from a byte slice, returning a borrowed version of the enum - e.g. strings can be
+    /// references into the original byte slice.
+    pub fn parse(data: &'j [u8], allow_inf_nan: bool) -> Result<Self, JsonError> {
         let mut parser = Parser::new(data);
 
         let mut tape = Tape::default();
         let peek = parser.peek()?;
-        let v = take_value(peek, &mut parser, &mut tape, DEFAULT_RECURSION_LIMIT, allow_inf_nan)?;
+        let v = take_value_borrowed(peek, &mut parser, &mut tape, DEFAULT_RECURSION_LIMIT, allow_inf_nan)?;
+        parser.finish()?;
+        Ok(v)
+    }
+
+    /// Convert a borrowed JSON enum into an owned JSON enum.
+    pub fn into_static(self) -> JsonValue<'static> {
+        value_static(self)
+    }
+
+    /// Copy a borrowed JSON enum into an owned JSON enum.
+    pub fn to_static(&self) -> JsonValue<'static> {
+        value_static(self.clone())
+    }
+}
+
+fn value_static(v: JsonValue<'_>) -> JsonValue<'static> {
+    match v {
+        JsonValue::Null => JsonValue::Null,
+        JsonValue::Bool(b) => JsonValue::Bool(b),
+        JsonValue::Int(i) => JsonValue::Int(i),
+        JsonValue::BigInt(b) => JsonValue::BigInt(b),
+        JsonValue::Float(f) => JsonValue::Float(f),
+        JsonValue::Str(s) => JsonValue::Str(s.into_owned().into()),
+        JsonValue::Array(v) => JsonValue::Array(Arc::new(v.iter().map(JsonValue::to_static).collect::<SmallVec<_>>())),
+        JsonValue::Object(o) => JsonValue::Object(Arc::new(o.to_static())),
+    }
+}
+
+impl JsonValue<'static> {
+    /// Parse a JSON enum from a byte slice, returning an owned version of the enum.
+    pub fn parse_owned(data: &[u8], allow_inf_nan: bool) -> Result<Self, JsonError> {
+        let mut parser = Parser::new(data);
+
+        let mut tape = Tape::default();
+        let peek = parser.peek()?;
+        let v = take_value_owned(peek, &mut parser, &mut tape, DEFAULT_RECURSION_LIMIT, allow_inf_nan)?;
         parser.finish()?;
         Ok(v)
     }
@@ -74,13 +112,48 @@ macro_rules! check_recursion {
     };
 }
 
-pub(crate) fn take_value(
+pub(crate) fn take_value_borrowed<'j>(
     peek: Peek,
-    parser: &mut Parser,
+    parser: &mut Parser<'j>,
+    tape: &mut Tape,
+    recursion_limit: u8,
+    allow_inf_nan: bool,
+) -> JsonResult<JsonValue<'j>> {
+    take_value(
+        peek,
+        parser,
+        tape,
+        recursion_limit,
+        allow_inf_nan,
+        &|s: StringOutput<'_, 'j>| s.into(),
+    )
+}
+
+pub(crate) fn take_value_owned<'j>(
+    peek: Peek,
+    parser: &mut Parser<'j>,
+    tape: &mut Tape,
+    recursion_limit: u8,
+    allow_inf_nan: bool,
+) -> JsonResult<JsonValue<'static>> {
+    take_value(
+        peek,
+        parser,
+        tape,
+        recursion_limit,
+        allow_inf_nan,
+        &|s: StringOutput<'_, 'j>| Into::<String>::into(s).into(),
+    )
+}
+
+fn take_value<'j, 's>(
+    peek: Peek,
+    parser: &mut Parser<'j>,
     tape: &mut Tape,
     mut recursion_limit: u8,
     allow_inf_nan: bool,
-) -> JsonResult<JsonValue> {
+    create_cow: &impl Fn(StringOutput<'_, 'j>) -> Cow<'s, str>,
+) -> JsonResult<JsonValue<'s>> {
     match peek {
         Peek::True => {
             parser.consume_true()?;
@@ -95,20 +168,20 @@ pub(crate) fn take_value(
             Ok(JsonValue::Null)
         }
         Peek::String => {
-            let s = parser.consume_string::<StringDecoder>(tape)?;
-            Ok(JsonValue::Str(s.into()))
+            let s: StringOutput<'_, 'j> = parser.consume_string::<StringDecoder>(tape)?;
+            Ok(JsonValue::Str(create_cow(s)))
         }
         Peek::Array => {
             // we could do something clever about guessing the size of the array
-            let mut array: SmallVec<[JsonValue; 8]> = SmallVec::new();
+            let mut array: SmallVec<[JsonValue<'s>; 8]> = SmallVec::new();
             if let Some(peek_first) = parser.array_first()? {
                 check_recursion!(recursion_limit, parser.index,
-                    let v = take_value(peek_first, parser, tape, recursion_limit, allow_inf_nan)?;
+                    let v = take_value(peek_first, parser, tape, recursion_limit, allow_inf_nan, create_cow)?;
                 );
                 array.push(v);
                 while let Some(peek) = parser.array_step()? {
                     check_recursion!(recursion_limit, parser.index,
-                        let v = take_value(peek, parser, tape, recursion_limit, allow_inf_nan)?;
+                        let v = take_value(peek, parser, tape, recursion_limit, allow_inf_nan, create_cow)?;
                     );
                     array.push(v);
                 }
@@ -117,19 +190,19 @@ pub(crate) fn take_value(
         }
         Peek::Object => {
             // same for objects
-            let mut object: LazyIndexMap<String, JsonValue> = LazyIndexMap::new();
+            let mut object: LazyIndexMap<Cow<'s, str>, JsonValue<'s>> = LazyIndexMap::new();
             if let Some(first_key) = parser.object_first::<StringDecoder>(tape)? {
-                let first_key = first_key.into();
+                let first_key = create_cow(first_key);
                 let peek = parser.peek()?;
                 check_recursion!(recursion_limit, parser.index,
-                    let first_value = take_value(peek, parser, tape, recursion_limit, allow_inf_nan)?;
+                    let first_value = take_value(peek, parser, tape, recursion_limit, allow_inf_nan, create_cow)?;
                 );
                 object.insert(first_key, first_value);
                 while let Some(key) = parser.object_step::<StringDecoder>(tape)? {
-                    let key = key.into();
+                    let key = create_cow(key);
                     let peek = parser.peek()?;
                     check_recursion!(recursion_limit, parser.index,
-                        let value = take_value(peek, parser, tape, recursion_limit, allow_inf_nan)?;
+                        let value = take_value(peek, parser, tape, recursion_limit, allow_inf_nan, create_cow)?;
                     );
                     object.insert(key, value);
                 }
