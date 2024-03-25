@@ -115,16 +115,18 @@ type Entry = Option<(u64, Py<PyString>)>;
 /// See https://en.wikipedia.org/wiki/Cache_placement_policies#Fully_associative_cache
 #[derive(Debug)]
 struct PyStringCache {
-    entries: Box<[Entry; CAPACITY]>,
+    entries: Vec<Entry>,
     hash_builder: RandomState,
 }
 
-const ARRAY_REPEAT_VALUE: Entry = None;
-
 impl Default for PyStringCache {
     fn default() -> Self {
+        let mut entries = Vec::with_capacity(CAPACITY);
+        for _ in 0..CAPACITY {
+            entries.push(None);
+        }
         Self {
-            entries: Box::new([ARRAY_REPEAT_VALUE; CAPACITY]),
+            entries,
             hash_builder: RandomState::default(),
         }
     }
