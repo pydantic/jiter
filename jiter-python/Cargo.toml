@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-pyo3 = { git = "https://github.com/davidhewitt/pyo3", branch="complete-py2", version = "0.21.0-dev", default-features=false, features = ["generate-import-lib", "auto-initialize", "num-bigint", "macros"] }
+pyo3 = { version = "0.21.0-beta.0", features = ["num-bigint", "auto-initialize"] }
 jiter = { path = "..", features = ["python"] }
 
 [features]

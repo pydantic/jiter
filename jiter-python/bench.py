@@ -14,6 +14,7 @@ cases = [
     ('array_short_arrays', '[{}]'.format(', '.join('["a", "b", "c", "d"]' for _ in range(10_000)))),
     ('one_long_string', json.dumps('x' * 100)),
     ('one_short_string', b'"foobar"'),
+    ('1m_strings', json.dumps([str(i) for i in range(1_000_000)])),
 ]
 
 
