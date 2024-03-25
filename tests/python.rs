@@ -13,7 +13,7 @@ fn test_to_py_object_numeric() {
     .unwrap();
     Python::with_gil(|py| {
         let python_value = value.to_object(py);
-        let string = python_value.as_ref(py).to_string();
+        let string = python_value.bind(py).to_string();
         assert_eq!(
             string,
             "{'int': 1, 'bigint': 123456789012345678901234567890, 'float': 1.2}"
@@ -30,7 +30,7 @@ fn test_to_py_object_other() {
     .unwrap();
     Python::with_gil(|py| {
         let python_value = value.to_object(py);
-        let string = python_value.as_ref(py).to_string();
+        let string = python_value.bind(py).to_string();
         assert_eq!(string, "['string', '£', True, False, None, nan, inf, -inf]");
     })
 }
@@ -47,7 +47,7 @@ fn test_python_parse_numeric() {
         )
         .unwrap();
         assert_eq!(
-            obj.as_ref(py).to_string(),
+            obj.to_string(),
             "{'int': 1, 'bigint': 123456789012345678901234567890, 'float': 1.2}"
         );
     })
@@ -64,10 +64,7 @@ fn test_python_parse_other_cached() {
             false,
         )
         .unwrap();
-        assert_eq!(
-            obj.as_ref(py).to_string(),
-            "['string', True, False, None, nan, inf, -inf]"
-        );
+        assert_eq!(obj.to_string(), "['string', True, False, None, nan, inf, -inf]");
     })
 }
 
@@ -75,7 +72,7 @@ fn test_python_parse_other_cached() {
 fn test_python_parse_other_no_cache() {
     Python::with_gil(|py| {
         let obj = python_parse(py, br#"["string", true, false, null]"#, false, false, false).unwrap();
-        assert_eq!(obj.as_ref(py).to_string(), "['string', True, False, None]");
+        assert_eq!(obj.to_string(), "['string', True, False, None]");
     })
 }
 
@@ -121,12 +118,12 @@ fn test_recursion_limit_incr() {
 
     Python::with_gil(|py| {
         let v = python_parse(py, bytes, false, true, false).unwrap();
-        assert_eq!(v.as_ref(py).len().unwrap(), 2000);
+        assert_eq!(v.len().unwrap(), 2000);
     });
 
     Python::with_gil(|py| {
         let v = python_parse(py, bytes, false, true, false).unwrap();
-        assert_eq!(v.as_ref(py).len().unwrap(), 2000);
+        assert_eq!(v.len().unwrap(), 2000);
     });
 }
 
@@ -147,13 +144,13 @@ fn test_partial_array() {
     Python::with_gil(|py| {
         let bytes = br#"["string", true, null, 1, "foo"#;
         let py_value = python_parse(py, bytes, false, true, true).unwrap();
-        let string = py_value.as_ref(py).to_string();
+        let string = py_value.to_string();
         assert_eq!(string, "['string', True, None, 1]");
 
         // test that stopping at every points is ok
         for i in 1..bytes.len() {
             let py_value = python_parse(py, &bytes[..i], false, true, true).unwrap();
-            assert!(py_value.as_ref(py).is_instance_of::<PyList>());
+            assert!(py_value.is_instance_of::<PyList>());
         }
     })
 }
@@ -163,13 +160,13 @@ fn test_partial_object() {
     Python::with_gil(|py| {
         let bytes = br#"{"a": 1, "b": 2, "c"#;
         let py_value = python_parse(py, bytes, false, true, true).unwrap();
-        let string = py_value.as_ref(py).to_string();
+        let string = py_value.to_string();
         assert_eq!(string, "{'a': 1, 'b': 2}");
 
         // test that stopping at every points is ok
         for i in 1..bytes.len() {
             let py_value = python_parse(py, &bytes[..i], false, true, true).unwrap();
-            assert!(py_value.as_ref(py).is_instance_of::<PyDict>());
+            assert!(py_value.is_instance_of::<PyDict>());
         }
     })
 }
@@ -179,13 +176,13 @@ fn test_partial_nested() {
     Python::with_gil(|py| {
         let bytes = br#"{"a": 1, "b": 2, "c": [1, 2, {"d": 1, "#;
         let py_value = python_parse(py, bytes, false, true, true).unwrap();
-        let string = py_value.as_ref(py).to_string();
+        let string = py_value.to_string();
         assert_eq!(string, "{'a': 1, 'b': 2, 'c': [1, 2, {'d': 1}]}");
 
         // test that stopping at every points is ok
         for i in 1..bytes.len() {
             let py_value = python_parse(py, &bytes[..i], false, true, true).unwrap();
-            assert!(py_value.as_ref(py).is_instance_of::<PyDict>());
+            assert!(py_value.is_instance_of::<PyDict>());
         }
     })
 }
