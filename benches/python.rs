@@ -16,6 +16,7 @@ fn python_parse_numeric(bench: &mut Bencher) {
                 br#"  { "int": 1, "bigint": 123456789012345678901234567890, "float": 1.2}  "#,
                 false,
                 StringCacheMode::All,
+                false,
             )
             .unwrap()
         });
@@ -25,7 +26,16 @@ fn python_parse_numeric(bench: &mut Bencher) {
 fn python_parse_other(bench: &mut Bencher) {
     Python::with_gil(|py| {
         cache_clear(py);
-        bench.iter(|| python_parse(py, br#"["string", true, false, null]"#, false, StringCacheMode::All).unwrap());
+        bench.iter(|| {
+            python_parse(
+                py,
+                br#"["string", true, false, null]"#,
+                false,
+                StringCacheMode::All,
+                false,
+            )
+            .unwrap()
+        });
     })
 }
 
@@ -37,7 +47,7 @@ fn _python_parse_file(path: &str, bench: &mut Bencher, cache_mode: StringCacheMo
 
     Python::with_gil(|py| {
         cache_clear(py);
-        bench.iter(|| python_parse(py, json_data, false, cache_mode).unwrap());
+        bench.iter(|| python_parse(py, json_data, false, cache_mode, false).unwrap());
     })
 }
 
