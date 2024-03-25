@@ -1,4 +1,5 @@
 use pyo3::prelude::*;
+use pyo3::types::{PyDict, PyList};
 use pyo3::ToPyObject;
 
 use jiter::{map_json_error, python_parse, JsonValue};
@@ -42,6 +43,7 @@ fn test_python_parse_numeric() {
             br#"  { "int": 1, "bigint": 123456789012345678901234567890, "float": 1.2}  "#,
             false,
             true,
+            false,
         )
         .unwrap();
         assert_eq!(
@@ -59,6 +61,7 @@ fn test_python_parse_other_cached() {
             br#"["string", true, false, null, NaN, Infinity, -Infinity]"#,
             true,
             true,
+            false,
         )
         .unwrap();
         assert_eq!(obj.to_string(), "['string', True, False, None, nan, inf, -inf]");
@@ -68,7 +71,7 @@ fn test_python_parse_other_cached() {
 #[test]
 fn test_python_parse_other_no_cache() {
     Python::with_gil(|py| {
-        let obj = python_parse(py, br#"["string", true, false, null]"#, false, false).unwrap();
+        let obj = python_parse(py, br#"["string", true, false, null]"#, false, false, false).unwrap();
         assert_eq!(obj.to_string(), "['string', True, False, None]");
     })
 }
@@ -76,7 +79,7 @@ fn test_python_parse_other_no_cache() {
 #[test]
 fn test_python_disallow_nan() {
     Python::with_gil(|py| {
-        let r = python_parse(py, br#"[NaN]"#, false, true);
+        let r = python_parse(py, br#"[NaN]"#, false, true, false);
         let e = r.map_err(|e| map_json_error(br#"[NaN]"#, &e)).unwrap_err();
         assert_eq!(e.to_string(), "ValueError: expected value at line 1 column 2");
     })
@@ -86,7 +89,7 @@ fn test_python_disallow_nan() {
 fn test_error() {
     Python::with_gil(|py| {
         let bytes = br#"["string""#;
-        let r = python_parse(py, bytes, false, true);
+        let r = python_parse(py, bytes, false, true, false);
         let e = r.map_err(|e| map_json_error(bytes, &e)).unwrap_err();
         assert_eq!(e.to_string(), "ValueError: EOF while parsing a list at line 1 column 9");
     })
@@ -98,7 +101,7 @@ fn test_recursion_limit() {
     let bytes = json.as_bytes();
 
     Python::with_gil(|py| {
-        let r = python_parse(py, bytes, false, true);
+        let r = python_parse(py, bytes, false, true, false);
         let e = r.map_err(|e| map_json_error(bytes, &e)).unwrap_err();
         assert_eq!(
             e.to_string(),
@@ -114,24 +117,72 @@ fn test_recursion_limit_incr() {
     let bytes = json.as_bytes();
 
     Python::with_gil(|py| {
-        let v = python_parse(py, bytes, false, true).unwrap();
+        let v = python_parse(py, bytes, false, true, false).unwrap();
         assert_eq!(v.len().unwrap(), 2000);
     });
 
     Python::with_gil(|py| {
-        let v = python_parse(py, bytes, false, true).unwrap();
+        let v = python_parse(py, bytes, false, true, false).unwrap();
         assert_eq!(v.len().unwrap(), 2000);
     });
 }
 
 #[test]
-fn test_exected_value_error() {
+fn test_extracted_value_error() {
     let json = "xx";
     let bytes = json.as_bytes();
 
     Python::with_gil(|py| {
-        let r = python_parse(py, bytes, false, true);
+        let r = python_parse(py, bytes, false, true, false);
         let e = r.map_err(|e| map_json_error(bytes, &e)).unwrap_err();
         assert_eq!(e.to_string(), "ValueError: expected value at line 1 column 1");
+    })
+}
+
+#[test]
+fn test_partial_array() {
+    Python::with_gil(|py| {
+        let bytes = br#"["string", true, null, 1, "foo"#;
+        let py_value = python_parse(py, bytes, false, true, true).unwrap();
+        let string = py_value.to_string();
+        assert_eq!(string, "['string', True, None, 1]");
+
+        // test that stopping at every points is ok
+        for i in 1..bytes.len() {
+            let py_value = python_parse(py, &bytes[..i], false, true, true).unwrap();
+            assert!(py_value.is_instance_of::<PyList>());
+        }
+    })
+}
+
+#[test]
+fn test_partial_object() {
+    Python::with_gil(|py| {
+        let bytes = br#"{"a": 1, "b": 2, "c"#;
+        let py_value = python_parse(py, bytes, false, true, true).unwrap();
+        let string = py_value.to_string();
+        assert_eq!(string, "{'a': 1, 'b': 2}");
+
+        // test that stopping at every points is ok
+        for i in 1..bytes.len() {
+            let py_value = python_parse(py, &bytes[..i], false, true, true).unwrap();
+            assert!(py_value.is_instance_of::<PyDict>());
+        }
+    })
+}
+
+#[test]
+fn test_partial_nested() {
+    Python::with_gil(|py| {
+        let bytes = br#"{"a": 1, "b": 2, "c": [1, 2, {"d": 1, "#;
+        let py_value = python_parse(py, bytes, false, true, true).unwrap();
+        let string = py_value.to_string();
+        assert_eq!(string, "{'a': 1, 'b': 2, 'c': [1, 2, {'d': 1}]}");
+
+        // test that stopping at every points is ok
+        for i in 1..bytes.len() {
+            let py_value = python_parse(py, &bytes[..i], false, true, true).unwrap();
+            assert!(py_value.is_instance_of::<PyDict>());
+        }
     })
 }

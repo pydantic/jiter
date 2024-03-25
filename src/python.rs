@@ -13,6 +13,7 @@ use crate::errors::{json_err, json_error, JsonError, JsonResult, DEFAULT_RECURSI
 use crate::number_decoder::{NumberAny, NumberInt};
 use crate::parse::{Parser, Peek};
 use crate::string_decoder::{StringDecoder, Tape};
+use crate::JsonErrorType;
 
 /// Parse a JSON value from a byte slice and return a Python object.
 ///
@@ -31,12 +32,14 @@ pub fn python_parse<'py>(
     json_data: &[u8],
     allow_inf_nan: bool,
     cache_strings: bool,
+    allow_partial: bool,
 ) -> JsonResult<Bound<'py, PyAny>> {
     let mut python_parser = PythonParser {
         parser: Parser::new(json_data),
         tape: Tape::default(),
         recursion_limit: DEFAULT_RECURSION_LIMIT,
         allow_inf_nan,
+        allow_partial,
     };
 
     let peek = python_parser.parser.peek()?;
@@ -45,7 +48,9 @@ pub fn python_parse<'py>(
     } else {
         python_parser.py_take_value::<StringNoCache>(py, peek)?
     };
-    python_parser.parser.finish()?;
+    if !allow_partial {
+        python_parser.parser.finish()?;
+    }
     Ok(v)
 }
 
@@ -59,6 +64,7 @@ struct PythonParser<'j> {
     tape: Tape,
     recursion_limit: u8,
     allow_inf_nan: bool,
+    allow_partial: bool,
 }
 
 impl<'j> PythonParser<'j> {
@@ -67,6 +73,21 @@ impl<'j> PythonParser<'j> {
         py: Python<'py>,
         peek: Peek,
     ) -> JsonResult<Bound<'py, PyAny>> {
+        macro_rules! tri {
+            ($result:expr, $partial_value:expr) => {
+                match $result {
+                    Ok(k) => k,
+                    Err(e) => {
+                        return if self._allow_partial_err(&e) {
+                            Ok($partial_value.into_any())
+                        } else {
+                            Err(e)
+                        }
+                    }
+                }
+            };
+        }
+
         match peek {
             Peek::Null => {
                 self.parser.consume_null()?;
@@ -85,13 +106,12 @@ impl<'j> PythonParser<'j> {
                 Ok(StringCache::get(py, s.as_str()))
             }
             Peek::Array => {
-                let list = if let Some(peek_first) = self.parser.array_first()? {
+                let list = if let Some(peek_first) = tri!(self.parser.array_first(), PyList::empty_bound(py)) {
                     let mut vec: SmallVec<[Bound<'_, PyAny>; 8]> = SmallVec::with_capacity(8);
-                    let v = self._check_take_value::<StringCache>(py, peek_first)?;
-                    vec.push(v);
-                    while let Some(peek) = self.parser.array_step()? {
-                        let v = self._check_take_value::<StringCache>(py, peek)?;
-                        vec.push(v);
+                    if let Err(e) = self._parse_array::<StringCache>(py, peek_first, &mut vec) {
+                        if !self._allow_partial_err(&e) {
+                            return Err(e);
+                        }
                     }
                     PyList::new_bound(py, vec)
                 } else {
@@ -101,27 +121,9 @@ impl<'j> PythonParser<'j> {
             }
             Peek::Object => {
                 let dict = PyDict::new_bound(py);
-
-                let set_item = |key: Bound<'py, PyAny>, value: Bound<'py, PyAny>| {
-                    let r = unsafe { ffi::PyDict_SetItem(dict.as_ptr(), key.as_ptr(), value.as_ptr()) };
-                    // AFAIK this shouldn't happen since the key will always be a string  which is hashable
-                    // we panic here rather than returning a result and using `?` below as it's up to 14% faster
-                    // presumably because there are fewer branches
-                    if r == -1 {
-                        panic!("PyDict_SetItem failed")
-                    }
-                };
-
-                if let Some(first_key) = self.parser.object_first::<StringDecoder>(&mut self.tape)? {
-                    let first_key = StringCache::get(py, first_key.as_str());
-                    let peek = self.parser.peek()?;
-                    let first_value = self._check_take_value::<StringCache>(py, peek)?;
-                    set_item(first_key, first_value);
-                    while let Some(key) = self.parser.object_step::<StringDecoder>(&mut self.tape)? {
-                        let key = StringCache::get(py, key.as_str());
-                        let peek = self.parser.peek()?;
-                        let value = self._check_take_value::<StringCache>(py, peek)?;
-                        set_item(key, value);
+                if let Err(e) = self._parse_object::<StringCache>(py, &dict) {
+                    if !self._allow_partial_err(&e) {
+                        return Err(e);
                     }
                 }
                 Ok(dict.into_any())
@@ -143,6 +145,66 @@ impl<'j> PythonParser<'j> {
                     }
                 }
             }
+        }
+    }
+
+    fn _parse_array<'py, StringCache: StringMaybeCache>(
+        &mut self,
+        py: Python<'py>,
+        peek_first: Peek,
+        vec: &mut SmallVec<[Bound<'py, PyAny>; 8]>,
+    ) -> JsonResult<()> {
+        let v = self._check_take_value::<StringCache>(py, peek_first)?;
+        vec.push(v);
+        while let Some(peek) = self.parser.array_step()? {
+            let v = self._check_take_value::<StringCache>(py, peek)?;
+            vec.push(v);
+        }
+        Ok(())
+    }
+
+    fn _parse_object<'py, StringCache: StringMaybeCache>(
+        &mut self,
+        py: Python<'py>,
+        dict: &Bound<'py, PyDict>,
+    ) -> JsonResult<()> {
+        let set_item = |key: Bound<'py, PyAny>, value: Bound<'py, PyAny>| {
+            let r = unsafe { ffi::PyDict_SetItem(dict.as_ptr(), key.as_ptr(), value.as_ptr()) };
+            // AFAIK this shouldn't happen since the key will always be a string  which is hashable
+            // we panic here rather than returning a result and using `?` below as it's up to 14% faster
+            // presumably because there are fewer branches
+            if r == -1 {
+                panic!("PyDict_SetItem failed")
+            }
+        };
+        if let Some(first_key) = self.parser.object_first::<StringDecoder>(&mut self.tape)? {
+            let first_key = StringCache::get(py, first_key.as_str());
+            let peek = self.parser.peek()?;
+            let first_value = self._check_take_value::<StringCache>(py, peek)?;
+            set_item(first_key, first_value);
+            while let Some(key) = self.parser.object_step::<StringDecoder>(&mut self.tape)? {
+                let key = StringCache::get(py, key.as_str());
+                let peek = self.parser.peek()?;
+                let value = self._check_take_value::<StringCache>(py, peek)?;
+                set_item(key, value);
+            }
+        }
+        Ok(())
+    }
+
+    fn _allow_partial_err(&self, e: &JsonError) -> bool {
+        if self.allow_partial {
+            matches!(
+                e.error_type,
+                JsonErrorType::EofWhileParsingList
+                    | JsonErrorType::EofWhileParsingObject
+                    | JsonErrorType::EofWhileParsingString
+                    | JsonErrorType::EofWhileParsingValue
+                    | JsonErrorType::ExpectedListCommaOrEnd
+                    | JsonErrorType::ExpectedObjectCommaOrEnd
+            )
+        } else {
+            false
         }
     }
 
