@@ -1,5 +1,5 @@
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyList};
+use pyo3::types::{PyDict, PyList, PyString};
 use pyo3::ToPyObject;
 
 use jiter::{cache_clear, cache_usage, map_json_error, python_parse, JsonValue, StringCacheMode};
@@ -221,5 +221,38 @@ fn test_python_cache_usage_none() {
         let obj = python_parse(py, br#"{"foo": "bar", "spam": 3}"#, false, StringCacheMode::None, false).unwrap();
         assert_eq!(obj.to_string(), "{'foo': 'bar', 'spam': 3}");
         assert_eq!(cache_usage(py), 0);
+    })
+}
+
+#[test]
+fn test_cache_into() {
+    Python::with_gil(|py| {
+        let c: StringCacheMode = true.to_object(py).extract(py).unwrap();
+        assert!(matches!(c, StringCacheMode::All));
+
+        let c: StringCacheMode = false.to_object(py).extract(py).unwrap();
+        assert!(matches!(c, StringCacheMode::None));
+
+        let c: StringCacheMode = PyString::new_bound(py, "all").extract().unwrap();
+        assert!(matches!(c, StringCacheMode::All));
+
+        let c: StringCacheMode = PyString::new_bound(py, "keys").extract().unwrap();
+        assert!(matches!(c, StringCacheMode::Keys));
+
+        let c: StringCacheMode = PyString::new_bound(py, "none").extract().unwrap();
+        assert!(matches!(c, StringCacheMode::None));
+
+        let e = PyString::new_bound(py, "wrong")
+            .extract::<StringCacheMode>()
+            .unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "ValueError: Invalid string cache mode, should be `'all'`, '`keys`', `'none`' or a `bool`"
+        );
+        let e = 123.to_object(py).extract::<StringCacheMode>(py).unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "TypeError: Invalid string cache mode, should be `'all'`, '`keys`', `'none`' or a `bool`"
+        );
     })
 }
