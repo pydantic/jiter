@@ -108,25 +108,25 @@ pub fn cached_py_string<'py>(py: Python<'py>, raw_str: &str) -> Bound<'py, PyStr
 }
 
 // capacity should be a power of 2 so the compiler can convert `%` to a right shift below
-const CAPACITY: usize = 65536;
+// Using a smaller number here (e.g. 1024) seems to be faster in many cases than a larger number (like 65536)
+// and also avoids stack overflow risks
+const CAPACITY: usize = 1024;
 type Entry = Option<(u64, Py<PyString>)>;
 
 /// This is a Fully associative cache with LRU replacement policy.
 /// See https://en.wikipedia.org/wiki/Cache_placement_policies#Fully_associative_cache
 #[derive(Debug)]
 struct PyStringCache {
-    entries: Vec<Entry>,
+    entries: Box<[Entry; CAPACITY]>,
     hash_builder: RandomState,
 }
 
+const ARRAY_REPEAT_VALUE: Entry = None;
+
 impl Default for PyStringCache {
     fn default() -> Self {
-        let mut entries = Vec::with_capacity(CAPACITY);
-        for _ in 0..CAPACITY {
-            entries.push(None);
-        }
         Self {
-            entries,
+            entries: Box::new([ARRAY_REPEAT_VALUE; CAPACITY]),
             hash_builder: RandomState::default(),
         }
     }
