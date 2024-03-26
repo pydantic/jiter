@@ -88,28 +88,20 @@ impl<'j> PythonParser<'j> {
                 Ok(StringCache::get_value(py, s.as_str()).into_any())
             }
             Peek::Array => {
-                let opt_peek_first = match self.parser.array_first() {
-                    Ok(p) => p,
-                    Err(e) => {
-                        if self._allow_partial_err(&e) {
-                            None
-                        } else {
-                            return Err(e);
-                        }
-                    }
+                let peek_first = match self.parser.array_first() {
+                    Ok(Some(peek)) => peek,
+                    Err(e) if !self._allow_partial_err(&e) => return Err(e),
+                    Ok(None) | Err(_) => return Ok(PyList::empty_bound(py).into_any()),
                 };
-                let list = if let Some(peek_first) = opt_peek_first {
-                    let mut vec: SmallVec<[Bound<'_, PyAny>; 8]> = SmallVec::with_capacity(8);
-                    if let Err(e) = self._parse_array::<StringCache>(py, peek_first, &mut vec) {
-                        if !self._allow_partial_err(&e) {
-                            return Err(e);
-                        }
+
+                let mut vec: SmallVec<[Bound<'_, PyAny>; 8]> = SmallVec::with_capacity(8);
+                if let Err(e) = self._parse_array::<StringCache>(py, peek_first, &mut vec) {
+                    if !self._allow_partial_err(&e) {
+                        return Err(e);
                     }
-                    PyList::new_bound(py, vec)
-                } else {
-                    PyList::empty_bound(py)
-                };
-                Ok(list.into_any())
+                }
+
+                Ok(PyList::new_bound(py, vec).into_any())
             }
             Peek::Object => {
                 let dict = PyDict::new_bound(py);
