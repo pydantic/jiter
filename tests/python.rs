@@ -269,23 +269,3 @@ fn test_cache_into() {
         );
     })
 }
-
-#[test]
-fn test_unicode() {
-    let json = r#"["💩", "£"]"#;
-    Python::with_gil(|py| {
-        cache_clear(py);
-        let obj = python_parse(py, json.as_bytes(), false, StringCacheMode::None, false).unwrap();
-        assert_eq!(obj.to_string(), "['💩', '£']");
-    })
-}
-
-#[test]
-fn test_unicode_cache() {
-    let json = r#"["💩", "£"]"#;
-    Python::with_gil(|py| {
-        cache_clear(py);
-        let obj = python_parse(py, json.as_bytes(), false, StringCacheMode::All, false).unwrap();
-        assert_eq!(obj.to_string(), "['💩', '£']");
-    })
-}

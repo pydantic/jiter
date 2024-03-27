@@ -47,11 +47,24 @@ impl<'t, 'j> From<StringOutput<'t, 'j>> for Cow<'j, str> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct StrType<'a> {
+    pub s: &'a str,
+    pub known_ascii: bool,
+}
+
 impl<'t, 'j> StringOutput<'t, 'j> {
     pub fn as_str(&self) -> &'t str {
         match self {
             Self::Tape(s) => s,
             Self::Data(s) => s,
+        }
+    }
+
+    pub fn as_str_type(&self) -> StrType<'t> {
+        match self {
+            Self::Tape(s) => StrType { s, known_ascii: false },
+            Self::Data(s) => StrType { s, known_ascii: true },
         }
     }
 }
