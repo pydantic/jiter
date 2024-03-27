@@ -2,9 +2,12 @@ use std::cell::RefCell;
 
 use ahash::random_state::RandomState;
 use pyo3::exceptions::{PyTypeError, PyValueError};
+use pyo3::ffi;
 use pyo3::prelude::*;
 use pyo3::sync::{GILOnceCell, GILProtected};
 use pyo3::types::{PyBool, PyString};
+
+use crate::string_decoder::StrType;
 
 #[derive(Debug, Clone, Copy)]
 pub enum StringCacheMode {
@@ -45,9 +48,9 @@ impl From<bool> for StringCacheMode {
 }
 
 pub trait StringMaybeCache {
-    fn get_key<'py>(py: Python<'py>, json_str: &str) -> Bound<'py, PyString>;
+    fn get_key<'py>(py: Python<'py>, json_str: StrType) -> Bound<'py, PyString>;
 
-    fn get_value<'py>(py: Python<'py>, json_str: &str) -> Bound<'py, PyString> {
+    fn get_value<'py>(py: Python<'py>, json_str: StrType) -> Bound<'py, PyString> {
         Self::get_key(py, json_str)
     }
 }
@@ -55,7 +58,7 @@ pub trait StringMaybeCache {
 pub struct StringCacheAll;
 
 impl StringMaybeCache for StringCacheAll {
-    fn get_key<'py>(py: Python<'py>, json_str: &str) -> Bound<'py, PyString> {
+    fn get_key<'py>(py: Python<'py>, json_str: StrType) -> Bound<'py, PyString> {
         cached_py_string(py, json_str)
     }
 }
@@ -63,20 +66,20 @@ impl StringMaybeCache for StringCacheAll {
 pub struct StringCacheKeys;
 
 impl StringMaybeCache for StringCacheKeys {
-    fn get_key<'py>(py: Python<'py>, json_str: &str) -> Bound<'py, PyString> {
+    fn get_key<'py>(py: Python<'py>, json_str: StrType) -> Bound<'py, PyString> {
         cached_py_string(py, json_str)
     }
 
-    fn get_value<'py>(py: Python<'py>, json_str: &str) -> Bound<'py, PyString> {
-        PyString::new_bound(py, json_str)
+    fn get_value<'py>(py: Python<'py>, json_str: StrType) -> Bound<'py, PyString> {
+        pystring_unicode_known(py, json_str)
     }
 }
 
 pub struct StringNoCache;
 
 impl StringMaybeCache for StringNoCache {
-    fn get_key<'py>(py: Python<'py>, json_str: &str) -> Bound<'py, PyString> {
-        PyString::new_bound(py, json_str)
+    fn get_key<'py>(py: Python<'py>, json_str: StrType) -> Bound<'py, PyString> {
+        pystring_unicode_known(py, json_str)
     }
 }
 
@@ -98,12 +101,18 @@ pub fn cache_clear(py: Python) {
     get_string_cache!(py).borrow_mut().clear()
 }
 
-pub fn cached_py_string<'py>(py: Python<'py>, raw_str: &str) -> Bound<'py, PyString> {
+static EMPTY_STRING: GILOnceCell<Py<PyString>> = GILOnceCell::new();
+
+pub fn cached_py_string<'py>(py: Python<'py>, raw_str: StrType) -> Bound<'py, PyString> {
     // from tests, 0 and 1 character strings are faster not cached
-    if (2..64).contains(&raw_str.len()) {
+    let len = raw_str.s.len();
+    if len == 0 {
+        let s = EMPTY_STRING.get_or_init(py, || unsafe { pystring_unicode(py, "") }.into_py(py));
+        s.clone_ref(py).into_bound(py)
+    } else if (2..64).contains(&len) {
         get_string_cache!(py).borrow_mut().get_or_insert(py, raw_str)
     } else {
-        PyString::new_bound(py, raw_str)
+        pystring_unicode_known(py, raw_str)
     }
 }
 
@@ -135,13 +144,13 @@ impl Default for PyStringCache {
 impl PyStringCache {
     /// Lookup the cache for an entry with the given string. If it exists, return it.
     /// If it is not set or has a different string, insert it and return it.
-    fn get_or_insert<'py>(&mut self, py: Python<'py>, s: &str) -> Bound<'py, PyString> {
-        let hash = self.hash_builder.hash_one(s);
+    fn get_or_insert<'py>(&mut self, py: Python<'py>, raw_str: StrType) -> Bound<'py, PyString> {
+        let hash = self.hash_builder.hash_one(raw_str.s);
 
         let hash_index = hash as usize % CAPACITY;
 
         let set_entry = |entry: &mut Entry| {
-            let py_str = PyString::new_bound(py, s);
+            let py_str = pystring_unicode_known(py, raw_str);
             *entry = Some((hash, py_str.to_owned().unbind()));
             py_str
         };
@@ -153,7 +162,7 @@ impl PyStringCache {
                     // to avoid a string comparison, we first compare the hashes
                     if *entry_hash == hash {
                         // if the hashes match, we compare the strings to be absolutely sure - as a hashmap would do
-                        if py_str_ob.bind(py).to_str().ok() == Some(s) {
+                        if py_str_ob.bind(py).to_str().ok() == Some(raw_str.s) {
                             // the strings matched, return the cached string object
                             return py_str_ob.bind(py).to_owned();
                         }
@@ -182,4 +191,19 @@ impl PyStringCache {
     fn clear(&mut self) {
         self.entries.fill(None);
     }
+}
+
+pub fn pystring_unicode_known<'py>(py: Python<'py>, raw_str: StrType) -> Bound<'py, PyString> {
+    if raw_str.known_ascii {
+        unsafe { pystring_unicode(py, raw_str.s) }
+    } else {
+        PyString::new_bound(py, raw_str.s)
+    }
+}
+pub unsafe fn pystring_unicode<'py>(py: Python<'py>, s: &str) -> Bound<'py, PyString> {
+    let ptr = ffi::PyUnicode_New(s.len() as isize, 127);
+    let data_ptr = ptr.cast::<ffi::PyASCIIObject>().offset(1) as *mut u8;
+    core::ptr::copy_nonoverlapping(s.as_ptr(), data_ptr, s.len());
+    core::ptr::write(data_ptr.add(s.len()), 0);
+    Bound::from_owned_ptr(py, ptr).downcast_into_unchecked()
 }
