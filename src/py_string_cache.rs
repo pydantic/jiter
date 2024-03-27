@@ -101,15 +101,10 @@ pub fn cache_clear(py: Python) {
     get_string_cache!(py).borrow_mut().clear()
 }
 
-static EMPTY_STRING: GILOnceCell<Py<PyString>> = GILOnceCell::new();
-
 pub fn cached_py_string<'py>(py: Python<'py>, raw_str: StrType) -> Bound<'py, PyString> {
     // from tests, 0 and 1 character strings are faster not cached
     let len = raw_str.s.len();
-    if len == 0 {
-        let s = EMPTY_STRING.get_or_init(py, || unsafe { pystring_unicode(py, "") }.into_py(py));
-        s.clone_ref(py).into_bound(py)
-    } else if (2..64).contains(&len) {
+    if (2..64).contains(&len) {
         get_string_cache!(py).borrow_mut().get_or_insert(py, raw_str)
     } else {
         pystring_unicode_known(py, raw_str)
@@ -200,6 +195,7 @@ pub fn pystring_unicode_known<'py>(py: Python<'py>, raw_str: StrType) -> Bound<'
         PyString::new_bound(py, raw_str.s)
     }
 }
+
 pub unsafe fn pystring_unicode<'py>(py: Python<'py>, s: &str) -> Bound<'py, PyString> {
     let ptr = ffi::PyUnicode_New(s.len() as isize, 127);
     let data_ptr = ptr.cast::<ffi::PyASCIIObject>().offset(1) as *mut u8;
