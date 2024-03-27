@@ -17,6 +17,7 @@ ahash = "0.8.0"
 smallvec = "1.11.0"
 pyo3 = { version = "0.21.0", default-features=false, features = ["num-bigint"], optional = true }
 lexical-parse-float = { version = "0.8.5", features =  ["format"] }
+bytecount = { version = "0.6.7", default_features = false, features = ["runtime-dispatch-simd"] }
 
 [features]
 python = ["dep:pyo3"]
