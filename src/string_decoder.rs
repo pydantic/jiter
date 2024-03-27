@@ -25,15 +25,15 @@ pub enum StringOutput<'t, 'j>
 where
     'j: 't,
 {
-    Tape(&'t str),
-    Data(&'j str),
+    Tape(&'t str, bool),
+    Data(&'j str, bool),
 }
 
 impl From<StringOutput<'_, '_>> for String {
     fn from(val: StringOutput) -> Self {
         match val {
-            StringOutput::Tape(s) => s.to_owned(),
-            StringOutput::Data(s) => s.to_owned(),
+            StringOutput::Tape(s, _) => s.to_owned(),
+            StringOutput::Data(s, _) => s.to_owned(),
         }
     }
 }
@@ -41,30 +41,24 @@ impl From<StringOutput<'_, '_>> for String {
 impl<'t, 'j> From<StringOutput<'t, 'j>> for Cow<'j, str> {
     fn from(val: StringOutput<'t, 'j>) -> Self {
         match val {
-            StringOutput::Tape(s) => s.to_owned().into(),
-            StringOutput::Data(s) => s.into(),
+            StringOutput::Tape(s, _) => s.to_owned().into(),
+            StringOutput::Data(s, _) => s.into(),
         }
     }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct StrType<'a> {
-    pub s: &'a str,
-    pub known_ascii: bool,
 }
 
 impl<'t, 'j> StringOutput<'t, 'j> {
     pub fn as_str(&self) -> &'t str {
         match self {
-            Self::Tape(s) => s,
-            Self::Data(s) => s,
+            Self::Tape(s, _) => s,
+            Self::Data(s, _) => s,
         }
     }
 
-    pub fn as_str_type(&self) -> StrType<'t> {
+    pub fn ascii_only(&self) -> bool {
         match self {
-            Self::Tape(s) => StrType { s, known_ascii: false },
-            Self::Data(s) => StrType { s, known_ascii: true },
+            Self::Tape(_, ascii_only) => *ascii_only,
+            Self::Data(_, ascii_only) => *ascii_only,
         }
     }
 }
@@ -156,7 +150,7 @@ where
                     CharType::Quote => {
                         let s = to_str(&data[start..index], ascii_only, start)?;
                         index += 1;
-                        return Ok((StringOutput::Data(s), index));
+                        return Ok((StringOutput::Data(s, ascii_only), index));
                     }
                     CharType::Backslash => return decode_to_tape(data, index, tape, start, ascii_only),
                     CharType::ControlChar => return json_err!(ControlCharacterWhileParsingString, index),
@@ -217,7 +211,7 @@ fn decode_to_tape<'t, 'j>(
                     tape.extend_from_slice(&data[last_escape..index]);
                     index += 1;
                     let s = to_str(tape, ascii_only, start)?;
-                    return Ok((StringOutput::Tape(s), index));
+                    return Ok((StringOutput::Tape(s, ascii_only), index));
                 }
                 CharType::Backslash => on_backslash!(),
                 CharType::ControlChar => return json_err!(ControlCharacterWhileParsingString, index),

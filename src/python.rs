@@ -85,7 +85,7 @@ impl<'j> PythonParser<'j> {
             }
             Peek::String => {
                 let s = self.parser.consume_string::<StringDecoder>(&mut self.tape)?;
-                Ok(StringCache::get_value(py, s.as_str_type()).into_any())
+                Ok(StringCache::get_value(py, s.as_str(), s.ascii_only()).into_any())
             }
             Peek::Array => {
                 let peek_first = match self.parser.array_first() {
@@ -162,12 +162,12 @@ impl<'j> PythonParser<'j> {
             }
         };
         if let Some(first_key) = self.parser.object_first::<StringDecoder>(&mut self.tape)? {
-            let first_key = StringCache::get_key(py, first_key.as_str_type());
+            let first_key = StringCache::get_key(py, first_key.as_str(), first_key.ascii_only());
             let peek = self.parser.peek()?;
             let first_value = self._check_take_value::<StringCache>(py, peek)?;
             set_item(first_key, first_value);
             while let Some(key) = self.parser.object_step::<StringDecoder>(&mut self.tape)? {
-                let key = StringCache::get_key(py, key.as_str_type());
+                let key = StringCache::get_key(py, key.as_str(), key.ascii_only());
                 let peek = self.parser.peek()?;
                 let value = self._check_take_value::<StringCache>(py, peek)?;
                 set_item(key, value);
