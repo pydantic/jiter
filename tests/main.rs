@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::fs::File;
 use std::io::Read;
+use std::iter;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -325,6 +326,8 @@ string_test_errors! {
     u4_unclosed: r#""\uxx"# => "EofWhileParsingString @ 5 - 1:5";
     u4_unclosed2: r#""\udBdd"# => "EofWhileParsingString @ 7 - 1:7";
     line_leading_surrogate: r#""\uddBd""# => "LoneLeadingSurrogateInHexEscape @ 6 - 1:7";
+    // needs the long tail so SIMD is used to parse the string
+    line_leading_surrogate_tail: r#""\uddBd"                     "# => "LoneLeadingSurrogateInHexEscape @ 6 - 1:7";
     unexpected_hex_escape1: r#""\udBd8x"# => "UnexpectedEndOfHexEscape @ 7 - 1:8";
     unexpected_hex_escape2: r#""\udBd8xx"# => "UnexpectedEndOfHexEscape @ 7 - 1:8";
     unexpected_hex_escape3: "\"un\\uDBBB\0" => "UnexpectedEndOfHexEscape @ 9 - 1:10";
@@ -347,6 +350,20 @@ fn invalid_unicode_code() {
     assert_eq!(jiter.error_position(e.index), LinePosition::new(1, 4));
 }
 
+// #[test]
+// fn invalid_control() {
+//     let json = vec![34, 48, 34];
+//     // dbg!(json.iter().map(|b| *b as char).collect::<Vec<_>>());
+//     let mut jiter = Jiter::new(&json, false);
+//     let e = jiter.next_str().unwrap_err();
+//     assert_eq!(
+//         e.error_type,
+//         JiterErrorType::JsonError(JsonErrorType::InvalidUnicodeCodePoint)
+//     );
+//     assert_eq!(e.index, 3);
+//     assert_eq!(jiter.error_position(e.index), LinePosition::new(1, 4));
+// }
+
 #[test]
 fn utf8_range() {
     for c in 0u8..255u8 {
@@ -364,6 +381,29 @@ fn utf8_range() {
                 let position = jiter_err.get_position(&json);
                 let full_error = format!("{} at {position}", jiter_err.error_type);
                 assert_eq!(full_error, serde_err.to_string());
+            }
+        }
+    }
+}
+
+#[test]
+fn utf8_range_long() {
+    for c in 0u8..255u8 {
+        let mut json = vec![b'"', b':', c];
+        json.extend(iter::repeat(b' ').take(20));
+        json.push(b'"');
+        // dbg!(c, json.iter().map(|b| *b as char).collect::<Vec<_>>());
+
+        let jiter_result = JsonValue::parse(&json, false);
+        match serde_json::from_slice::<String>(&json) {
+            Ok(serde_s) => {
+                let jiter_value = jiter_result.unwrap();
+                assert_eq!(jiter_value, JsonValue::Str(serde_s.into()));
+            }
+            Err(serde_err) => {
+                let jiter_err = jiter_result.unwrap_err();
+                // just compare the start of the error - https://github.com/serde-rs/json/issues/1110
+                assert!(serde_err.to_string().starts_with(&jiter_err.error_type.to_string()));
             }
         }
     }
@@ -406,6 +446,36 @@ fn inf_neg_disallowed() {
     assert_eq!(e.error_type, JiterErrorType::JsonError(JsonErrorType::InvalidNumber));
     assert_eq!(e.index, 2);
     assert_eq!(jiter.error_position(e.index), LinePosition::new(1, 3));
+}
+
+#[test]
+fn num_after() {
+    let json = r#"2:"#; // `:` is 58, directly after 9
+    let mut jiter = Jiter::new(json.as_bytes(), false);
+    let num = jiter.next_number().unwrap();
+    assert_eq!(num, NumberAny::Int(NumberInt::Int(2)));
+    let e = jiter.finish().unwrap_err();
+    assert_eq!(
+        e.error_type,
+        JiterErrorType::JsonError(JsonErrorType::TrailingCharacters)
+    );
+    assert_eq!(e.index, 1);
+    assert_eq!(jiter.error_position(e.index), LinePosition::new(1, 2));
+}
+
+#[test]
+fn num_before() {
+    let json = r#"2/"#; // `/` is 47, directly before 0
+    let mut jiter = Jiter::new(json.as_bytes(), false);
+    let num = jiter.next_number().unwrap();
+    assert_eq!(num, NumberAny::Int(NumberInt::Int(2)));
+    let e = jiter.finish().unwrap_err();
+    assert_eq!(
+        e.error_type,
+        JiterErrorType::JsonError(JsonErrorType::TrailingCharacters)
+    );
+    assert_eq!(e.index, 1);
+    assert_eq!(jiter.error_position(e.index), LinePosition::new(1, 2));
 }
 
 #[test]
@@ -534,6 +604,18 @@ fn bad_high_order_string() {
 }
 
 #[test]
+fn bad_high_order_string_tail() {
+    // needs the long tail so SIMD is used to parse the string
+    let mut bytes: Vec<u8> = vec![34, 32, 32, 210, 34];
+    bytes.extend(vec![b' '; 100]);
+    // dbg!(json.iter().map(|b| *b as char).collect::<Vec<_>>());
+    let e = JsonValue::parse(&bytes, false).unwrap_err();
+    assert_eq!(e.error_type, JsonErrorType::InvalidUnicodeCodePoint);
+    assert_eq!(e.index, 4);
+    assert_eq!(e.description(&bytes), "invalid unicode code point at line 1 column 5")
+}
+
+#[test]
 fn udb_string() {
     let bytes: Vec<u8> = vec![34, 92, 117, 100, 66, 100, 100, 92, 117, 100, 70, 100, 100, 34];
     let v = JsonValue::parse(&bytes, false).unwrap();
@@ -646,6 +728,19 @@ fn pass1_to_value() {
     };
     assert_eq!(array.len(), 20);
     assert_eq!(array[0], JsonValue::Str("JSON Test Pattern pass1".into()));
+}
+
+#[test]
+fn escaped_string() {
+    let json_data = br#""&#34; \u0022 %22 0x22 034 &#x22;""#;
+    // let json_data = br#"  "\n"  "#;
+    let v = JsonValue::parse(json_data, false).unwrap();
+    let s = match v {
+        JsonValue::Str(s) => s,
+        v => panic!("expected array, not {:?}", v),
+    };
+    dbg!(s);
+    // assert_eq!(s, r#"&#34; " %22 0x22 034 &#x22;"#);
 }
 
 #[test]
@@ -888,6 +983,16 @@ fn test_4300_int() {
 #[test]
 fn test_4302_int_err() {
     let json = (0..4302).map(|_| "9".to_string()).collect::<Vec<_>>().join("");
+    let bytes = json.as_bytes();
+    let e = JsonValue::parse(bytes, false).unwrap_err();
+    assert_eq!(e.error_type, JsonErrorType::NumberOutOfRange);
+    assert_eq!(e.index, 4301);
+    assert_eq!(e.description(bytes), "number out of range at line 1 column 4302");
+}
+
+#[test]
+fn test_5000_int_err() {
+    let json = (0..5000).map(|_| "9".to_string()).collect::<Vec<_>>().join("");
     let bytes = json.as_bytes();
     let e = JsonValue::parse(bytes, false).unwrap_err();
     assert_eq!(e.error_type, JsonErrorType::NumberOutOfRange);
