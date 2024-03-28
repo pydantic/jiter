@@ -163,6 +163,19 @@ fn test_partial_array() {
 }
 
 #[test]
+fn test_partial_array_first() {
+    Python::with_gil(|py| {
+        let bytes = b"[";
+        let py_value = python_parse(py, bytes, false, StringCacheMode::All, true).unwrap();
+        let string = py_value.to_string();
+        assert_eq!(string, "[]");
+
+        let e = python_parse(py, bytes, false, StringCacheMode::All, false).unwrap_err();
+        assert_eq!(e.to_string(), "EOF while parsing a list at index 1");
+    })
+}
+
+#[test]
 fn test_partial_object() {
     Python::with_gil(|py| {
         let bytes = br#"{"a": 1, "b": 2, "c"#;
