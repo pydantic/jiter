@@ -210,7 +210,7 @@ impl IntParse {
             let (chunk, new_index) = IntChunk::parse_big(data, index);
             match chunk {
                 IntChunk::Ongoing(value) => {
-                    big_value *= POW_10[new_index - index];
+                    big_value *= ONGOING_CHUNK_SIZE;
                     big_value += value;
                     index = new_index;
                 }
@@ -251,6 +251,11 @@ static POW_10: [u64; 18] = [
     10u64.pow(16),
     10u64.pow(17),
 ];
+
+#[cfg(target_arch = "aarch64")]
+static ONGOING_CHUNK_SIZE: u64 = POW_10[16];
+#[cfg(not(target_arch = "aarch64"))]
+static ONGOING_CHUNK_SIZE: u64 = POW_10[17];
 
 pub(crate) enum IntChunk {
     Ongoing(u64),
