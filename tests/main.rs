@@ -350,19 +350,19 @@ fn invalid_unicode_code() {
     assert_eq!(jiter.error_position(e.index), LinePosition::new(1, 4));
 }
 
-// #[test]
-// fn invalid_control() {
-//     let json = vec![34, 48, 34];
-//     // dbg!(json.iter().map(|b| *b as char).collect::<Vec<_>>());
-//     let mut jiter = Jiter::new(&json, false);
-//     let e = jiter.next_str().unwrap_err();
-//     assert_eq!(
-//         e.error_type,
-//         JiterErrorType::JsonError(JsonErrorType::InvalidUnicodeCodePoint)
-//     );
-//     assert_eq!(e.index, 3);
-//     assert_eq!(jiter.error_position(e.index), LinePosition::new(1, 4));
-// }
+#[test]
+fn invalid_control() {
+    let json = vec![34, 206, 34];
+    // dbg!(json.iter().map(|b| *b as char).collect::<Vec<_>>());
+    let mut jiter = Jiter::new(&json, false);
+    let e = jiter.next_str().unwrap_err();
+    assert_eq!(
+        e.error_type,
+        JiterErrorType::JsonError(JsonErrorType::InvalidUnicodeCodePoint)
+    );
+    assert_eq!(e.index, 2);
+    assert_eq!(jiter.error_position(e.index), LinePosition::new(1, 3));
+}
 
 #[test]
 fn utf8_range() {
@@ -992,7 +992,7 @@ fn test_4302_int_err() {
 
 #[test]
 fn test_5000_int_err() {
-    let json = (0..5000).map(|_| "9".to_string()).collect::<Vec<_>>().join("");
+    let json = ["9"; 5000].join("");
     let bytes = json.as_bytes();
     let e = JsonValue::parse(bytes, false).unwrap_err();
     assert_eq!(e.error_type, JsonErrorType::NumberOutOfRange);

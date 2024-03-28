@@ -239,7 +239,7 @@ fn string_ascii_mask(byte_vec: SimdVecu8_16) -> SimdVecu8_16 {
 fn find_end(digit_mask: SimdVecu8_16) -> u32 {
     let t: [u64; 2] = unsafe { transmute(digit_mask) };
     if t[0] != 0 {
-        // none-digit in the first 8 bytes
+        // non-digit in the first 8 bytes
         t[0].trailing_zeros() / 8
     } else {
         t[1].trailing_zeros() / 8 + 8
