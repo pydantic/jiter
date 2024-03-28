@@ -38,7 +38,7 @@ jobs:
       uses: Swatinem/rust-cache@v2
 
     - run: cargo install rustfilt coverage-prepare cargo-careful
-      if: steps.cache-rust.outputs.cache-hit != 'true'
+#      if: steps.cache-rust.outputs.cache-hit != 'true'
 
     - run: rustup component add llvm-tools-preview
 
@@ -50,7 +50,9 @@ jobs:
     - run: coverage-prepare --ignore-filename-regex '/tests/' lcov $(find target/debug/deps -regex '.*/main[^.]*')
 
     - run: cargo test --doc
-    - run: cargo +nightly careful t -F python
+
+    - run: cargo careful t -F python
+      if: matrix.rust-version == 'nightly'
 
     - uses: codecov/codecov-action@v3
       with:
