@@ -398,7 +398,7 @@ fn utf8_range_long() {
         match serde_json::from_slice::<String>(&json) {
             Ok(serde_s) => {
                 let jiter_value = jiter_result.unwrap();
-                assert_eq!(jiter_value, JsonValue::Str(serde_s));
+                assert_eq!(jiter_value, JsonValue::Str(serde_s.into()));
             }
             Err(serde_err) => {
                 let jiter_err = jiter_result.unwrap_err();
