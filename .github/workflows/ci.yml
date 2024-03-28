@@ -38,7 +38,7 @@ jobs:
       uses: Swatinem/rust-cache@v2
 
     - run: cargo install rustfilt coverage-prepare cargo-careful
-#      if: steps.cache-rust.outputs.cache-hit != 'true'
+      if: steps.cache-rust.outputs.cache-hit != 'true'
 
     - run: rustup component add llvm-tools-preview
 

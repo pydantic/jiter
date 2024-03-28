@@ -1,6 +1,5 @@
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyString};
-use pyo3::ToPyObject;
 
 use jiter::{cache_clear, cache_usage, map_json_error, python_parse, JsonValue, StringCacheMode};
 
