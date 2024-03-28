@@ -52,7 +52,7 @@ fn _python_parse_file(path: &str, bench: &mut Bencher, cache_mode: StringCacheMo
 }
 
 fn python_parse_massive_ints_array(bench: &mut Bencher) {
-    _python_parse_file("./benches/massive_ints_array.json", bench, true);
+    _python_parse_file("./benches/massive_ints_array.json", bench, StringCacheMode::All);
 }
 
 fn python_parse_medium_response_not_cached(bench: &mut Bencher) {
