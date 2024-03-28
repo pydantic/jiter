@@ -83,37 +83,31 @@ fn decode_to_tape<'t, 'j>(
     mut ascii_only: bool,
 ) -> JsonResult<(StringOutput<'t, 'j>, usize)> {
     tape.clear();
-
-    // TODO should be a function or closure
-    macro_rules! on_backslash {
-        ($start:ident) => {{
-            tape.extend_from_slice(&data[$start..index]);
-            index += 1;
-            if let Some(next_inner) = data.get(index) {
-                match next_inner {
-                    b'"' | b'\\' | b'/' => tape.push(*next_inner),
-                    b'b' => tape.push(b'\x08'),
-                    b'f' => tape.push(b'\x0C'),
-                    b'n' => tape.push(b'\n'),
-                    b'r' => tape.push(b'\r'),
-                    b't' => tape.push(b'\t'),
-                    b'u' => {
-                        let (c, new_index) = parse_escape(data, index)?;
-                        index = new_index;
-                        tape.extend_from_slice(c.encode_utf8(&mut [0_u8; 4]).as_bytes());
-                    }
-                    _ => return json_err!(InvalidEscape, index),
-                }
-                index += 1;
-            } else {
-                return json_err!(EofWhileParsingString, index);
-            }
-        }};
-    }
-
-    on_backslash!(start);
-
+    let mut chunk_start = start;
     loop {
+        // on_backslash
+        tape.extend_from_slice(&data[chunk_start..index]);
+        index += 1;
+        if let Some(next_inner) = data.get(index) {
+            match next_inner {
+                b'"' | b'\\' | b'/' => tape.push(*next_inner),
+                b'b' => tape.push(b'\x08'),
+                b'f' => tape.push(b'\x0C'),
+                b'n' => tape.push(b'\n'),
+                b'r' => tape.push(b'\r'),
+                b't' => tape.push(b'\t'),
+                b'u' => {
+                    let (c, new_index) = parse_escape(data, index)?;
+                    index = new_index;
+                    tape.extend_from_slice(c.encode_utf8(&mut [0_u8; 4]).as_bytes());
+                }
+                _ => return json_err!(InvalidEscape, index),
+            }
+            index += 1;
+        } else {
+            return json_err!(EofWhileParsingString, index);
+        }
+
         match decode_chunk(data, index, ascii_only)? {
             (StringChunk::Quote, ascii_only, new_index) => {
                 tape.extend_from_slice(&data[index..new_index]);
@@ -123,9 +117,8 @@ fn decode_to_tape<'t, 'j>(
             }
             (StringChunk::Backslash, ascii_only_new, index_new) => {
                 ascii_only = ascii_only_new;
-                let chunk_start = index;
+                chunk_start = index;
                 index = index_new;
-                on_backslash!(chunk_start);
             }
         }
     }
