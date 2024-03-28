@@ -77,11 +77,11 @@ impl<'j> PythonParser<'j> {
             }
             Peek::True => {
                 self.parser.consume_true()?;
-                Ok(unsafe { Bound::from_borrowed_ptr(py, ffi::Py_True()) })
+                Ok(true.to_object(py).into_bound(py))
             }
             Peek::False => {
                 self.parser.consume_false()?;
-                Ok(unsafe { Bound::from_borrowed_ptr(py, ffi::Py_False()) })
+                Ok(false.to_object(py).into_bound(py))
             }
             Peek::String => {
                 let s = self.parser.consume_string::<StringDecoder>(&mut self.tape)?;
