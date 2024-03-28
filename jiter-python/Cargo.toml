@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-pyo3 = { version = "0.21.0-beta.0", features = ["num-bigint", "auto-initialize"] }
+pyo3 = { version = "0.21.0", features = ["num-bigint", "auto-initialize"] }
 jiter = { path = "..", features = ["python"] }
 
 [features]
