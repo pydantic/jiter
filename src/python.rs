@@ -70,21 +70,6 @@ impl<'j> PythonParser<'j> {
         py: Python<'py>,
         peek: Peek,
     ) -> JsonResult<Bound<'py, PyAny>> {
-        macro_rules! tri {
-            ($result:expr, $partial_value:expr) => {
-                match $result {
-                    Ok(k) => k,
-                    Err(e) => {
-                        return if self._allow_partial_err(&e) {
-                            Ok($partial_value.into_any())
-                        } else {
-                            Err(e)
-                        }
-                    }
-                }
-            };
-        }
-
         match peek {
             Peek::Null => {
                 self.parser.consume_null()?;
@@ -92,18 +77,30 @@ impl<'j> PythonParser<'j> {
             }
             Peek::True => {
                 self.parser.consume_true()?;
-                Ok(true.to_object(py).into_bound(py))
+                let b = unsafe { Bound::from_borrowed_ptr(py, ffi::Py_True()) };
+                Ok(b)
             }
             Peek::False => {
                 self.parser.consume_false()?;
-                Ok(false.to_object(py).into_bound(py))
+                let b = unsafe { Bound::from_borrowed_ptr(py, ffi::Py_False()) };
+                Ok(b)
             }
             Peek::String => {
                 let s = self.parser.consume_string::<StringDecoder>(&mut self.tape)?;
                 Ok(StringCache::get_value(py, s.as_str()).into_any())
             }
             Peek::Array => {
-                let list = if let Some(peek_first) = tri!(self.parser.array_first(), PyList::empty_bound(py)) {
+                let opt_peek_first = match self.parser.array_first() {
+                    Ok(p) => p,
+                    Err(e) => {
+                        if self._allow_partial_err(&e) {
+                            None
+                        } else {
+                            return Err(e);
+                        }
+                    }
+                };
+                let list = if let Some(peek_first) = opt_peek_first {
                     let mut vec: SmallVec<[Bound<'_, PyAny>; 8]> = SmallVec::with_capacity(8);
                     if let Err(e) = self._parse_array::<StringCache>(py, peek_first, &mut vec) {
                         if !self._allow_partial_err(&e) {
