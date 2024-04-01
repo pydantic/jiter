@@ -4,7 +4,7 @@ use std::ops::Range;
 
 use lexical_parse_float::{format as lexical_format, FromLexicalWithOptions, Options as ParseFloatOptions};
 
-use crate::errors::{json_err, JsonResult};
+use crate::errors::{json_err, json_error, JsonError, JsonResult};
 
 pub trait AbstractNumberDecoder {
     type Output;
@@ -27,6 +27,25 @@ impl From<NumberInt> for f64 {
                 Some(f) => f,
                 None => f64::NAN,
             },
+        }
+    }
+}
+
+impl TryFrom<&[u8]> for NumberInt {
+    type Error = JsonError;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        let first = *value.first().ok_or_else(|| json_error!(InvalidNumber, 0))?;
+        let (int_parse, index) = IntParse::parse(value, 0, first)?;
+        match int_parse {
+            IntParse::Int(int) => {
+                if index == value.len() {
+                    Ok(int)
+                } else {
+                    json_err!(InvalidNumber, index)
+                }
+            }
+            _ => json_err!(InvalidNumber, index),
         }
     }
 }
