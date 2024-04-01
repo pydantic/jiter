@@ -158,9 +158,6 @@ pub(crate) enum IntParse {
 }
 
 impl IntParse {
-    /// Turns out this is faster than fancy bit manipulation, see
-    /// https://github.com/Alexhuszagh/rust-lexical/blob/main/lexical-parse-integer/docs/Algorithm.md
-    /// for some context
     pub(crate) fn parse(data: &[u8], mut index: usize, first: u8) -> JsonResult<(Self, usize)> {
         let start = index;
         let positive = match first {
@@ -286,6 +283,9 @@ impl IntChunk {
     }
 }
 
+/// Turns out this is faster than fancy bit manipulation, see
+/// https://github.com/Alexhuszagh/rust-lexical/blob/main/lexical-parse-integer/docs/Algorithm.md
+/// for some context
 #[inline(always)]
 pub(crate) fn decode_int_chunk_fallback(data: &[u8], mut index: usize, mut value: u64) -> (IntChunk, usize) {
     // i64::MAX = 9223372036854775807 (19 chars) - so 18 chars is always valid as an i64
