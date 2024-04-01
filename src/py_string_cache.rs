@@ -193,9 +193,13 @@ pub fn pystring_fast_new<'py>(py: Python<'py>, s: &str, ascii_only: bool) -> Bou
     }
 }
 
+/// Faster creation of PyString from an ASCII string, inspired by
+/// https://github.com/ijl/orjson/blob/3.10.0/src/str/create.rs#L41
 unsafe fn pystring_ascii_new<'py>(py: Python<'py>, s: &str) -> Bound<'py, PyString> {
     let ptr = ffi::PyUnicode_New(s.len() as isize, 127);
-    let data_ptr = ptr.cast::<ffi::PyASCIIObject>().offset(1) as *mut u8;
+    // see https://github.com/pydantic/jiter/pull/72#discussion_r1545485907
+    debug_assert_eq!(ffi::PyUnicode_KIND(ptr), ffi::PyUnicode_1BYTE_KIND);
+    let data_ptr = ffi::PyUnicode_DATA(ptr) as *mut u8;
     core::ptr::copy_nonoverlapping(s.as_ptr(), data_ptr, s.len());
     core::ptr::write(data_ptr.add(s.len()), 0);
     Bound::from_owned_ptr(py, ptr).downcast_into_unchecked()
