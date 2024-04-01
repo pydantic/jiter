@@ -1326,6 +1326,9 @@ fn test_number_int_try_from_bytes() {
     let n: NumberInt = b"123".as_ref().try_into().unwrap();
     assert_eq!(n, NumberInt::Int(123));
 
+    let n: NumberInt = b"0".as_ref().try_into().unwrap();
+    assert_eq!(n, NumberInt::Int(0));
+
     let twenty_nines = "9".repeat(29);
     let n: NumberInt = twenty_nines.as_bytes().try_into().unwrap();
     match n {
@@ -1335,9 +1338,18 @@ fn test_number_int_try_from_bytes() {
     let e = NumberInt::try_from(b"x23".as_ref()).unwrap_err();
     assert_eq!(e.to_string(), "invalid number at index 0");
 
+    let e = NumberInt::try_from(b"".as_ref()).unwrap_err();
+    assert_eq!(e.to_string(), "invalid number at index 0");
+
     let e = NumberInt::try_from(b"2x3".as_ref()).unwrap_err();
     assert_eq!(e.to_string(), "invalid number at index 1");
 
     let e = NumberInt::try_from(b"123 ".as_ref()).unwrap_err();
     assert_eq!(e.to_string(), "invalid number at index 3");
+
+    let e = NumberInt::try_from(b"123.1".as_ref()).unwrap_err();
+    assert_eq!(e.to_string(), "invalid number at index 3");
+
+    let e = NumberInt::try_from(b"0123".as_ref()).unwrap_err();
+    assert_eq!(e.to_string(), "invalid number at index 1");
 }
