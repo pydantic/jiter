@@ -1295,3 +1295,28 @@ fn jiter_next_value_owned() {
     assert_eq!(s, "v");
     assert!(matches!(s, Cow::Owned(_)));
 }
+
+#[test]
+fn i64_max() {
+    let json = "9223372036854775807";
+    assert_eq!(i64::MAX.to_string(), json);
+    let v = JsonValue::parse(json.as_bytes(), false).unwrap();
+    match v {
+        JsonValue::Int(v) => assert_eq!(v, i64::MAX),
+        JsonValue::BigInt(v) => assert_eq!(v, i64::MAX.into()),
+        _ => panic!("expected int"),
+    }
+}
+
+#[test]
+fn test_all_int_lengths() {
+    for int_size in 1..100 {
+        let json = "9".repeat(int_size);
+        let v = JsonValue::parse(json.as_bytes(), false).unwrap();
+        match v {
+            JsonValue::Int(v) => assert_eq!(v.to_string(), json),
+            JsonValue::BigInt(v) => assert_eq!(v.to_string(), json),
+            _ => panic!("expected int"),
+        }
+    }
+}

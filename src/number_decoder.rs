@@ -210,7 +210,7 @@ impl IntParse {
             let (chunk, new_index) = IntChunk::parse_big(data, index);
             match chunk {
                 IntChunk::Ongoing(value) => {
-                    big_value *= ONGOING_CHUNK_SIZE;
+                    big_value *= ONGOING_CHUNK_MULTIPLIER;
                     big_value += value;
                     index = new_index;
                 }
@@ -253,9 +253,11 @@ static POW_10: [u64; 18] = [
 ];
 
 #[cfg(target_arch = "aarch64")]
-static ONGOING_CHUNK_SIZE: u64 = POW_10[16];
+// in aarch64 we use a 128 bit registers - 16 bytes
+static ONGOING_CHUNK_MULTIPLIER: u64 = 10u64.pow(16);
 #[cfg(not(target_arch = "aarch64"))]
-static ONGOING_CHUNK_SIZE: u64 = POW_10[17];
+// decode_int_chunk_fallback - we parse 18 bytes when the number is ongoing
+static ONGOING_CHUNK_MULTIPLIER: u64 = 10u64.pow(18);
 
 pub(crate) enum IntChunk {
     Ongoing(u64),
@@ -286,8 +288,8 @@ impl IntChunk {
 
 #[inline(always)]
 pub(crate) fn decode_int_chunk_fallback(data: &[u8], mut index: usize, mut value: u64) -> (IntChunk, usize) {
-    // i64::MAX = 9223372036854775807 - 18 chars is always enough
-    for _ in 1..18 {
+    // i64::MAX = 9223372036854775807 (19 chars) - so 18 chars is always valid as an i64
+    for _ in 0..18 {
         if let Some(digit) = data.get(index) {
             if INT_CHAR_MAP[*digit as usize] {
                 // we use wrapping add to avoid branching - we know the value cannot wrap
