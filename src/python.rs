@@ -94,14 +94,14 @@ impl<'j> PythonParser<'j> {
                     Ok(None) | Err(_) => return Ok(PyList::empty_bound(py).into_any()),
                 };
 
-                let mut vec: SmallVec<[Bound<'_, PyAny>; 8]> = SmallVec::with_capacity(8);
+                let mut vec: SmallVec<[PyObject; 8]> = SmallVec::with_capacity(8);
                 if let Err(e) = self._parse_array::<StringCache>(py, peek_first, &mut vec) {
                     if !self._allow_partial_err(&e) {
                         return Err(e);
                     }
                 }
 
-                Ok(PyList::new_bound(py, vec).into_any())
+                Ok(pylist_new_fast(py, vec))
             }
             Peek::Object => {
                 let dict = PyDict::new_bound(py);
@@ -132,17 +132,17 @@ impl<'j> PythonParser<'j> {
         }
     }
 
-    fn _parse_array<'py, StringCache: StringMaybeCache>(
+    fn _parse_array<StringCache: StringMaybeCache>(
         &mut self,
-        py: Python<'py>,
+        py: Python,
         peek_first: Peek,
-        vec: &mut SmallVec<[Bound<'py, PyAny>; 8]>,
+        vec: &mut SmallVec<[PyObject; 8]>,
     ) -> JsonResult<()> {
         let v = self._check_take_value::<StringCache>(py, peek_first)?;
-        vec.push(v);
+        vec.push(v.to_object(py));
         while let Some(peek) = self.parser.array_step()? {
             let v = self._check_take_value::<StringCache>(py, peek)?;
-            vec.push(v);
+            vec.push(v.to_object(py));
         }
         Ok(())
     }
@@ -206,5 +206,20 @@ impl<'j> PythonParser<'j> {
 
         self.recursion_limit += 1;
         r
+    }
+}
+
+fn pylist_new_fast(py: Python, elements: SmallVec<[PyObject; 8]>) -> Bound<'_, PyAny> {
+    unsafe {
+        let ptr = ffi::PyList_New(elements.len() as ffi::Py_ssize_t);
+
+        let mut counter = 0;
+
+        #[allow(clippy::explicit_counter_loop)] // counters needs to be Py_ssize_t
+        for obj in elements {
+            ffi::PyList_SET_ITEM(ptr, counter, obj.into_ptr());
+            counter += 1;
+        }
+        Bound::from_owned_ptr(py, ptr)
     }
 }
