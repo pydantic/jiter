@@ -1352,4 +1352,8 @@ fn test_number_int_try_from_bytes() {
 
     let e = NumberInt::try_from(b"0123".as_ref()).unwrap_err();
     assert_eq!(e.to_string(), "invalid number at index 1");
+
+    let too_long = "9".repeat(4309);
+    let e = NumberInt::try_from(too_long.as_bytes()).unwrap_err();
+    assert_eq!(e.to_string(), "number out of range at index 4301");
 }
