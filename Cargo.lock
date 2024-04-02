@@ -111,7 +111,7 @@ checksum = "b1a46d1a171d865aa5f83f92695765caa047a9b4cbae2cbf37dbd613a793fd4c"
 
 [[package]]
 name = "jiter"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "ahash",
  "bencher",
