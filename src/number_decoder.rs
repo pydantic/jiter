@@ -1,10 +1,10 @@
+use num_bigint::BigInt;
+use num_traits::cast::ToPrimitive;
 use std::ops::Range;
 
 use lexical_parse_float::{format as lexical_format, FromLexicalWithOptions, Options as ParseFloatOptions};
-use num_bigint::BigInt;
-use num_traits::cast::ToPrimitive;
 
-use crate::errors::{json_err, JsonResult};
+use crate::errors::{json_err, json_error, JsonError, JsonResult};
 
 pub trait AbstractNumberDecoder {
     type Output;
@@ -19,15 +19,6 @@ pub enum NumberInt {
     BigInt(BigInt),
 }
 
-impl NumberInt {
-    fn negate(self) -> Self {
-        match self {
-            Self::Int(int) => Self::Int(-int),
-            Self::BigInt(big_int) => Self::BigInt(-big_int),
-        }
-    }
-}
-
 impl From<NumberInt> for f64 {
     fn from(num: NumberInt) -> Self {
         match num {
@@ -40,19 +31,32 @@ impl From<NumberInt> for f64 {
     }
 }
 
+impl TryFrom<&[u8]> for NumberInt {
+    type Error = JsonError;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        let first = *value.first().ok_or_else(|| json_error!(InvalidNumber, 0))?;
+        let (int_parse, index) = IntParse::parse(value, 0, first)?;
+        match int_parse {
+            IntParse::Int(int) => {
+                if index == value.len() {
+                    Ok(int)
+                } else {
+                    json_err!(InvalidNumber, index)
+                }
+            }
+            _ => json_err!(InvalidNumber, index),
+        }
+    }
+}
+
 impl AbstractNumberDecoder for NumberInt {
     type Output = NumberInt;
 
     fn decode(data: &[u8], index: usize, first: u8, _allow_inf_nan: bool) -> JsonResult<(Self::Output, usize)> {
         let (int_parse, index) = IntParse::parse(data, index, first)?;
         match int_parse {
-            IntParse::Int(positive, int) => {
-                if positive {
-                    Ok((int, index))
-                } else {
-                    Ok((int.negate(), index))
-                }
-            }
+            IntParse::Int(int) => Ok((int, index)),
             _ => json_err!(FloatExpectingInt, index),
         }
     }
@@ -77,9 +81,8 @@ impl AbstractNumberDecoder for NumberFloat {
         };
         let first2 = if positive { Some(&first) } else { data.get(index) };
 
-        match first2 {
-            Some(b'I') => consume_inf(data, index, positive, allow_inf_nan),
-            Some(digit) if digit.is_ascii_digit() => {
+        if let Some(digit) = first2 {
+            if INT_CHAR_MAP[*digit as usize] {
                 const JSON: u128 = lexical_format::JSON;
                 let options = ParseFloatOptions::new();
                 match f64::from_lexical_partial_with_options::<JSON>(&data[start..], &options) {
@@ -95,9 +98,13 @@ impl AbstractNumberDecoder for NumberFloat {
                         }
                     }
                 }
+            } else if digit == &b'I' {
+                consume_inf(data, index, positive, allow_inf_nan)
+            } else {
+                json_err!(InvalidNumber, index)
             }
-            Some(_) => json_err!(InvalidNumber, index),
-            None => json_err!(EofWhileParsingValue, index),
+        } else {
+            json_err!(EofWhileParsingValue, index)
         }
     }
 }
@@ -125,13 +132,7 @@ impl AbstractNumberDecoder for NumberAny {
         let start = index;
         let (int_parse, index) = IntParse::parse(data, index, first)?;
         match int_parse {
-            IntParse::Int(positive, int) => {
-                if positive {
-                    Ok((Self::Int(int), index))
-                } else {
-                    Ok((Self::Int(int.negate()), index))
-                }
-            }
+            IntParse::Int(int) => Ok((Self::Int(int), index)),
             IntParse::Float => {
                 NumberFloat::decode(data, start, first, allow_inf_nan).map(|(f, index)| (Self::Float(f), index))
             }
@@ -168,18 +169,16 @@ fn consume_nan(data: &[u8], index: usize, allow_inf_nan: bool) -> JsonResult<(f6
 }
 
 #[derive(Debug)]
-enum IntParse {
-    Int(bool, NumberInt),
+pub(crate) enum IntParse {
+    Int(NumberInt),
     Float,
     FloatInf(bool),
     FloatNaN,
 }
 
 impl IntParse {
-    /// Turns out this is faster than fancy bit manipulation, see
-    /// https://github.com/Alexhuszagh/rust-lexical/blob/main/lexical-parse-integer/docs/Algorithm.md
-    /// for some context
-    fn parse(data: &[u8], mut index: usize, first: u8) -> JsonResult<(Self, usize)> {
+    pub(crate) fn parse(data: &[u8], mut index: usize, first: u8) -> JsonResult<(Self, usize)> {
+        let start = index;
         let positive = match first {
             b'N' => return Ok((Self::FloatNaN, index)),
             b'-' => false,
@@ -190,63 +189,164 @@ impl IntParse {
             index += 1;
         };
         let first2 = if positive { Some(&first) } else { data.get(index) };
-        let mut value = match first2 {
+        let first_value = match first2 {
             Some(b'0') => {
                 index += 1;
                 return match data.get(index) {
                     Some(b'.') => Ok((Self::Float, index)),
                     Some(b'e') | Some(b'E') => Ok((Self::Float, index)),
                     Some(digit) if digit.is_ascii_digit() => json_err!(InvalidNumber, index),
-                    _ => Ok((Self::Int(positive, NumberInt::Int(0)), index)),
+                    _ => Ok((Self::Int(NumberInt::Int(0)), index)),
                 };
             }
             Some(b'I') => return Ok((Self::FloatInf(positive), index)),
-            Some(digit) if (b'1'..=b'9').contains(digit) => (digit & 0x0f) as i64,
+            Some(digit) if (b'1'..=b'9').contains(digit) => (digit & 0x0f) as u64,
             Some(_) => return json_err!(InvalidNumber, index),
             None => return json_err!(EofWhileParsingValue, index),
         };
-        // i64::MAX = 9223372036854775807 - 18 chars
-        for _ in 1..18 {
-            index += 1;
-            match data.get(index) {
-                Some(digit) if digit.is_ascii_digit() => {
-                    // we use wrapping add to avoid branching - we know the value cannot wrap
-                    value = value.wrapping_mul(10).wrapping_add((digit & 0x0f) as i64);
+
+        index += 1;
+        let (chunk, new_index) = IntChunk::parse_small(data, index, first_value);
+
+        let mut big_value: BigInt = match chunk {
+            IntChunk::Ongoing(value) => value.into(),
+            IntChunk::Done(value) => {
+                let mut value_i64 = value as i64;
+                if !positive {
+                    value_i64 = -value_i64
                 }
-                Some(b'.') => return Ok((Self::Float, index)),
-                Some(b'e') | Some(b'E') => return Ok((Self::Float, index)),
-                _ => return Ok((Self::Int(positive, NumberInt::Int(value)), index)),
+                return Ok((Self::Int(NumberInt::Int(value_i64)), new_index));
             }
-        }
-        let mut big_value: BigInt = value.into();
-        let mut length = 18;
+            IntChunk::Float => return Ok((Self::Float, new_index)),
+        };
+        index = new_index;
+
+        // number is too big for i64, we need ot use a big int
         loop {
-            value = 0;
-            for pow in 0..18 {
-                index += 1;
-                match data.get(index) {
-                    Some(digit) if digit.is_ascii_digit() => {
-                        // we use wrapping add to avoid branching - we know the value cannot wrap
-                        value = value.wrapping_mul(10).wrapping_add((digit & 0x0f) as i64);
-                    }
-                    Some(b'.') => return Ok((Self::Float, index)),
-                    Some(b'e') | Some(b'E') => return Ok((Self::Float, index)),
-                    _ => {
-                        big_value *= 10u64.pow(pow as u32);
-                        let big_int = NumberInt::BigInt(big_value + value);
-                        return Ok((Self::Int(positive, big_int), index));
-                    }
+            let (chunk, new_index) = IntChunk::parse_big(data, index);
+            match chunk {
+                IntChunk::Ongoing(value) => {
+                    big_value *= ONGOING_CHUNK_MULTIPLIER;
+                    big_value += value;
+                    index = new_index;
                 }
+                IntChunk::Done(value) => {
+                    if (new_index - start) > 4300 {
+                        return json_err!(NumberOutOfRange, start + 4301);
+                    }
+                    big_value *= POW_10[new_index - index];
+                    big_value += value;
+                    if !positive {
+                        big_value = -big_value;
+                    }
+                    return Ok((Self::Int(NumberInt::BigInt(big_value)), new_index));
+                }
+                IntChunk::Float => return Ok((Self::Float, new_index)),
             }
-            length += 18;
-            if length > 4300 {
-                return json_err!(NumberOutOfRange, index);
-            }
-            big_value *= 10u64.pow(18);
-            big_value += value;
         }
     }
 }
+
+static POW_10: [u64; 18] = [
+    10u64.pow(0),
+    10u64.pow(1),
+    10u64.pow(2),
+    10u64.pow(3),
+    10u64.pow(4),
+    10u64.pow(5),
+    10u64.pow(6),
+    10u64.pow(7),
+    10u64.pow(8),
+    10u64.pow(9),
+    10u64.pow(10),
+    10u64.pow(11),
+    10u64.pow(12),
+    10u64.pow(13),
+    10u64.pow(14),
+    10u64.pow(15),
+    10u64.pow(16),
+    10u64.pow(17),
+];
+
+#[cfg(target_arch = "aarch64")]
+// in aarch64 we use a 128 bit registers - 16 bytes
+static ONGOING_CHUNK_MULTIPLIER: u64 = 10u64.pow(16);
+#[cfg(not(target_arch = "aarch64"))]
+// decode_int_chunk_fallback - we parse 18 bytes when the number is ongoing
+static ONGOING_CHUNK_MULTIPLIER: u64 = 10u64.pow(18);
+
+pub(crate) enum IntChunk {
+    Ongoing(u64),
+    Done(u64),
+    Float,
+}
+
+impl IntChunk {
+    #[inline(always)]
+    fn parse_small(data: &[u8], index: usize, value: u64) -> (Self, usize) {
+        decode_int_chunk_fallback(data, index, value)
+    }
+
+    #[inline(always)]
+    fn parse_big(data: &[u8], index: usize) -> (Self, usize) {
+        // TODO x86_64: use simd
+
+        #[cfg(target_arch = "aarch64")]
+        {
+            crate::simd_aarch64::decode_int_chunk(data, index)
+        }
+        #[cfg(not(target_arch = "aarch64"))]
+        {
+            decode_int_chunk_fallback(data, index, 0)
+        }
+    }
+}
+
+/// Turns out this is faster than fancy bit manipulation, see
+/// https://github.com/Alexhuszagh/rust-lexical/blob/main/lexical-parse-integer/docs/Algorithm.md
+/// for some context
+#[inline(always)]
+pub(crate) fn decode_int_chunk_fallback(data: &[u8], mut index: usize, mut value: u64) -> (IntChunk, usize) {
+    // i64::MAX = 9223372036854775807 (19 chars) - so 18 chars is always valid as an i64
+    for _ in 0..18 {
+        if let Some(digit) = data.get(index) {
+            if INT_CHAR_MAP[*digit as usize] {
+                // we use wrapping add to avoid branching - we know the value cannot wrap
+                value = value.wrapping_mul(10).wrapping_add((digit & 0x0f) as u64);
+                index += 1;
+                continue;
+            } else if matches!(digit, b'.' | b'e' | b'E') {
+                return (IntChunk::Float, index);
+            }
+        }
+        return (IntChunk::Done(value), index);
+    }
+    (IntChunk::Ongoing(value), index)
+}
+
+pub(crate) static INT_CHAR_MAP: [bool; 256] = {
+    const NU: bool = true;
+    const __: bool = false;
+    [
+        //   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 0
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 1
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 2
+        NU, NU, NU, NU, NU, NU, NU, NU, NU, NU, __, __, __, __, __, __, // 3
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 4
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 5
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 6
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 7
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 8
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 9
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // A
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // B
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // C
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // D
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // E
+        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // F
+    ]
+};
 
 pub struct NumberRange;
 

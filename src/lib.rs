@@ -9,6 +9,8 @@ mod parse;
 mod py_string_cache;
 #[cfg(feature = "python")]
 mod python;
+#[cfg(target_arch = "aarch64")]
+mod simd_aarch64;
 mod string_decoder;
 mod value;
 

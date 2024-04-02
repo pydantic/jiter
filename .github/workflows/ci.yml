@@ -9,14 +9,18 @@ on:
   pull_request: {}
 
 jobs:
-  test:
-    name: test rust-${{ matrix.rust-version }}
+  test-linux:
+    name: test rust-${{ matrix.rust-version }} on linux
     strategy:
       fail-fast: false
       matrix:
         rust-version: [stable, nightly]
 
     runs-on: ubuntu-latest
+
+    env:
+      RUNS_ON: ubuntu-latest
+      RUST_VERSION: ${{ matrix.rust-version }}
 
     steps:
     - uses: actions/checkout@v3
@@ -29,6 +33,55 @@ jobs:
     - uses: dtolnay/rust-toolchain@master
       with:
         toolchain: ${{ matrix.rust-version }}
+
+    - id: cache-rust
+      uses: Swatinem/rust-cache@v2
+      with:
+        prefix-key: "v1-rust"
+
+    - run: cargo install rustfilt coverage-prepare cargo-careful
+      if: steps.cache-rust.outputs.cache-hit != 'true'
+
+    - run: rustup component add llvm-tools-preview
+
+    - run: cargo test -F python
+      env:
+        RUST_BACKTRACE: 1
+        RUSTFLAGS: '-C instrument-coverage'
+
+    - run: coverage-prepare --ignore-filename-regex '/tests/' lcov $(find target/debug/deps -regex '.*/main[^.]*')
+
+    - run: cargo test --doc
+
+    - run: cargo careful t -F python
+      if: matrix.rust-version == 'nightly'
+
+    - uses: codecov/codecov-action@v3
+      with:
+        env_vars: RUNS_ON,RUST_VERSION
+
+  test-macos:
+    name: test on ${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runs-on: [macos-latest, macos-latest-xlarge]
+
+    runs-on: ${{ matrix.runs-on }}
+
+    env:
+      RUNS_ON: ${{ matrix.runs-on }}
+      RUST_VERSION: stable
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: set up python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - uses: dtolnay/rust-toolchain@stable
 
     - id: cache-rust
       uses: Swatinem/rust-cache@v2
@@ -48,13 +101,15 @@ jobs:
     - run: cargo test --doc
 
     - uses: codecov/codecov-action@v3
+      with:
+        env_vars: RUNS_ON,RUST_VERSION
 
   bench:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
 
-    - uses: moonrepo/setup-rust@v0
+    - uses: moonrepo/setup-rust@v1
       with:
         channel: stable
         cache-target: release
@@ -70,11 +125,18 @@ jobs:
         token: ${{ secrets.CODSPEED_TOKEN }}
 
   fuzz:
-    runs-on: ubuntu-latest
+    name: fuzz on ${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runs-on: [ubuntu-latest, macos-latest-xlarge]
+
+    runs-on: ${{ matrix.runs-on }}
+
     steps:
     - uses: actions/checkout@v3
 
-    - uses: moonrepo/setup-rust@v0
+    - uses: moonrepo/setup-rust@v1
       with:
         channel: nightly
         cache-target: release
@@ -88,7 +150,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
-    - uses: moonrepo/setup-rust@v0
+    - uses: moonrepo/setup-rust@v1
       with:
         channel: stable
         components: rustfmt, clippy
@@ -105,7 +167,7 @@ jobs:
   # https://github.com/marketplace/actions/alls-green#why used for branch protection checks
   check:
     if: always()
-    needs: [test, bench, fuzz, lint]
+    needs: [test-linux, test-macos, bench, fuzz, lint]
     runs-on: ubuntu-latest
     steps:
       - name: Decide whether the needed jobs succeeded or failed
