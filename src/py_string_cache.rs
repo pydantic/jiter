@@ -199,7 +199,7 @@ unsafe fn pystring_ascii_new<'py>(py: Python<'py>, s: &str) -> Bound<'py, PyStri
     let ptr = ffi::PyUnicode_New(s.len() as isize, 127);
     // see https://github.com/pydantic/jiter/pull/72#discussion_r1545485907
     debug_assert_eq!(ffi::PyUnicode_KIND(ptr), ffi::PyUnicode_1BYTE_KIND);
-    let data_ptr = ffi::PyUnicode_DATA(ptr) as *mut u8;
+    let data_ptr = ffi::PyUnicode_DATA(ptr).cast();
     core::ptr::copy_nonoverlapping(s.as_ptr(), data_ptr, s.len());
     core::ptr::write(data_ptr.add(s.len()), 0);
     Bound::from_owned_ptr(py, ptr).downcast_into_unchecked()
