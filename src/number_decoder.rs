@@ -224,6 +224,9 @@ impl IntParse {
         // number is too big for i64, we need ot use a big int
         loop {
             let (chunk, new_index) = IntChunk::parse_big(data, index);
+            if (new_index - start) > 4300 {
+                return json_err!(NumberOutOfRange, start + 4301);
+            }
             match chunk {
                 IntChunk::Ongoing(value) => {
                     big_value *= ONGOING_CHUNK_MULTIPLIER;
@@ -231,9 +234,6 @@ impl IntParse {
                     index = new_index;
                 }
                 IntChunk::Done(value) => {
-                    if (new_index - start) > 4300 {
-                        return json_err!(NumberOutOfRange, start + 4301);
-                    }
                     big_value *= POW_10[new_index - index];
                     big_value += value;
                     if !positive {
