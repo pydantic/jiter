@@ -2,7 +2,6 @@ use std::cell::RefCell;
 
 use ahash::random_state::RandomState;
 use pyo3::exceptions::{PyTypeError, PyValueError};
-use pyo3::ffi;
 use pyo3::prelude::*;
 use pyo3::sync::{GILOnceCell, GILProtected};
 use pyo3::types::{PyBool, PyString};
@@ -197,17 +196,17 @@ pub fn pystring_fast_new<'py>(py: Python<'py>, s: &str, ascii_only: bool) -> Bou
 /// https://github.com/ijl/orjson/blob/3.10.0/src/str/create.rs#L41
 #[cfg(not(PyPy))]
 unsafe fn pystring_ascii_new<'py>(py: Python<'py>, s: &str) -> Bound<'py, PyString> {
-    let ptr = ffi::PyUnicode_New(s.len() as isize, 127);
+    let ptr = pyo3::ffi::PyUnicode_New(s.len() as isize, 127);
     // see https://github.com/pydantic/jiter/pull/72#discussion_r1545485907
-    debug_assert_eq!(ffi::PyUnicode_KIND(ptr), ffi::PyUnicode_1BYTE_KIND);
-    let data_ptr = ffi::PyUnicode_DATA(ptr).cast();
+    debug_assert_eq!(pyo3::ffi::PyUnicode_KIND(ptr), pyo3::ffi::PyUnicode_1BYTE_KIND);
+    let data_ptr = pyo3::ffi::PyUnicode_DATA(ptr).cast();
     core::ptr::copy_nonoverlapping(s.as_ptr(), data_ptr, s.len());
     core::ptr::write(data_ptr.add(s.len()), 0);
     Bound::from_owned_ptr(py, ptr).downcast_into_unchecked()
 }
 
-// ffi::PyUnicode_DATA seems to be broken for pypy, hence this
+// ffi::PyUnicode_DATA seems to be broken for pypy, hence this, marked as unsafe to avoid warnings
 #[cfg(PyPy)]
-fn pystring_ascii_new<'py>(py: Python<'py>, s: &str) -> Bound<'py, PyString> {
+unsafe fn pystring_ascii_new<'py>(py: Python<'py>, s: &str) -> Bound<'py, PyString> {
     PyString::new_bound(py, s)
 }
