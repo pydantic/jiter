@@ -19,7 +19,7 @@ pyo3 = { version = "0.21.0", default-features=false, features = ["num-bigint"], 
 lexical-parse-float = { version = "0.8.5", features =  ["format"] }
 
 [features]
-python = ["dep:pyo3"]
+python = ["dep:pyo3", "dep:pyo3-build-config"]
 
 [dev-dependencies]
 bencher = "0.1.5"
@@ -28,6 +28,9 @@ serde_json = {version = "1.0.87", features = ["preserve_order", "arbitrary_preci
 serde = "1.0.147"
 pyo3 = { version = "0.21.0", default-features=false, features = ["num-bigint", "auto-initialize"] }
 codspeed-bencher-compat = "2.3.1"
+
+[build-dependencies]
+pyo3-build-config = { version = "0.21.0", optional = true }
 
 [profile.bench]
 debug = true
