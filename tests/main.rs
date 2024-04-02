@@ -981,23 +981,18 @@ fn test_4300_int() {
 }
 
 #[test]
-fn test_4302_int_err() {
-    let json = (0..4302).map(|_| "9".to_string()).collect::<Vec<_>>().join("");
-    let bytes = json.as_bytes();
-    let e = JsonValue::parse(bytes, false).unwrap_err();
-    assert_eq!(e.error_type, JsonErrorType::NumberOutOfRange);
-    assert_eq!(e.index, 4301);
-    assert_eq!(e.description(bytes), "number out of range at line 1 column 4302");
-}
-
-#[test]
-fn test_5000_int_err() {
-    let json = ["9"; 5000].join("");
-    let bytes = json.as_bytes();
-    let e = JsonValue::parse(bytes, false).unwrap_err();
-    assert_eq!(e.error_type, JsonErrorType::NumberOutOfRange);
-    assert_eq!(e.index, 4301);
-    assert_eq!(e.description(bytes), "number out of range at line 1 column 4302");
+fn test_big_int_errs() {
+    for json in [
+        &[b'9'; 4302][..],
+        &[b'9'; 5900][..],
+        // If the check is only done at the end, this will hang
+        &[b'9'; 10usize.pow(7)][..],
+    ] {
+        let e = JsonValue::parse(json, false).unwrap_err();
+        assert_eq!(e.error_type, JsonErrorType::NumberOutOfRange);
+        assert_eq!(e.index, 4301);
+        assert_eq!(e.description(json), "number out of range at line 1 column 4302");
+    }
 }
 
 #[test]
