@@ -22,6 +22,6 @@ pub use parse::Peek;
 pub use value::{JsonArray, JsonObject, JsonValue};
 
 #[cfg(feature = "python")]
-pub use py_string_cache::{cache_clear, cache_usage, cached_py_string, StringCacheMode};
+pub use py_string_cache::{cache_clear, cache_usage, cached_py_string, pystring_fast_new, StringCacheMode};
 #[cfg(feature = "python")]
 pub use python::{map_json_error, python_parse};

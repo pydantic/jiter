@@ -1,7 +1,7 @@
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyString};
 
-use jiter::{cache_clear, cache_usage, map_json_error, python_parse, JsonValue, StringCacheMode};
+use jiter::{cache_clear, cache_usage, map_json_error, pystring_fast_new, python_parse, JsonValue, StringCacheMode};
 
 #[test]
 fn test_to_py_object_numeric() {
@@ -266,5 +266,53 @@ fn test_cache_into() {
             e.to_string(),
             "TypeError: Invalid string cache mode, should be `'all'`, '`keys`', `'none`' or a `bool`"
         );
+    })
+}
+
+#[test]
+fn test_use_tape() {
+    let json = r#"  "foo\nbar"  "#;
+    Python::with_gil(|py| {
+        cache_clear(py);
+        let obj = python_parse(py, json.as_bytes(), false, StringCacheMode::None, false).unwrap();
+        assert_eq!(obj.to_string(), "foo\nbar");
+    })
+}
+
+#[test]
+fn test_unicode() {
+    let json = r#"{"💩": "£"}"#;
+    Python::with_gil(|py| {
+        cache_clear(py);
+        let obj = python_parse(py, json.as_bytes(), false, StringCacheMode::None, false).unwrap();
+        assert_eq!(obj.to_string(), "{'💩': '£'}");
+    })
+}
+
+#[test]
+fn test_unicode_cache() {
+    let json = r#"{"💩": "£"}"#;
+    Python::with_gil(|py| {
+        cache_clear(py);
+        let obj = python_parse(py, json.as_bytes(), false, StringCacheMode::All, false).unwrap();
+        assert_eq!(obj.to_string(), "{'💩': '£'}");
+    })
+}
+
+#[test]
+fn test_pystring_fast_new_non_ascii() {
+    let json = "£100 💩";
+    Python::with_gil(|py| {
+        let s = pystring_fast_new(py, json, false);
+        assert_eq!(s.to_string(), "£100 💩");
+    })
+}
+
+#[test]
+fn test_pystring_fast_new_ascii() {
+    let json = "100abc";
+    Python::with_gil(|py| {
+        let s = pystring_fast_new(py, json, true);
+        assert_eq!(s.to_string(), "100abc");
     })
 }

@@ -25,15 +25,15 @@ pub enum StringOutput<'t, 'j>
 where
     'j: 't,
 {
-    Tape(&'t str),
-    Data(&'j str),
+    Tape(&'t str, bool),
+    Data(&'j str, bool),
 }
 
 impl From<StringOutput<'_, '_>> for String {
     fn from(val: StringOutput) -> Self {
         match val {
-            StringOutput::Tape(s) => s.to_owned(),
-            StringOutput::Data(s) => s.to_owned(),
+            StringOutput::Tape(s, _) => s.to_owned(),
+            StringOutput::Data(s, _) => s.to_owned(),
         }
     }
 }
@@ -41,8 +41,8 @@ impl From<StringOutput<'_, '_>> for String {
 impl<'t, 'j> From<StringOutput<'t, 'j>> for Cow<'j, str> {
     fn from(val: StringOutput<'t, 'j>) -> Self {
         match val {
-            StringOutput::Tape(s) => s.to_owned().into(),
-            StringOutput::Data(s) => s.into(),
+            StringOutput::Tape(s, _) => s.to_owned().into(),
+            StringOutput::Data(s, _) => s.into(),
         }
     }
 }
@@ -50,8 +50,15 @@ impl<'t, 'j> From<StringOutput<'t, 'j>> for Cow<'j, str> {
 impl<'t, 'j> StringOutput<'t, 'j> {
     pub fn as_str(&self) -> &'t str {
         match self {
-            Self::Tape(s) => s,
-            Self::Data(s) => s,
+            Self::Tape(s, _) => s,
+            Self::Data(s, _) => s,
+        }
+    }
+
+    pub fn ascii_only(&self) -> bool {
+        match self {
+            Self::Tape(_, ascii_only) => *ascii_only,
+            Self::Data(_, ascii_only) => *ascii_only,
         }
     }
 }
@@ -68,7 +75,7 @@ where
         match decode_chunk(data, start, true)? {
             (StringChunk::Quote, ascii_only, index) => {
                 let s = to_str(&data[start..index], ascii_only, start)?;
-                Ok((StringOutput::Data(s), index + 1))
+                Ok((StringOutput::Data(s, ascii_only), index + 1))
             }
             (StringChunk::Backslash, ascii_only, index) => decode_to_tape(data, index, tape, start, ascii_only),
         }
@@ -113,7 +120,7 @@ fn decode_to_tape<'t, 'j>(
                 tape.extend_from_slice(&data[index..new_index]);
                 index = new_index + 1;
                 let s = to_str(tape, ascii_only, start)?;
-                return Ok((StringOutput::Tape(s), index));
+                return Ok((StringOutput::Tape(s, ascii_only), index));
             }
             (StringChunk::Backslash, ascii_only_new, index_new) => {
                 ascii_only = ascii_only_new;
