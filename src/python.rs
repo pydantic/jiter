@@ -1,3 +1,4 @@
+use ahash::AHashSet;
 use std::marker::PhantomData;
 
 use pyo3::exceptions::PyValueError;
@@ -21,6 +22,8 @@ use crate::JsonErrorType;
 /// - `json_data`: The JSON data to parse.
 /// - `allow_inf_nan`: Whether to allow `(-)Infinity` and `NaN` values.
 /// - `cache_strings`: Whether to cache strings to avoid constructing new Python objects,
+/// - `allow_partial`: Whether to allow partial JSON data.
+/// - `catch_duplicate_keys`: Whether to catch duplicate keys in objects.
 /// this should have a significant improvement on performance but increases memory slightly.
 ///
 /// # Returns
@@ -32,11 +35,27 @@ pub fn python_parse<'py>(
     allow_inf_nan: bool,
     cache_mode: StringCacheMode,
     allow_partial: bool,
+    catch_duplicate_keys: bool,
 ) -> JsonResult<Bound<'py, PyAny>> {
+    macro_rules! ppp {
+        ($string_cache:ident, $key_check:ident) => {
+            PythonParser::<$string_cache, $key_check>::parse(py, json_data, allow_inf_nan, allow_partial)
+        };
+    }
+
     match cache_mode {
-        StringCacheMode::All => PythonParser::<StringCacheAll>::parse(py, json_data, allow_inf_nan, allow_partial),
-        StringCacheMode::Keys => PythonParser::<StringCacheKeys>::parse(py, json_data, allow_inf_nan, allow_partial),
-        StringCacheMode::None => PythonParser::<StringNoCache>::parse(py, json_data, allow_inf_nan, allow_partial),
+        StringCacheMode::All => match catch_duplicate_keys {
+            true => ppp!(StringCacheAll, DuplicateKeyCheck),
+            false => ppp!(StringCacheAll, NoopKeyCheck),
+        },
+        StringCacheMode::Keys => match catch_duplicate_keys {
+            true => ppp!(StringCacheKeys, DuplicateKeyCheck),
+            false => ppp!(StringCacheKeys, NoopKeyCheck),
+        },
+        StringCacheMode::None => match catch_duplicate_keys {
+            true => ppp!(StringNoCache, DuplicateKeyCheck),
+            false => ppp!(StringNoCache, NoopKeyCheck),
+        },
     }
 }
 
@@ -45,8 +64,9 @@ pub fn map_json_error(json_data: &[u8], json_error: &JsonError) -> PyErr {
     PyValueError::new_err(json_error.description(json_data))
 }
 
-struct PythonParser<'j, StringCache> {
+struct PythonParser<'j, StringCache, KeyCheck> {
     _string_cache: PhantomData<StringCache>,
+    _key_check: PhantomData<KeyCheck>,
     parser: Parser<'j>,
     tape: Tape,
     recursion_limit: u8,
@@ -54,7 +74,7 @@ struct PythonParser<'j, StringCache> {
     allow_partial: bool,
 }
 
-impl<'j, StringCache: StringMaybeCache> PythonParser<'j, StringCache> {
+impl<'j, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck> PythonParser<'j, StringCache, KeyCheck> {
     fn parse<'py>(
         py: Python<'py>,
         json_data: &[u8],
@@ -63,6 +83,7 @@ impl<'j, StringCache: StringMaybeCache> PythonParser<'j, StringCache> {
     ) -> JsonResult<Bound<'py, PyAny>> {
         let mut slf = PythonParser {
             _string_cache: PhantomData::<StringCache>,
+            _key_check: PhantomData::<KeyCheck>,
             parser: Parser::new(json_data),
             tape: Tape::default(),
             recursion_limit: DEFAULT_RECURSION_LIMIT,
@@ -166,13 +187,18 @@ impl<'j, StringCache: StringMaybeCache> PythonParser<'j, StringCache> {
                 panic!("PyDict_SetItem failed")
             }
         };
+        let mut check_keys = KeyCheck::default();
         if let Some(first_key) = self.parser.object_first::<StringDecoder>(&mut self.tape)? {
-            let first_key = StringCache::get_key(py, first_key.as_str(), first_key.ascii_only());
+            let first_key_s = first_key.as_str();
+            check_keys.check(first_key_s, self.parser.index)?;
+            let first_key = StringCache::get_key(py, first_key_s, first_key.ascii_only());
             let peek = self.parser.peek()?;
             let first_value = self._check_take_value(py, peek)?;
             set_item(first_key, first_value);
             while let Some(key) = self.parser.object_step::<StringDecoder>(&mut self.tape)? {
-                let key = StringCache::get_key(py, key.as_str(), key.ascii_only());
+                let key_s = key.as_str();
+                check_keys.check(key_s, self.parser.index)?;
+                let key = StringCache::get_key(py, key_s, key.ascii_only());
                 let peek = self.parser.peek()?;
                 let value = self._check_take_value(py, peek)?;
                 set_item(key, value);
@@ -207,5 +233,31 @@ impl<'j, StringCache: StringMaybeCache> PythonParser<'j, StringCache> {
 
         self.recursion_limit += 1;
         r
+    }
+}
+
+trait MaybeKeyCheck: Default {
+    fn check(&mut self, key: &str, index: usize) -> JsonResult<()>;
+}
+
+#[derive(Default)]
+struct NoopKeyCheck;
+
+impl MaybeKeyCheck for NoopKeyCheck {
+    fn check(&mut self, _key: &str, _index: usize) -> JsonResult<()> {
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+struct DuplicateKeyCheck(AHashSet<String>);
+
+impl MaybeKeyCheck for DuplicateKeyCheck {
+    fn check(&mut self, key: &str, index: usize) -> JsonResult<()> {
+        if self.0.insert(key.to_owned()) {
+            Ok(())
+        } else {
+            Err(JsonError::new(JsonErrorType::DuplicateKey(key.to_owned()), index))
+        }
     }
 }
