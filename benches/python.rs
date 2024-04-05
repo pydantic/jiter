@@ -17,6 +17,7 @@ fn python_parse_numeric(bench: &mut Bencher) {
                 false,
                 StringCacheMode::All,
                 false,
+                false,
             )
             .unwrap()
         });
@@ -33,6 +34,7 @@ fn python_parse_other(bench: &mut Bencher) {
                 false,
                 StringCacheMode::All,
                 false,
+                false,
             )
             .unwrap()
         });
@@ -47,7 +49,7 @@ fn _python_parse_file(path: &str, bench: &mut Bencher, cache_mode: StringCacheMo
 
     Python::with_gil(|py| {
         cache_clear(py);
-        bench.iter(|| python_parse(py, json_data, false, cache_mode, false).unwrap());
+        bench.iter(|| python_parse(py, json_data, false, cache_mode, false, false).unwrap());
     })
 }
 

@@ -364,5 +364,10 @@ fn test_duplicate_keys_error() {
         let json = br#"{"a": 1, "b": 2, "c": 3, "b": 4}"#;
         let e = python_parse(py, json, false, StringCacheMode::All, false, true).unwrap_err();
         assert_eq!(e.to_string(), r#"Detected duplicate key "b" at index 29"#);
+
+        // different_objects are fine
+        let json = br#"[{"a": 1, "b": 2}, {"c": 3, "b": 4}]"#;
+        let python_value = python_parse(py, json, false, StringCacheMode::All, false, true).unwrap();
+        assert_eq!(python_value.to_string(), "[{'a': 1, 'b': 2}, {'c': 3, 'b': 4}]");
     })
 }
