@@ -14,7 +14,6 @@ fn errors_equal(value_error: &JsonError, jiter_error: &JiterError) {
 
 fuzz_target!(|json: String| {
     let json_data = json.as_bytes();
-// fuzz_target!(|json_data: &[u8]| {
     match JsonValue::parse(json_data, false) {
         Ok(_) => {
             let mut jiter = Jiter::new(json_data, false);

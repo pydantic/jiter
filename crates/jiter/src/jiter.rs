@@ -221,6 +221,8 @@ impl<'j> Jiter<'j> {
     /// Parse the next JSON value, but don't return it.
     /// This should be faster than returning the value, useful when you don't care about this value.
     /// Error if it is invalid JSON.
+    ///
+    /// *WARNING:* For performance reasons, this method does not check that strings would be valid UTF-8.
     pub fn next_skip(&mut self) -> JiterResult<()> {
         let peek = self.peek()?;
         self.known_skip(peek)

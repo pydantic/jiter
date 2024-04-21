@@ -1477,7 +1477,7 @@ fn jiter_skip_backslash_strings() {
 }
 
 #[test]
-fn jiter_skip_valid_ident() {
+fn jiter_skip_invalid_ident() {
     let mut jiter = Jiter::new(br#"trUe"#, true);
     let e = jiter.next_skip().unwrap_err();
     assert_eq!(
@@ -1487,7 +1487,7 @@ fn jiter_skip_valid_ident() {
 }
 
 #[test]
-fn jiter_skip_valid_string() {
+fn jiter_skip_invalid_string() {
     let mut jiter = Jiter::new(br#" "foo "#, true);
     let e = jiter.next_skip().unwrap_err();
     assert_eq!(
@@ -1497,25 +1497,60 @@ fn jiter_skip_valid_string() {
 }
 
 #[test]
-fn jiter_skip_valid_int() {
-    let mut jiter = Jiter::new(br#"01"#, true);
+fn jiter_skip_invalid_int() {
+    let mut jiter = Jiter::new(br#"01"#, false);
     let e = jiter.next_skip().unwrap_err();
     assert_eq!(e.error_type, JiterErrorType::JsonError(JsonErrorType::InvalidNumber));
 }
 
 #[test]
-fn jiter_skip_valid_object() {
-    let mut jiter = Jiter::new(br#"{{"#, true);
+fn jiter_skip_invalid_object() {
+    let mut jiter = Jiter::new(br#"{{"#, false);
     let e = jiter.next_skip().unwrap_err();
     assert_eq!(e.error_type, JiterErrorType::JsonError(JsonErrorType::KeyMustBeAString));
 }
 
 #[test]
-fn jiter_skip_valid_string_u() {
-    let mut jiter = Jiter::new(br#" "\uddBd" "#, true);
+fn jiter_skip_invalid_string_u() {
+    let mut jiter = Jiter::new(br#" "\uddBd" "#, false);
     let e = jiter.next_skip().unwrap_err();
     assert_eq!(
         e.error_type,
         JiterErrorType::JsonError(JsonErrorType::LoneLeadingSurrogateInHexEscape)
     );
+}
+
+#[test]
+fn jiter_skip_invalid_nan() {
+    let mut jiter = Jiter::new(b"NaN", false);
+    let e = jiter.next_skip().unwrap_err();
+    assert_eq!(
+        e.error_type,
+        JiterErrorType::JsonError(JsonErrorType::ExpectedSomeValue)
+    );
+}
+
+#[test]
+fn jiter_skip_invalid_string_high() {
+    let json = vec![34, 92, 34, 206, 44, 163, 34];
+    let mut jiter = Jiter::new(&json, false);
+    // NOTE this would raise an error with next_value etc, but next_skip does not check UTF-8
+    jiter.next_skip().unwrap();
+    jiter.finish().unwrap();
+}
+
+#[test]
+fn jiter_skip_invalid_long_float() {
+    let mut jiter = Jiter::new(br#"2121515572557277572557277e"#, false);
+    let e = jiter.next_skip().unwrap_err();
+    assert_eq!(
+        e.error_type,
+        JiterErrorType::JsonError(JsonErrorType::EofWhileParsingValue)
+    );
+}
+
+#[test]
+fn jiter_value_invalid_long_float() {
+    let e = JsonValue::parse(br#"2121515572557277572557277e"#, false).unwrap_err();
+    assert_eq!(e.error_type, JsonErrorType::EofWhileParsingValue,);
 }

@@ -328,6 +328,8 @@ fn parse_u4(data: &[u8], mut index: usize) -> JsonResult<(u16, usize)> {
 }
 
 /// A string decoder that returns the range of the string.
+///
+/// *WARNING:* For performance reasons, this decoder does not check that the string would be valid UTF-8.
 pub struct StringDecoderRange;
 
 impl<'t, 'j> AbstractStringDecoder<'t, 'j> for StringDecoderRange
