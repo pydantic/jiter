@@ -115,9 +115,9 @@ jobs:
         cache-target: release
         bins: cargo-codspeed
 
-    - run: python benches/generate_big.py
+    - run: python crates/jiter/benches/generate_big.py
 
-    - run: cargo codspeed build -F python
+    - run: cargo codspeed build -F python -p jiter
 
     - uses: CodSpeedHQ/action@v1
       with:
@@ -143,7 +143,6 @@ jobs:
         bins: cargo-fuzz
 
     - run: cargo fuzz run --fuzz-dir crates/fuzz compare_to_serde --release -- -max_total_time=300s
-      working-directory: fuzz
 
   lint:
     runs-on: ubuntu-latest
