@@ -23,6 +23,15 @@ fn jiter_value(path: &str, bench: &mut Bencher) {
     })
 }
 
+fn jiter_skip(path: &str, bench: &mut Bencher) {
+    let json = read_file(path);
+    let json_data = black_box(json.as_bytes());
+    bench.iter(|| {
+        let mut jiter = Jiter::new(json_data, false);
+        jiter.next_skip().unwrap();
+    })
+}
+
 fn jiter_iter_big(path: &str, bench: &mut Bencher) {
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
@@ -211,6 +220,10 @@ macro_rules! test_cases {
                     jiter_string(&file_path, bench);
                 }
             }
+            fn [< $file_name _jiter_skip >](bench: &mut Bencher) {
+                let file_path = format!("./benches/{}.json", stringify!($file_name));
+                jiter_skip(&file_path, bench);
+            }
 
             fn [< $file_name _serde_value >](bench: &mut Bencher) {
                 let file_path = format!("./benches/{}.json", stringify!($file_name));
@@ -293,51 +306,65 @@ fn lazy_map_lookup_3_50(bench: &mut Bencher) {
 benchmark_group!(
     benches,
     big_jiter_iter,
+    big_jiter_skip,
     big_jiter_value,
     big_serde_value,
     bigints_array_jiter_iter,
+    bigints_array_jiter_skip,
     bigints_array_jiter_value,
     bigints_array_serde_value,
     floats_array_jiter_iter,
+    floats_array_jiter_skip,
     floats_array_jiter_value,
     floats_array_serde_value,
     massive_ints_array_jiter_iter,
+    massive_ints_array_jiter_skip,
     massive_ints_array_jiter_value,
     massive_ints_array_serde_value,
     medium_response_jiter_iter,
+    medium_response_jiter_skip,
     medium_response_jiter_value,
     medium_response_jiter_value_owned,
     medium_response_serde_value,
     x100_jiter_iter,
+    x100_jiter_skip,
     x100_jiter_value,
     x100_serde_iter,
     x100_serde_value,
     sentence_jiter_iter,
+    sentence_jiter_skip,
     sentence_jiter_value,
     sentence_serde_value,
     unicode_jiter_iter,
+    unicode_jiter_skip,
     unicode_jiter_value,
     unicode_serde_value,
     pass1_jiter_iter,
+    pass1_jiter_skip,
     pass1_jiter_value,
     pass1_serde_value,
     pass2_jiter_iter,
+    pass2_jiter_skip,
     pass2_jiter_value,
     pass2_serde_value,
     string_array_jiter_iter,
+    string_array_jiter_skip,
     string_array_jiter_value,
     string_array_jiter_value_owned,
     string_array_serde_value,
     true_array_jiter_iter,
+    true_array_jiter_skip,
     true_array_jiter_value,
     true_array_serde_value,
     true_object_jiter_iter,
+    true_object_jiter_skip,
     true_object_jiter_value,
     true_object_serde_value,
     lazy_map_lookup_1_10,
     lazy_map_lookup_2_20,
     lazy_map_lookup_3_50,
     short_numbers_jiter_iter,
+    short_numbers_jiter_skip,
     short_numbers_jiter_value,
     short_numbers_serde_value,
 );

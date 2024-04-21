@@ -339,35 +339,30 @@ where
     fn decode(data: &'j [u8], mut index: usize, _tape: &'t mut Tape) -> JsonResult<(Self::Output, usize)> {
         index += 1;
         let start = index;
-        while let Some(next) = data.get(index) {
-            match next {
-                b'"' => {
+
+        loop {
+            index = match decode_chunk(data, index, true)? {
+                (StringChunk::Quote, _, index) => {
                     let r = start..index;
-                    index += 1;
-                    return Ok((r, index));
+                    return Ok((r, index + 1));
                 }
-                b'\\' => {
-                    index += 1;
-                    if let Some(next_inner) = data.get(index) {
-                        match next_inner {
-                            // these escapes are easy to validate
-                            b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't' => (),
-                            b'u' => {
-                                let (_, new_index) = parse_escape(data, index)?;
-                                index = new_index;
-                            }
-                            _ => return json_err!(InvalidEscape, index),
-                        }
-                    } else {
-                        return json_err!(EofWhileParsingString, index);
+                (StringChunk::Backslash, _, index) => index,
+            };
+            index += 1;
+            if let Some(next_inner) = data.get(index) {
+                match next_inner {
+                    // these escapes are easy to validate
+                    b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't' => (),
+                    b'u' => {
+                        let (_, new_index) = parse_escape(data, index)?;
+                        index = new_index;
                     }
-                    index += 1;
+                    _ => return json_err!(InvalidEscape, index),
                 }
-                _ => {
-                    index += 1;
-                }
+                index += 1;
+            } else {
+                return json_err!(EofWhileParsingString, index);
             }
         }
-        json_err!(EofWhileParsingString, index)
     }
 }

@@ -384,8 +384,8 @@ impl AbstractNumberDecoder for NumberRange {
                         let end = consume_exponential(data, index)?;
                         Ok((start..end, end))
                     }
-                    Some(_) => return json_err!(InvalidNumber, index),
-                    None => return Ok((start..index, index)),
+                    Some(digit) if digit.is_ascii_digit() => json_err!(InvalidNumber, index),
+                    _ => return Ok((start..index, index)),
                 };
             }
             Some(b'I') => {
