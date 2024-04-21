@@ -1,11 +1,11 @@
 target
 .idea/
-/benches/big.json
+**/big.json
 /profiling/
 /scratch/
 /scratch-project/
 /*.bm
 env*/
 
-Cargo.lock
+**/Cargo.lock
 profile.json
