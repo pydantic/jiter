@@ -117,11 +117,12 @@ jobs:
 
     - run: python crates/jiter/benches/generate_big.py
 
-    - run: cargo codspeed build -F python -p jiter
+    - run: cargo codspeed build -F python
+      working-directory: crates/jiter
 
     - uses: CodSpeedHQ/action@v1
       with:
-        run: cargo codspeed run -p jiter
+        run: cd crates/jiter && cargo codspeed run
         token: ${{ secrets.CODSPEED_TOKEN }}
 
   fuzz:
