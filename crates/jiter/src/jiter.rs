@@ -2,7 +2,7 @@ use crate::errors::{json_error, JiterError, JsonType, LinePosition, DEFAULT_RECU
 use crate::number_decoder::{NumberAny, NumberFloat, NumberInt, NumberRange};
 use crate::parse::{Parser, Peek};
 use crate::string_decoder::{StringDecoder, StringDecoderRange, Tape};
-use crate::value::{eat_value, take_value_borrowed, take_value_owned, JsonValue};
+use crate::value::{take_value_borrowed, take_value_owned, take_value_skip, JsonValue};
 use crate::{JsonError, JsonErrorType};
 
 pub type JiterResult<T> = Result<T, JiterError>;
@@ -233,7 +233,7 @@ impl<'j> Jiter<'j> {
     /// # Arguments
     /// - `peek`: The [Peek] of the next JSON value.
     pub fn known_skip(&mut self, peek: Peek) -> JiterResult<()> {
-        eat_value(
+        take_value_skip(
             peek,
             &mut self.parser,
             &mut self.tape,

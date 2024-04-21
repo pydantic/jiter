@@ -230,7 +230,7 @@ fn take_value<'j, 's>(
 
 /// like `take_value`, but nothing is returned, should be faster than `take_value`, useful when you don't care
 /// about the value, but just want to consume it
-pub(crate) fn eat_value(
+pub(crate) fn take_value_skip(
     peek: Peek,
     parser: &mut Parser,
     tape: &mut Tape,
@@ -248,11 +248,11 @@ pub(crate) fn eat_value(
         Peek::Array => {
             if let Some(peek_first) = parser.array_first()? {
                 check_recursion!(recursion_limit, parser.index,
-                    eat_value(peek_first, parser, tape, recursion_limit, allow_inf_nan)?;
+                    take_value_skip(peek_first, parser, tape, recursion_limit, allow_inf_nan)?;
                 );
                 while let Some(peek) = parser.array_step()? {
                     check_recursion!(recursion_limit, parser.index,
-                        eat_value(peek, parser, tape, recursion_limit, allow_inf_nan)?;
+                        take_value_skip(peek, parser, tape, recursion_limit, allow_inf_nan)?;
                     );
                 }
             }
@@ -262,12 +262,12 @@ pub(crate) fn eat_value(
             if parser.object_first::<StringDecoderRange>(tape)?.is_some() {
                 let peek = parser.peek()?;
                 check_recursion!(recursion_limit, parser.index,
-                    eat_value(peek, parser, tape, recursion_limit, allow_inf_nan)?;
+                    take_value_skip(peek, parser, tape, recursion_limit, allow_inf_nan)?;
                 );
                 while parser.object_step::<StringDecoderRange>(tape)?.is_some() {
                     let peek = parser.peek()?;
                     check_recursion!(recursion_limit, parser.index,
-                        eat_value(peek, parser, tape, recursion_limit, allow_inf_nan)?;
+                        take_value_skip(peek, parser, tape, recursion_limit, allow_inf_nan)?;
                     );
                 }
             }

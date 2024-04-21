@@ -1,6 +1,6 @@
 #![no_main]
 
-use jiter::{JsonValue, Jiter, JiterError, JsonError, JiterErrorType};
+use jiter::{Jiter, JiterError, JiterErrorType, JsonError, JsonValue};
 
 use libfuzzer_sys::fuzz_target;
 fn errors_equal(value_error: &JsonError, jiter_error: &JiterError) {
@@ -24,9 +24,9 @@ fuzz_target!(|json: String| {
             let mut jiter = Jiter::new(json_data, false);
             let jiter_error = match jiter.next_skip() {
                 Ok(_) => jiter.finish().unwrap_err(),
-                Err(e) => e
+                Err(e) => e,
             };
             errors_equal(&json_error, &jiter_error);
-        },
+        }
     };
 });
