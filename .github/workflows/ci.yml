@@ -142,7 +142,7 @@ jobs:
         cache-target: release
         bins: cargo-fuzz
 
-    - run: cargo fuzz run compare_to_serde --release -- -max_total_time=300s
+    - run: cargo fuzz run --fuzz-dir crates/fuzz compare_to_serde --release -- -max_total_time=300s
       working-directory: fuzz
 
   lint:

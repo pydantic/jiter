@@ -1,6 +1,5 @@
 #![no_main]
 #![allow(clippy::dbg_macro)]
-#![allow(clippy::print_stdout)]
 
 use jiter::{JsonError as JiterError, JsonErrorType as JiterJsonErrorType, JsonValue as JiterValue};
 use serde_json::{Error as SerdeError, Number as SerdeNumber, Value as SerdeValue};
@@ -109,7 +108,7 @@ fuzz_target!(|json_data: &[u8]| {
                     if errors_equal(&jiter_error, &serde_error, json_data) {
                         return;
                     } else {
-                        println!("============================");
+                        eprintln!("============================");
                         dbg!(
                             &jiter_error,
                             jiter_error.description(json_data),
