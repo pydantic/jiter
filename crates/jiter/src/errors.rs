@@ -6,10 +6,6 @@ use std::fmt;
 /// those expected from `serde_json`.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum JsonErrorType {
-    /// string escape sequences are not supported in this method, usize here is the position within the string
-    /// that is invalid
-    StringEscapeNotSupported,
-
     /// float value was found where an int was expected
     FloatExpectingInt,
 
@@ -82,7 +78,6 @@ impl std::fmt::Display for JsonErrorType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Messages for enum members copied from serde_json are unchanged
         match self {
-            Self::StringEscapeNotSupported => f.write_str("string escape sequences are not supported"),
             Self::FloatExpectingInt => f.write_str("float value was found where an int was expected"),
             Self::EofWhileParsingList => f.write_str("EOF while parsing a list"),
             Self::EofWhileParsingObject => f.write_str("EOF while parsing an object"),

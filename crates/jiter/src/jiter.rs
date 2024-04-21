@@ -2,7 +2,7 @@ use crate::errors::{json_error, JiterError, JsonType, LinePosition, DEFAULT_RECU
 use crate::number_decoder::{NumberAny, NumberFloat, NumberInt, NumberRange};
 use crate::parse::{Parser, Peek};
 use crate::string_decoder::{StringDecoder, StringDecoderRange, Tape};
-use crate::value::{take_value_borrowed, take_value_owned, JsonValue};
+use crate::value::{eat_value, take_value_borrowed, take_value_owned, JsonValue};
 use crate::{JsonError, JsonErrorType};
 
 pub type JiterResult<T> = Result<T, JiterError>;
@@ -209,6 +209,29 @@ impl<'j> Jiter<'j> {
     /// - `peek`: The [Peek] of the next JSON value.
     pub fn known_value(&mut self, peek: Peek) -> JiterResult<JsonValue<'j>> {
         take_value_borrowed(
+            peek,
+            &mut self.parser,
+            &mut self.tape,
+            DEFAULT_RECURSION_LIMIT,
+            self.allow_inf_nan,
+        )
+        .map_err(Into::into)
+    }
+
+    /// Parse the next JSON value, but don't return it.
+    /// This should be faster than returning the value, useful when you don't care about this value.
+    /// Error if it is invalid JSON.
+    pub fn next_skip(&mut self) -> JiterResult<()> {
+        let peek = self.peek()?;
+        self.known_skip(peek)
+    }
+
+    /// Parse the next JSON value, but don't return it. Error if it is invalid JSON.
+    ///
+    /// # Arguments
+    /// - `peek`: The [Peek] of the next JSON value.
+    pub fn known_skip(&mut self, peek: Peek) -> JiterResult<()> {
+        eat_value(
             peek,
             &mut self.parser,
             &mut self.tape,

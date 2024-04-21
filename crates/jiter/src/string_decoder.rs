@@ -327,6 +327,7 @@ fn parse_u4(data: &[u8], mut index: usize) -> JsonResult<(u16, usize)> {
     Ok((n, index))
 }
 
+/// A string decoder that returns the range of the string.
 pub struct StringDecoderRange;
 
 impl<'t, 'j> AbstractStringDecoder<'t, 'j> for StringDecoderRange
@@ -351,8 +352,10 @@ where
                         match next_inner {
                             // these escapes are easy to validate
                             b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't' => (),
-                            // unicode escapes are harder to validate, we just prevent them here
-                            b'u' => return json_err!(StringEscapeNotSupported, index),
+                            b'u' => {
+                                let (_, new_index) = parse_escape(data, index)?;
+                                index = new_index;
+                            }
                             _ => return json_err!(InvalidEscape, index),
                         }
                     } else {

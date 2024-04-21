@@ -6,9 +6,9 @@ use smallvec::SmallVec;
 
 use crate::errors::{json_error, JsonError, JsonResult, DEFAULT_RECURSION_LIMIT};
 use crate::lazy_index_map::LazyIndexMap;
-use crate::number_decoder::{NumberAny, NumberInt};
+use crate::number_decoder::{NumberAny, NumberInt, NumberRange};
 use crate::parse::{Parser, Peek};
-use crate::string_decoder::{StringDecoder, StringOutput, Tape};
+use crate::string_decoder::{StringDecoder, StringDecoderRange, StringOutput, Tape};
 
 /// Enum representing a JSON value.
 #[derive(Clone, Debug, PartialEq)]
@@ -224,6 +224,58 @@ fn take_value<'j, 's>(
                     }
                 }
             }
+        }
+    }
+}
+
+/// like `take_value`, but nothing is returned, should be faster than `take_value`, useful when you don't care
+/// about the value, but just want to consume it
+pub(crate) fn eat_value(
+    peek: Peek,
+    parser: &mut Parser,
+    tape: &mut Tape,
+    mut recursion_limit: u8,
+    allow_inf_nan: bool,
+) -> JsonResult<()> {
+    match peek {
+        Peek::True => parser.consume_true(),
+        Peek::False => parser.consume_false(),
+        Peek::Null => parser.consume_null(),
+        Peek::String => {
+            parser.consume_string::<StringDecoderRange>(tape)?;
+            Ok(())
+        }
+        Peek::Array => {
+            if let Some(peek_first) = parser.array_first()? {
+                check_recursion!(recursion_limit, parser.index,
+                    eat_value(peek_first, parser, tape, recursion_limit, allow_inf_nan)?;
+                );
+                while let Some(peek) = parser.array_step()? {
+                    check_recursion!(recursion_limit, parser.index,
+                        eat_value(peek, parser, tape, recursion_limit, allow_inf_nan)?;
+                    );
+                }
+            }
+            Ok(())
+        }
+        Peek::Object => {
+            if parser.object_first::<StringDecoderRange>(tape)?.is_some() {
+                let peek = parser.peek()?;
+                check_recursion!(recursion_limit, parser.index,
+                    eat_value(peek, parser, tape, recursion_limit, allow_inf_nan)?;
+                );
+                while parser.object_step::<StringDecoderRange>(tape)?.is_some() {
+                    let peek = parser.peek()?;
+                    check_recursion!(recursion_limit, parser.index,
+                        eat_value(peek, parser, tape, recursion_limit, allow_inf_nan)?;
+                    );
+                }
+            }
+            Ok(())
+        }
+        _ => {
+            parser.consume_number::<NumberRange>(peek.into_inner(), allow_inf_nan)?;
+            Ok(())
         }
     }
 }

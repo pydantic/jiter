@@ -823,16 +823,11 @@ fn jiter_number() {
 fn jiter_bytes_u_escape() {
     let mut jiter = Jiter::new(br#"{"foo": "xx \u00a3"}"#, false);
     assert_eq!(jiter.next_object_bytes().unwrap().unwrap(), b"foo");
-    let e = jiter.next_bytes().unwrap_err();
-    assert_eq!(
-        e.error_type,
-        JiterErrorType::JsonError(JsonErrorType::StringEscapeNotSupported)
-    );
-    assert_eq!(jiter.error_position(e.index), LinePosition::new(1, 14));
-    assert_eq!(
-        e.description(&jiter),
-        "string escape sequences are not supported at line 1 column 14"
-    )
+    assert_eq!(jiter.next_bytes().unwrap(), b"xx \\u00a3");
+
+    assert_eq!(jiter.next_key_bytes().unwrap(), None);
+
+    jiter.finish().unwrap();
 }
 
 #[test]
@@ -1351,4 +1346,141 @@ fn test_number_int_try_from_bytes() {
     let too_long = "9".repeat(4309);
     let e = NumberInt::try_from(too_long.as_bytes()).unwrap_err();
     assert_eq!(e.to_string(), "number out of range at index 4301");
+}
+
+#[test]
+fn known_skip_whole_object() {
+    let mut jiter = Jiter::new(br#"{"x": 1}"#, false);
+    jiter.next_skip().unwrap();
+    jiter.finish().unwrap();
+}
+
+#[test]
+fn known_skip_in_object() {
+    let mut jiter = Jiter::new(
+        br#" {
+        "is_bool": true,
+        "is_int": 123,
+        "is_float": 123.456,
+        "is_str": "x",
+        "is_array": [1, 2, 3, "4", [], {}],
+        "is_object": {"x": 1, "y": ["2"], "z": {}},
+        "last": 123
+     } "#,
+        false,
+    );
+
+    assert_eq!(jiter.next_object(), Ok(Some("is_bool")));
+    jiter.next_skip().unwrap();
+
+    assert_eq!(jiter.next_key(), Ok(Some("is_int")));
+    jiter.next_skip().unwrap();
+
+    assert_eq!(jiter.next_key(), Ok(Some("is_float")));
+    jiter.next_skip().unwrap();
+
+    assert_eq!(jiter.next_key(), Ok(Some("is_str")));
+    jiter.next_skip().unwrap();
+
+    assert_eq!(jiter.next_key(), Ok(Some("is_array")));
+    jiter.next_skip().unwrap();
+
+    assert_eq!(jiter.next_key(), Ok(Some("is_object")));
+    jiter.next_skip().unwrap();
+
+    assert_eq!(jiter.next_key(), Ok(Some("last")));
+    assert_eq!(jiter.next_int(), Ok(NumberInt::Int(123)));
+    assert_eq!(jiter.next_key().unwrap(), None);
+
+    jiter.finish().unwrap();
+}
+
+#[test]
+fn known_skip_in_array() {
+    let mut jiter = Jiter::new(
+        br#" [
+        true,
+        false,
+        null,
+        NaN,
+        Infinity,
+        -Infinity,
+        123,
+        234.566,
+        345e45,
+        "\u00a3",
+        "last item"
+     ] "#,
+        true,
+    );
+
+    assert_eq!(jiter.next_array(), Ok(Some(Peek::True)));
+    jiter.known_skip(Peek::True).unwrap(); // true
+
+    assert_eq!(jiter.array_step(), Ok(Some(Peek::False)));
+    jiter.known_skip(Peek::False).unwrap(); // false
+
+    assert_eq!(jiter.array_step(), Ok(Some(Peek::Null)));
+    jiter.known_skip(Peek::Null).unwrap(); // null
+
+    assert_eq!(jiter.array_step(), Ok(Some(Peek::NaN)));
+    jiter.known_skip(Peek::NaN).unwrap(); // NaN
+
+    assert_eq!(jiter.array_step(), Ok(Some(Peek::Infinity)));
+    jiter.known_skip(Peek::Infinity).unwrap(); // Infinity
+
+    assert_eq!(jiter.array_step(), Ok(Some(Peek::Minus)));
+    jiter.known_skip(Peek::Minus).unwrap(); // -Infinity
+
+    assert_eq!(jiter.array_step(), Ok(Some(Peek::new(b'1'))));
+    jiter.known_skip(Peek::new(b'1')).unwrap(); // 123
+
+    assert_eq!(jiter.array_step(), Ok(Some(Peek::new(b'2'))));
+    jiter.known_skip(Peek::new(b'2')).unwrap(); // 234.566
+
+    assert_eq!(jiter.array_step(), Ok(Some(Peek::new(b'3'))));
+    jiter.known_skip(Peek::new(b'3')).unwrap(); // 345e45
+
+    assert_eq!(jiter.array_step(), Ok(Some(Peek::String)));
+    jiter.known_skip(Peek::String).unwrap(); // "\u00a3"
+
+    assert_eq!(jiter.array_step(), Ok(Some(Peek::String)));
+    assert_eq!(jiter.known_str(), Ok("last item"));
+
+    assert_eq!(jiter.array_step(), Ok(None));
+
+    jiter.finish().unwrap();
+}
+
+#[test]
+fn known_skip_valid_ident() {
+    let mut jiter = Jiter::new(br#"trUe"#, true);
+    let e = jiter.next_skip().unwrap_err();
+    assert_eq!(
+        e.error_type,
+        JiterErrorType::JsonError(JsonErrorType::ExpectedSomeIdent)
+    );
+}
+
+#[test]
+fn known_skip_valid_string() {
+    let mut jiter = Jiter::new(br#" "foo "#, true);
+    let e = jiter.next_skip().unwrap_err();
+    assert_eq!(
+        e.error_type,
+        JiterErrorType::JsonError(JsonErrorType::EofWhileParsingString)
+    );
+}
+
+#[test]
+fn known_skip_valid_int() {
+    let mut jiter = Jiter::new(br#"01"#, true);
+    let e = jiter.next_skip().unwrap_err();
+    assert_eq!(e.error_type, JiterErrorType::JsonError(JsonErrorType::InvalidNumber));
+}
+#[test]
+fn known_skip_valid_object() {
+    let mut jiter = Jiter::new(br#"{{"#, true);
+    let e = jiter.next_skip().unwrap_err();
+    assert_eq!(e.error_type, JiterErrorType::JsonError(JsonErrorType::KeyMustBeAString));
 }
