@@ -274,8 +274,15 @@ pub(crate) fn eat_value(
             Ok(())
         }
         _ => {
-            parser.consume_number::<NumberRange>(peek.into_inner(), allow_inf_nan)?;
-            Ok(())
+            if let Err(e) = parser.consume_number::<NumberRange>(peek.into_inner(), allow_inf_nan) {
+                if !peek.is_num() {
+                    Err(json_error!(ExpectedSomeValue, parser.index))
+                } else {
+                    Err(e)
+                }
+            } else {
+                Ok(())
+            }
         }
     }
 }

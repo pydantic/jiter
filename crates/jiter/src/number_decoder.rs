@@ -428,12 +428,12 @@ impl AbstractNumberDecoder for NumberRange {
                 IntChunk::Float => {
                     return match data.get(new_index) {
                         Some(b'.') => {
-                            index += 1;
+                            index = new_index + 1;
                             let end = consume_decimal(data, index)?;
                             Ok((start..end, end))
                         }
                         _ => {
-                            index += 1;
+                            index = new_index + 1;
                             let end = consume_exponential(data, index)?;
                             Ok((start..end, end))
                         }
