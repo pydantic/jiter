@@ -7,5 +7,5 @@ target
 /*.bm
 env*/
 
-Cargo.lock
+**/Cargo.lock
 profile.json

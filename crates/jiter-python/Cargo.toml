@@ -6,7 +6,7 @@ edition = {workspace = true}
 authors = {workspace = true}
 
 [dependencies]
-pyo3 = { version = "0.21.0", features = ["num-bigint", "auto-initialize"] }
+pyo3 = { workspace = true, default-features = true, features = ["num-bigint", "auto-initialize"] }
 jiter = { path = "../jiter", features = ["python"] }
 
 [features]

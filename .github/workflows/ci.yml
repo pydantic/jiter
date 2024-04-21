@@ -121,7 +121,7 @@ jobs:
 
     - uses: CodSpeedHQ/action@v1
       with:
-        run: cargo codspeed run
+        run: cargo codspeed run -p jiter
         token: ${{ secrets.CODSPEED_TOKEN }}
 
   fuzz:
