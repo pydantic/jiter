@@ -160,8 +160,7 @@ jobs:
         cache-target: release
         bins: cargo-fuzz
 
-    - run: cargo fuzz run compare_skip --release -- -max_total_time=300s
-      working-directory: fuzz
+    - run: cargo fuzz run --fuzz-dir crates/fuzz compare_skip --release -- -max_total_time=300s
 
   lint:
     runs-on: ubuntu-latest
