@@ -48,6 +48,16 @@ impl<'j> Jiter<'j> {
         self.parser.current_position()
     }
 
+    /// Get the current index of the parser.
+    pub fn current_index(&self) -> usize {
+        self.parser.index
+    }
+
+    /// Get a slice of the underlying JSON data from `start` to `current_index`.
+    pub fn slice_to_current(&self, start: usize) -> &'j [u8] {
+        &self.data[start..self.current_index()]
+    }
+
     /// Convert an error index to a [LinePosition].
     ///
     /// # Arguments

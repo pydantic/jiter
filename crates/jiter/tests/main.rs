@@ -1372,7 +1372,7 @@ fn jiter_skip_in_object() {
         "is_int": 123,
         "is_float": 123.456,
         "is_str": "x",
-        "is_array": [0, 1, 2, 3, "4", [], {}],
+        "is_array": [0, 1, 2, 3, "4", [],  {}],
         "is_object": {"x": 1, "y": ["2"], "z": {}},
         "last": 123
      } "#,
@@ -1392,7 +1392,11 @@ fn jiter_skip_in_object() {
     jiter.next_skip().unwrap();
 
     assert_eq!(jiter.next_key(), Ok(Some("is_array")));
-    jiter.next_skip().unwrap();
+    let peek = jiter.peek().unwrap();
+    let start = jiter.current_index();
+    jiter.known_skip(peek).unwrap();
+    let array_slice = jiter.slice_to_current(start);
+    assert_eq!(array_slice, br#"[0, 1, 2, 3, "4", [],  {}]"#);
 
     assert_eq!(jiter.next_key(), Ok(Some("is_object")));
     jiter.next_skip().unwrap();
