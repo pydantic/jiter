@@ -1174,6 +1174,13 @@ fn jiter_wrong_types() {
 }
 
 #[test]
+fn peek_debug() {
+    assert_eq!(format!("{:?}", Peek::True), "True");
+    assert_eq!(format!("{:?}", Peek::False), "False");
+    assert_eq!(format!("{:?}", Peek::new(b'4')), "Peek('4')");
+}
+
+#[test]
 fn jiter_invalid_numbers() {
     let mut jiter = Jiter::new(b" -a", false);
     let peek = jiter.peek().unwrap();
