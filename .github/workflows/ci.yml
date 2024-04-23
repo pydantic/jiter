@@ -144,6 +144,23 @@ jobs:
 
     - run: cargo fuzz run --fuzz-dir crates/fuzz compare_to_serde --release -- -max_total_time=300s
 
+  fuzz-skip:
+    name: fuzz skip
+    # we only run this on ubuntu since architecture should make no difference
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - uses: moonrepo/setup-rust@v1
+      with:
+        channel: nightly
+        cache-target: release
+        bins: cargo-fuzz
+
+    - run: cargo fuzz run --fuzz-dir crates/fuzz compare_skip --release -- -max_total_time=300s
+
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -166,7 +183,7 @@ jobs:
   # https://github.com/marketplace/actions/alls-green#why used for branch protection checks
   check:
     if: always()
-    needs: [test-linux, test-macos, bench, fuzz, lint]
+    needs: [test-linux, test-macos, bench, fuzz, fuzz-skip, lint]
     runs-on: ubuntu-latest
     steps:
       - name: Decide whether the needed jobs succeeded or failed

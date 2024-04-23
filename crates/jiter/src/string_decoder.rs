@@ -327,6 +327,9 @@ fn parse_u4(data: &[u8], mut index: usize) -> JsonResult<(u16, usize)> {
     Ok((n, index))
 }
 
+/// A string decoder that returns the range of the string.
+///
+/// *WARNING:* For performance reasons, this decoder does not check that the string would be valid UTF-8.
 pub struct StringDecoderRange;
 
 impl<'t, 'j> AbstractStringDecoder<'t, 'j> for StringDecoderRange
@@ -338,33 +341,30 @@ where
     fn decode(data: &'j [u8], mut index: usize, _tape: &'t mut Tape) -> JsonResult<(Self::Output, usize)> {
         index += 1;
         let start = index;
-        while let Some(next) = data.get(index) {
-            match next {
-                b'"' => {
+
+        loop {
+            index = match decode_chunk(data, index, true)? {
+                (StringChunk::Quote, _, index) => {
                     let r = start..index;
-                    index += 1;
-                    return Ok((r, index));
+                    return Ok((r, index + 1));
                 }
-                b'\\' => {
-                    index += 1;
-                    if let Some(next_inner) = data.get(index) {
-                        match next_inner {
-                            // these escapes are easy to validate
-                            b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't' => (),
-                            // unicode escapes are harder to validate, we just prevent them here
-                            b'u' => return json_err!(StringEscapeNotSupported, index),
-                            _ => return json_err!(InvalidEscape, index),
-                        }
-                    } else {
-                        return json_err!(EofWhileParsingString, index);
+                (StringChunk::Backslash, _, index) => index,
+            };
+            index += 1;
+            if let Some(next_inner) = data.get(index) {
+                match next_inner {
+                    // these escapes are easy to validate
+                    b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't' => (),
+                    b'u' => {
+                        let (_, new_index) = parse_escape(data, index)?;
+                        index = new_index;
                     }
-                    index += 1;
+                    _ => return json_err!(InvalidEscape, index),
                 }
-                _ => {
-                    index += 1;
-                }
+                index += 1;
+            } else {
+                return json_err!(EofWhileParsingString, index);
             }
         }
-        json_err!(EofWhileParsingString, index)
     }
 }

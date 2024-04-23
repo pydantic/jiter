@@ -19,7 +19,7 @@ impl Peek {
 }
 
 impl Peek {
-    const fn new(next: u8) -> Self {
+    pub const fn new(next: u8) -> Self {
         Self(next)
     }
 

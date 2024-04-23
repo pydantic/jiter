@@ -384,8 +384,8 @@ impl AbstractNumberDecoder for NumberRange {
                         let end = consume_exponential(data, index)?;
                         Ok((start..end, end))
                     }
-                    Some(_) => return json_err!(InvalidNumber, index),
-                    None => return Ok((start..index, index)),
+                    Some(digit) if digit.is_ascii_digit() => json_err!(InvalidNumber, index),
+                    _ => return Ok((start..index, index)),
                 };
             }
             Some(b'I') => {
@@ -398,25 +398,49 @@ impl AbstractNumberDecoder for NumberRange {
         };
 
         index += 1;
-        while let Some(next) = data.get(index) {
-            match next {
-                b'0'..=b'9' => (),
-                b'.' => {
+        for _ in 0..18 {
+            if let Some(digit) = data.get(index) {
+                if INT_CHAR_MAP[*digit as usize] {
+                    index += 1;
+                    continue;
+                } else if matches!(digit, b'.') {
                     index += 1;
                     let end = consume_decimal(data, index)?;
                     return Ok((start..end, end));
-                }
-                b'e' | b'E' => {
+                } else if matches!(digit, b'e' | b'E') {
                     index += 1;
                     let end = consume_exponential(data, index)?;
                     return Ok((start..end, end));
                 }
-                _ => break,
             }
-            index += 1;
+            return Ok((start..index, index));
         }
-
-        Ok((start..index, index))
+        loop {
+            let (chunk, new_index) = IntChunk::parse_big(data, index);
+            if (new_index - start) > 4300 {
+                return json_err!(NumberOutOfRange, start + 4301);
+            }
+            match chunk {
+                IntChunk::Ongoing(_) => {
+                    index = new_index;
+                }
+                IntChunk::Done(_) => return Ok((start..new_index, new_index)),
+                IntChunk::Float => {
+                    return match data.get(new_index) {
+                        Some(b'.') => {
+                            index = new_index + 1;
+                            let end = consume_decimal(data, index)?;
+                            Ok((start..end, end))
+                        }
+                        _ => {
+                            index = new_index + 1;
+                            let end = consume_exponential(data, index)?;
+                            Ok((start..end, end))
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

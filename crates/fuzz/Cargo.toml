@@ -22,3 +22,9 @@ name = "compare_to_serde"
 path = "fuzz_targets/compare_to_serde.rs"
 test = false
 doc = false
+
+[[bin]]
+name = "compare_skip"
+path = "fuzz_targets/compare_skip.rs"
+test = false
+doc = false
