@@ -1,7 +1,8 @@
+use std::fmt;
+
 use crate::errors::{json_err, JsonResult, LinePosition};
 use crate::number_decoder::AbstractNumberDecoder;
 use crate::string_decoder::{AbstractStringDecoder, Tape};
-use std::fmt;
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct Peek(u8);
