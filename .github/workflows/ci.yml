@@ -205,6 +205,6 @@ jobs:
 
     - uses: Swatinem/rust-cache@v2
 
-    - run: cargo publish
+    - run: cargo publish -p jiter
       env:
         CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
