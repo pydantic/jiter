@@ -710,6 +710,20 @@ fn test_array_trailing() {
     assert_eq!(e.description(json), "trailing comma at line 1 column 7");
 }
 
+#[test]
+fn parse_comment() {
+    let json = "[ // Comment\n  ]";
+    let v = JsonValue::parse(json.as_bytes(), false).unwrap();
+    assert_eq!(v, JsonValue::Array(Arc::new(smallvec![])));
+}
+
+#[test]
+fn parse_block_comment() {
+    let json = "[ /* Block comment\n*/  ]";
+    let v = JsonValue::parse(json.as_bytes(), false).unwrap();
+    assert_eq!(v, JsonValue::Array(Arc::new(smallvec![])));
+}
+
 fn read_file(path: &str) -> String {
     let mut file = File::open(path).unwrap();
     let mut contents = String::new();

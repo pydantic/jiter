@@ -246,10 +246,41 @@ impl<'j> Parser<'j> {
         }
     }
 
+    fn consume_line(&mut self) {
+        while let Some(next) = self.data.get(self.index) {
+            self.index += 1;
+            if next == &b'\n' {
+                return;
+            }
+        }
+    }
+
+    fn consume_block(&mut self) {
+        let mut pref = 0;
+        while let Some(next) = self.data.get(self.index) {
+            self.index += 1;
+            match (pref, next) {
+                (b'*', b'/') => return,
+                _ => pref = *next,
+            }
+        }
+    }
+
     fn eat_whitespace(&mut self) -> Option<u8> {
         while let Some(next) = self.data.get(self.index) {
             match next {
                 b' ' | b'\r' | b'\t' | b'\n' => self.index += 1,
+                b'/' => match self.data.get(self.index + 1) {
+                    Some(b'/') => {
+                        self.index += 2;
+                        self.consume_line()
+                    }
+                    Some(b'*') => {
+                        self.index += 2;
+                        self.consume_block()
+                    }
+                    _ => return Some(*next),
+                },
                 _ => return Some(*next),
             }
         }
