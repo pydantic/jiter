@@ -535,6 +535,8 @@ jobs:
     if: "success() && startsWith(github.ref, 'refs/tags/jiter-python-v')"
     runs-on: ubuntu-latest
     environment: release-python
+    permissions:
+      id-token: write
 
     steps:
       - uses: actions/checkout@v4
