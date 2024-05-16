@@ -283,7 +283,7 @@ jobs:
           docker-options: -e CI
           working-directory: crates/jiter-python
 
-      - run: ${{ (matrix.os == 'windows' && 'dir') || 'ls -lh' }} dist/
+      - run: ${{ (matrix.os == 'windows' && 'dir') || 'ls -lh' }} crates/jiter-python/dist/
 
       - run: |
           pip install -U twine
