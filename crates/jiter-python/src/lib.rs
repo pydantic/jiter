@@ -20,13 +20,12 @@ pub fn from_json<'py>(
     allow_partial: bool,
     catch_duplicate_keys: bool,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let cache_mode = cache_strings.into();
     let json_bytes = data;
     python_parse(
         py,
         json_bytes,
         allow_inf_nan,
-        cache_mode,
+        cache_strings,
         allow_partial,
         catch_duplicate_keys,
     )
