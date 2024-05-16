@@ -65,7 +65,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runs-on: [macos-latest, macos-latest-xlarge]
+        runs-on: [macos-latest, macos-latest]
 
     runs-on: ${{ matrix.runs-on }}
 
@@ -129,7 +129,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runs-on: [ubuntu-latest, macos-latest-xlarge]
+        runs-on: [ubuntu-latest, macos-latest]
 
     runs-on: ${{ matrix.runs-on }}
 
@@ -180,6 +180,332 @@ jobs:
 
     - run: cargo doc -F python
 
+  build-sdist:
+    name: build sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+          rust-toolchain: stable
+          working-directory: crates/jiter-python
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pypi_files_sdist
+          path: crates/jiter-python/dist
+
+  build:
+    name: build on ${{ matrix.os }} (${{ matrix.target }} - ${{ matrix.interpreter || 'all' }}${{ matrix.os == 'linux' && format(' - {0}', matrix.manylinux == 'auto' && 'manylinux' || matrix.manylinux) || '' }})
+    # only run on push to main and on release
+    if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || contains(github.event.pull_request.labels.*.name, 'Full Build')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [linux, macos, windows]
+        target: [x86_64, aarch64]
+        manylinux: [auto]
+        include:
+          # manylinux for various platforms, plus x86_64 pypy
+          - os: linux
+            manylinux: auto
+            target: i686
+          - os: linux
+            manylinux: auto
+            target: aarch64
+          - os: linux
+            manylinux: auto
+            target: armv7
+            interpreter: 3.8 3.9 3.10 3.11 3.12
+          - os: linux
+            manylinux: auto
+            target: ppc64le
+            interpreter: 3.8 3.9 3.10 3.11 3.12
+          - os: linux
+            manylinux: auto
+            target: s390x
+            interpreter: 3.8 3.9 3.10 3.11 3.12
+          - os: linux
+            manylinux: auto
+            target: x86_64
+            interpreter: pypy3.9 pypy3.10
+
+          # musllinux
+          - os: linux
+            manylinux: musllinux_1_1
+            target: x86_64
+          - os: linux
+            manylinux: musllinux_1_1
+            target: aarch64
+
+          # macos;
+          # all versions x86_64
+          # arm pypy and older pythons which can't be run on the arm hardware for PGO
+          - os: macos
+            target: x86_64
+          - os: macos
+            target: aarch64
+            interpreter: 3.8 3.9 pypy3.9 pypy3.10
+
+          # windows;
+          # x86_64 pypy builds are not PGO optimized
+          # i686 not supported by pypy
+          # aarch64 only 3.11 and up, also not PGO optimized
+          - os: windows
+            target: x86_64
+            interpreter: pypy3.9 pypy3.10
+          - os: windows
+            target: i686
+            python-architecture: x86
+            interpreter: 3.8 3.9 3.10 3.11 3.12
+          - os: windows
+            target: aarch64
+            interpreter: 3.11 3.12
+
+    runs-on: ${{ (matrix.os == 'linux' && 'ubuntu') || matrix.os }}-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: ${{ matrix.python-architecture || 'x64' }}
+
+      - name: build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          args: --release --out dist --interpreter ${{ matrix.interpreter || '3.8 3.9 3.10 3.11 3.12 pypy3.9 pypy3.10' }}
+          rust-toolchain: stable
+          docker-options: -e CI
+          working-directory: crates/jiter-python
+
+      - run: ${{ (matrix.os == 'windows' && 'dir') || 'ls -lh' }} dist/
+
+      - run: |
+          pip install -U twine
+          twine check --strict crates/jiter-python/dist/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pypi_files_${{ matrix.os }}_${{ matrix.target }}_${{ matrix.interpreter || 'all' }}_${{ matrix.manylinux }}
+          path: crates/jiter-python/dist
+
+  build-pgo:
+    name: build pgo-optimized on ${{ matrix.os }} / ${{ matrix.interpreter }}
+    # only run on push to main and on release
+    if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || contains(github.event.pull_request.labels.*.name, 'Full Build')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [linux, windows, macos]
+        interpreter: ['3.8', '3.9', '3.10', '3.11', '3.12']
+        include:
+          # standard runners with override for macos arm
+          - os: linux
+            runs-on: ubuntu-latest
+          - os: windows
+            ls: dir
+            runs-on: windows-latest
+          - os: macos
+            runs-on: macos-latest
+        exclude:
+          # macos arm only supported from 3.10 and up
+          - os: macos
+            interpreter: '3.8'
+          - os: macos
+            interpreter: '3.9'
+
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.interpreter }}
+
+      - name: install rust stable
+        id: rust-toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools
+
+      - run: rustc --version --verbose
+
+      - name: build initial wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          manylinux: auto
+          args: >
+            --release
+            --out pgo-wheel
+            --interpreter ${{ matrix.interpreter }}
+          rust-toolchain: stable
+          docker-options: -e CI
+          working-directory: crates/jiter-python
+        env:
+          RUSTFLAGS: "-Cprofile-generate=${{ github.workspace }}/profdata"
+
+      - name: detect rust host
+        run: echo RUST_HOST=$(rustc -Vv | grep host | cut -d ' ' -f 2) >> "$GITHUB_ENV"
+        shell: bash
+
+      - name: generate pgo data
+        run: |
+          cd crates/jiter-python
+          pip install -U pip
+          pip install -r tests/requirements.txt
+          pip install jiter --no-index --no-deps --find-links pgo-wheel --force-reinstall
+          pytest tests/benchmarks
+          rustup run stable bash -c 'echo LLVM_PROFDATA=$RUSTUP_HOME/toolchains/$RUSTUP_TOOLCHAIN/lib/rustlib/${{ env.RUST_HOST }}/bin/llvm-profdata >> "$GITHUB_ENV"'
+
+      - name: merge pgo data
+        run: |
+          cd crates/jiter-python
+          ${{ env.LLVM_PROFDATA }} merge -o ${{ github.workspace }}/merged.profdata ${{ github.workspace }}/profdata
+
+      - name: build pgo-optimized wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          manylinux: auto
+          args: >
+            --release
+            --out dist
+            --interpreter ${{ matrix.interpreter }}
+          rust-toolchain: stable
+          docker-options: -e CI
+          working-directory: crates/jiter-python
+        env:
+          RUSTFLAGS: "-Cprofile-use=${{ github.workspace }}/merged.profdata"
+
+      - run: ${{ matrix.ls || 'ls -lh' }} dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pypi_files_${{ matrix.os }}_${{ matrix.interpreter }}
+          path: crates/jiter-python/dist
+
+  inspect-pypi-assets:
+    needs: [build, build-sdist, build-pgo]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: get dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pypi_files_*
+          merge-multiple: true
+          path: dist
+
+      - name: list dist files
+        run: |
+          ls -lh dist/
+          ls -l dist/
+          echo "`ls dist | wc -l` files"
+
+      - name: extract and list sdist file
+        run: |
+          mkdir sdist-files
+          tar -xvf dist/*.tar.gz -C sdist-files
+          tree -a sdist-files
+
+      - name: extract and list wheel file
+        run: |
+          ls dist/*cp310-manylinux*x86_64.whl | head -n 1
+          python -m zipfile --list `ls dist/*cp310-manylinux*x86_64.whl | head -n 1`
+
+  test-builds-arch:
+    name: test build on ${{ matrix.target }}-${{ matrix.distro }}
+    needs: [build]
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [aarch64, armv7, s390x, ppc64le]
+        distro: ['ubuntu22.04']
+        include:
+          - target: aarch64
+            distro: alpine_latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: get dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pypi_files_linux_*
+          merge-multiple: true
+          path: crates/jiter-python/dist
+
+      - uses: uraimo/run-on-arch-action@v2.7.2
+        name: install & test
+        with:
+          arch: ${{ matrix.target }}
+          distro: ${{ matrix.distro }}
+          githubToken: ${{ github.token }}
+          install: |
+            set -x
+            if command -v apt-get &> /dev/null; then
+              echo "installing python & pip with apt-get..."
+              apt-get update
+              apt-get install -y --no-install-recommends python3 python3-pip python3-venv git
+            else
+              echo "installing python & pip with apk..."
+              apk update
+              apk add python3 py3-pip git
+            fi
+          run: |
+            cd crates/jiter-python
+            set -x
+            # typing-extensions isn't automatically installed because of `--no-index --no-deps`
+            python3 -m venv venv
+            source venv/bin/activate
+            python3 -m pip install -U pip typing-extensions
+            python3 -m pip install -r tests/requirements.txt
+            python3 -m pip install jiter --no-index --no-deps --find-links dist --force-reinstall
+            python3 -c 'import jiter; print(jiter.__version__)'
+
+  test-builds-os:
+    name: test build on ${{ matrix.os }}
+    needs: [build, build-pgo]
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu, macos, windows]
+
+    runs-on: ${{ matrix.os }}-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: get dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pypi_files_*
+          merge-multiple: true
+          path: dist
+
+      - name: run tests
+        run: |
+          cd crates/jiter-python
+          pip install typing-extensions
+          pip install -r crates/jiter-python/tests/requirements.txt
+          pip install jiter --no-index --no-deps --find-links dist --force-reinstall
+          pytest
+
+
   # https://github.com/marketplace/actions/alls-green#why used for branch protection checks
   check:
     if: always()
@@ -193,7 +519,7 @@ jobs:
 
   release:
     needs: [check]
-    if: "success() && startsWith(github.ref, 'refs/tags/')"
+    if: "success() && startsWith(github.ref, 'refs/tags/v')"
     runs-on: ubuntu-latest
     environment: release
 
@@ -208,3 +534,38 @@ jobs:
     - run: cargo publish -p jiter
       env:
         CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  release-python:
+    needs: [test-builds-arch, test-builds-os, build-sdist, check]
+    if: "success() && startsWith(github.ref, 'refs/tags/jiter-python-v')"
+    runs-on: ubuntu-latest
+    environment: release
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: get dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pypi_files_*
+          merge-multiple: true
+          path: crates/jiter-python/dist
+
+      - name: check assets
+        run: |
+          pip install -U twine
+          cd crates/jiter-python
+          twine check --strict dist/*
+
+      - name: upload to pypi
+        run: |
+          cd crates/jiter-python
+          twine upload dist/*
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.pypi_token }}
