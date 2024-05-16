@@ -534,7 +534,7 @@ jobs:
     needs: [test-builds-arch, test-builds-os, build-sdist, check]
     if: "success() && startsWith(github.ref, 'refs/tags/jiter-python-v')"
     runs-on: ubuntu-latest
-    environment: release
+    environment: release-python
 
     steps:
       - uses: actions/checkout@v4
