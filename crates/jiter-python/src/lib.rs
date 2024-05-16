@@ -34,6 +34,7 @@ pub fn from_json<'py>(
 }
 
 #[pymodule]
+#[pyo3(name = "jiter")]
 fn jiter_python(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(from_json, m)?)?;
     Ok(())

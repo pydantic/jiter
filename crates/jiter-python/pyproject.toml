@@ -16,6 +16,6 @@ dynamic = [
 ]
 
 [tool.maturin]
-module-name = "jiter_python"
+module-name = "jiter"
 bindings = "pyo3"
 features = ["pyo3/extension-module"]
