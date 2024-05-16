@@ -116,7 +116,7 @@ macro_rules! single_expect_ok_or_error {
                         let position = jiter.error_position(e.index);
                         // no wrong type errors, so unwrap the json error
                         let error_type = match e.error_type {
-                            JiterErrorType::JsonError(e) => e,
+                            JiterErrorType::JsonError(ref e) => e,
                             _ => panic!("unexpected error type: {:?}", e.error_type),
                         };
                         let actual_error = format!("{:?} @ {}", error_type, position.short());

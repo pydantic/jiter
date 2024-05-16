@@ -43,6 +43,7 @@ fn test_python_parse_numeric() {
             false,
             StringCacheMode::All,
             false,
+            false,
         )
         .unwrap();
         assert_eq!(
@@ -61,6 +62,7 @@ fn test_python_parse_other_cached() {
             true,
             StringCacheMode::All,
             false,
+            false,
         )
         .unwrap();
         assert_eq!(obj.to_string(), "['string', True, False, None, nan, inf, -inf]");
@@ -76,6 +78,7 @@ fn test_python_parse_other_no_cache() {
             false,
             StringCacheMode::None,
             false,
+            false,
         )
         .unwrap();
         assert_eq!(obj.to_string(), "['string', True, False, None]");
@@ -85,7 +88,7 @@ fn test_python_parse_other_no_cache() {
 #[test]
 fn test_python_disallow_nan() {
     Python::with_gil(|py| {
-        let r = python_parse(py, br#"[NaN]"#, false, StringCacheMode::All, false);
+        let r = python_parse(py, br#"[NaN]"#, false, StringCacheMode::All, false, false);
         let e = r.map_err(|e| map_json_error(br#"[NaN]"#, &e)).unwrap_err();
         assert_eq!(e.to_string(), "ValueError: expected value at line 1 column 2");
     })
@@ -95,7 +98,7 @@ fn test_python_disallow_nan() {
 fn test_error() {
     Python::with_gil(|py| {
         let bytes = br#"["string""#;
-        let r = python_parse(py, bytes, false, StringCacheMode::All, false);
+        let r = python_parse(py, bytes, false, StringCacheMode::All, false, false);
         let e = r.map_err(|e| map_json_error(bytes, &e)).unwrap_err();
         assert_eq!(e.to_string(), "ValueError: EOF while parsing a list at line 1 column 9");
     })
@@ -107,7 +110,7 @@ fn test_recursion_limit() {
     let bytes = json.as_bytes();
 
     Python::with_gil(|py| {
-        let r = python_parse(py, bytes, false, StringCacheMode::All, false);
+        let r = python_parse(py, bytes, false, StringCacheMode::All, false, false);
         let e = r.map_err(|e| map_json_error(bytes, &e)).unwrap_err();
         assert_eq!(
             e.to_string(),
@@ -123,12 +126,12 @@ fn test_recursion_limit_incr() {
     let bytes = json.as_bytes();
 
     Python::with_gil(|py| {
-        let v = python_parse(py, bytes, false, StringCacheMode::All, false).unwrap();
+        let v = python_parse(py, bytes, false, StringCacheMode::All, false, false).unwrap();
         assert_eq!(v.len().unwrap(), 2000);
     });
 
     Python::with_gil(|py| {
-        let v = python_parse(py, bytes, false, StringCacheMode::All, false).unwrap();
+        let v = python_parse(py, bytes, false, StringCacheMode::All, false, false).unwrap();
         assert_eq!(v.len().unwrap(), 2000);
     });
 }
@@ -139,7 +142,7 @@ fn test_extracted_value_error() {
     let bytes = json.as_bytes();
 
     Python::with_gil(|py| {
-        let r = python_parse(py, bytes, false, StringCacheMode::All, false);
+        let r = python_parse(py, bytes, false, StringCacheMode::All, false, false);
         let e = r.map_err(|e| map_json_error(bytes, &e)).unwrap_err();
         assert_eq!(e.to_string(), "ValueError: expected value at line 1 column 1");
     })
@@ -149,13 +152,13 @@ fn test_extracted_value_error() {
 fn test_partial_array() {
     Python::with_gil(|py| {
         let bytes = br#"["string", true, null, 1, "foo"#;
-        let py_value = python_parse(py, bytes, false, StringCacheMode::All, true).unwrap();
+        let py_value = python_parse(py, bytes, false, StringCacheMode::All, true, false).unwrap();
         let string = py_value.to_string();
         assert_eq!(string, "['string', True, None, 1]");
 
         // test that stopping at every points is ok
         for i in 1..bytes.len() {
-            let py_value = python_parse(py, &bytes[..i], false, StringCacheMode::All, true).unwrap();
+            let py_value = python_parse(py, &bytes[..i], false, StringCacheMode::All, true, false).unwrap();
             assert!(py_value.is_instance_of::<PyList>());
         }
     })
@@ -165,11 +168,11 @@ fn test_partial_array() {
 fn test_partial_array_first() {
     Python::with_gil(|py| {
         let bytes = b"[";
-        let py_value = python_parse(py, bytes, false, StringCacheMode::All, true).unwrap();
+        let py_value = python_parse(py, bytes, false, StringCacheMode::All, true, false).unwrap();
         let string = py_value.to_string();
         assert_eq!(string, "[]");
 
-        let e = python_parse(py, bytes, false, StringCacheMode::All, false).unwrap_err();
+        let e = python_parse(py, bytes, false, StringCacheMode::All, false, false).unwrap_err();
         assert_eq!(e.to_string(), "EOF while parsing a list at index 1");
     })
 }
@@ -178,13 +181,13 @@ fn test_partial_array_first() {
 fn test_partial_object() {
     Python::with_gil(|py| {
         let bytes = br#"{"a": 1, "b": 2, "c"#;
-        let py_value = python_parse(py, bytes, false, StringCacheMode::All, true).unwrap();
+        let py_value = python_parse(py, bytes, false, StringCacheMode::All, true, false).unwrap();
         let string = py_value.to_string();
         assert_eq!(string, "{'a': 1, 'b': 2}");
 
         // test that stopping at every points is ok
         for i in 1..bytes.len() {
-            let py_value = python_parse(py, &bytes[..i], false, StringCacheMode::All, true).unwrap();
+            let py_value = python_parse(py, &bytes[..i], false, StringCacheMode::All, true, false).unwrap();
             assert!(py_value.is_instance_of::<PyDict>());
         }
     })
@@ -194,13 +197,13 @@ fn test_partial_object() {
 fn test_partial_nested() {
     Python::with_gil(|py| {
         let bytes = br#"{"a": 1, "b": 2, "c": [1, 2, {"d": 1, "#;
-        let py_value = python_parse(py, bytes, false, true.into(), true).unwrap();
+        let py_value = python_parse(py, bytes, false, true.into(), true, false).unwrap();
         let string = py_value.to_string();
         assert_eq!(string, "{'a': 1, 'b': 2, 'c': [1, 2, {'d': 1}]}");
 
         // test that stopping at every points is ok
         for i in 1..bytes.len() {
-            let py_value = python_parse(py, &bytes[..i], false, true.into(), true).unwrap();
+            let py_value = python_parse(py, &bytes[..i], false, true.into(), true, false).unwrap();
             assert!(py_value.is_instance_of::<PyDict>());
         }
     })
@@ -210,7 +213,15 @@ fn test_partial_nested() {
 fn test_python_cache_usage_all() {
     Python::with_gil(|py| {
         cache_clear(py);
-        let obj = python_parse(py, br#"{"foo": "bar", "spam": 3}"#, true, StringCacheMode::All, false).unwrap();
+        let obj = python_parse(
+            py,
+            br#"{"foo": "bar", "spam": 3}"#,
+            true,
+            StringCacheMode::All,
+            false,
+            false,
+        )
+        .unwrap();
         assert_eq!(obj.to_string(), "{'foo': 'bar', 'spam': 3}");
         assert_eq!(cache_usage(py), 3);
     })
@@ -220,7 +231,15 @@ fn test_python_cache_usage_all() {
 fn test_python_cache_usage_keys() {
     Python::with_gil(|py| {
         cache_clear(py);
-        let obj = python_parse(py, br#"{"foo": "bar", "spam": 3}"#, false, StringCacheMode::Keys, false).unwrap();
+        let obj = python_parse(
+            py,
+            br#"{"foo": "bar", "spam": 3}"#,
+            false,
+            StringCacheMode::Keys,
+            false,
+            false,
+        )
+        .unwrap();
         assert_eq!(obj.to_string(), "{'foo': 'bar', 'spam': 3}");
         assert_eq!(cache_usage(py), 2);
     })
@@ -230,7 +249,15 @@ fn test_python_cache_usage_keys() {
 fn test_python_cache_usage_none() {
     Python::with_gil(|py| {
         cache_clear(py);
-        let obj = python_parse(py, br#"{"foo": "bar", "spam": 3}"#, false, StringCacheMode::None, false).unwrap();
+        let obj = python_parse(
+            py,
+            br#"{"foo": "bar", "spam": 3}"#,
+            false,
+            StringCacheMode::None,
+            false,
+            false,
+        )
+        .unwrap();
         assert_eq!(obj.to_string(), "{'foo': 'bar', 'spam': 3}");
         assert_eq!(cache_usage(py), 0);
     })
@@ -274,7 +301,7 @@ fn test_use_tape() {
     let json = r#"  "foo\nbar"  "#;
     Python::with_gil(|py| {
         cache_clear(py);
-        let obj = python_parse(py, json.as_bytes(), false, StringCacheMode::None, false).unwrap();
+        let obj = python_parse(py, json.as_bytes(), false, StringCacheMode::None, false, false).unwrap();
         assert_eq!(obj.to_string(), "foo\nbar");
     })
 }
@@ -284,7 +311,7 @@ fn test_unicode() {
     let json = r#"{"💩": "£"}"#;
     Python::with_gil(|py| {
         cache_clear(py);
-        let obj = python_parse(py, json.as_bytes(), false, StringCacheMode::None, false).unwrap();
+        let obj = python_parse(py, json.as_bytes(), false, StringCacheMode::None, false, false).unwrap();
         assert_eq!(obj.to_string(), "{'💩': '£'}");
     })
 }
@@ -294,7 +321,7 @@ fn test_unicode_cache() {
     let json = r#"{"💩": "£"}"#;
     Python::with_gil(|py| {
         cache_clear(py);
-        let obj = python_parse(py, json.as_bytes(), false, StringCacheMode::All, false).unwrap();
+        let obj = python_parse(py, json.as_bytes(), false, StringCacheMode::All, false, false).unwrap();
         assert_eq!(obj.to_string(), "{'💩': '£'}");
     })
 }
@@ -314,5 +341,33 @@ fn test_pystring_fast_new_ascii() {
     Python::with_gil(|py| {
         let s = pystring_fast_new(py, json, true);
         assert_eq!(s.to_string(), "100abc");
+    })
+}
+
+#[test]
+fn test_duplicate_keys_okay() {
+    Python::with_gil(|py| {
+        let json = br#"{"a": 1, "a": 2}"#;
+        let python_value = python_parse(py, json, false, StringCacheMode::All, false, false).unwrap();
+        assert_eq!(python_value.to_string(), "{'a': 2}");
+    })
+}
+
+#[test]
+fn test_duplicate_keys_error() {
+    Python::with_gil(|py| {
+        let json = br#"{"a": 1, "a": 2}"#;
+        let e = python_parse(py, json, false, StringCacheMode::All, false, true).unwrap_err();
+        assert_eq!(e.to_string(), r#"Detected duplicate key "a" at index 13"#);
+
+        // later in the string
+        let json = br#"{"a": 1, "b": 2, "c": 3, "b": 4}"#;
+        let e = python_parse(py, json, false, StringCacheMode::All, false, true).unwrap_err();
+        assert_eq!(e.to_string(), r#"Detected duplicate key "b" at index 29"#);
+
+        // different_objects are fine
+        let json = br#"[{"a": 1, "b": 2}, {"c": 3, "b": 4}]"#;
+        let python_value = python_parse(py, json, false, StringCacheMode::All, false, true).unwrap();
+        assert_eq!(python_value.to_string(), "[{'a': 1, 'b': 2}, {'c': 3, 'b': 4}]");
     })
 }

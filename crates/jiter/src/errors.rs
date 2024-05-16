@@ -4,10 +4,13 @@ use std::fmt;
 ///
 /// Almost all of `JsonErrorType` is copied from [serde_json](https://github.com/serde-rs) so errors match
 /// those expected from `serde_json`.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum JsonErrorType {
     /// float value was found where an int was expected
     FloatExpectingInt,
+
+    /// duplicate keys in an object
+    DuplicateKey(String),
 
     /// NOTE: all errors from here on are copied from serde_json
     /// [src/error.rs](https://github.com/serde-rs/json/blob/v1.0.107/src/error.rs#L236)
@@ -79,6 +82,7 @@ impl std::fmt::Display for JsonErrorType {
         // Messages for enum members copied from serde_json are unchanged
         match self {
             Self::FloatExpectingInt => f.write_str("float value was found where an int was expected"),
+            Self::DuplicateKey(s) => write!(f, "Detected duplicate key {s:?}"),
             Self::EofWhileParsingList => f.write_str("EOF while parsing a list"),
             Self::EofWhileParsingObject => f.write_str("EOF while parsing an object"),
             Self::EofWhileParsingString => f.write_str("EOF while parsing a string"),

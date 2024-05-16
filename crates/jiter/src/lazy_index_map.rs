@@ -77,10 +77,10 @@ where
         self.vec.is_empty()
     }
 
-    pub fn get<Q: ?Sized>(&self, key: &Q) -> Option<&V>
+    pub fn get<Q>(&self, key: &Q) -> Option<&V>
     where
         K: Borrow<Q> + PartialEq<Q>,
-        Q: Hash + Eq,
+        Q: Hash + Eq + ?Sized,
     {
         let vec_len = self.vec.len();
         // if the vec is longer than the threshold, we use the hashmap for lookups
