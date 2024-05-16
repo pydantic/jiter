@@ -282,8 +282,6 @@ jobs:
           rust-toolchain: stable
           docker-options: -e CI
           working-directory: crates/jiter-python
-        env:
-          PYO3_PRINT_CONFIG: "1"
 
       - run: ${{ (matrix.os == 'windows' && 'dir') || 'ls -lh' }} crates/jiter-python/dist/
 
@@ -384,7 +382,7 @@ jobs:
         env:
           RUSTFLAGS: "-Cprofile-use=${{ github.workspace }}/merged.profdata"
 
-      - run: ${{ matrix.ls || 'ls -lh' }} dist/
+      - run: ${{ matrix.ls || 'ls -lh' }} crates/jiter-python/dist/
 
       - uses: actions/upload-artifact@v4
         with:
