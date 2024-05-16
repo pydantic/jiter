@@ -9,3 +9,4 @@ env*/
 
 **/Cargo.lock
 profile.json
+__pycache__
