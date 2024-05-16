@@ -1,9 +1,7 @@
+import argparse
 import timeit
 from pathlib import Path
 
-import orjson
-import jiter_python
-import ujson
 import json
 
 cases = [
@@ -39,26 +37,71 @@ def run_bench(func, d):
     return iter_time
 
 
-for name, json_data in cases:
-    print(f"Case: {name}")
-    times = [
-        ("orjson", run_bench(lambda d: orjson.loads(d), json_data)),
-        ("jiter-cache", run_bench(lambda d: jiter_python.from_json(d), json_data)),
-        (
-            "jiter",
-            run_bench(
-                lambda d: jiter_python.from_json(d, cache_strings=False), json_data
-            ),
-        ),
-        ("ujson", run_bench(lambda d: ujson.loads(d), json_data)),
-        ("json", run_bench(lambda d: json.loads(d), json_data)),
-    ]
+def setup_orjson():
+    import orjson
 
-    times.sort(key=lambda x: x[1])
-    best = times[0][1]
+    return lambda data: orjson.loads(data)
 
-    print(f'{"package":>12} | {"time µs":>10} | slowdown')
-    print(f'{"-" * 13}|{"-" * 12}|{"-" * 9}')
-    for name, time in times:
-        print(f"{name:>12} | {time * 1_000_000:10.2f} | {time / best:8.2f}")
-    print("")
+
+def setup_jiter_cache():
+    import jiter
+
+    return lambda data: jiter.from_json(data, cache_strings=True)
+
+
+def setup_jiter():
+    import jiter
+
+    return lambda data: jiter.from_json(data, cache_strings=False)
+
+
+def setup_ujson():
+    import ujson
+
+    return lambda data: ujson.loads(data)
+
+
+def setup_json():
+    import json
+
+    return lambda data: json.loads(data)
+
+
+PARSERS = {
+    "orjson": setup_orjson,
+    "jiter-cache": setup_jiter_cache,
+    "jiter": setup_jiter,
+    "ujson": setup_ujson,
+    "json": setup_json,
+}
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "parsers", nargs="*", default="all", choices=[*PARSERS.keys(), "all"]
+    )
+    args = parser.parse_args()
+
+    if "all" in args.parsers:
+        args.parsers = [*PARSERS.keys()]
+
+    for name, json_data in cases:
+        print(f"Case: {name}")
+
+        times = [
+            (parser, run_bench(PARSERS[parser](), json_data)) for parser in args.parsers
+        ]
+
+        times.sort(key=lambda x: x[1])
+        best = times[0][1]
+
+        print(f'{"package":>12} | {"time µs":>10} | slowdown')
+        print(f'{"-" * 13}|{"-" * 12}|{"-" * 9}')
+        for name, time in times:
+            print(f"{name:>12} | {time * 1_000_000:10.2f} | {time / best:8.2f}")
+        print("")
+
+
+if __name__ == "__main__":
+    main()
