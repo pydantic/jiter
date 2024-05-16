@@ -351,7 +351,7 @@ jobs:
           pip install -U pip
           pip install -r tests/requirements.txt
           pip install jiter --no-index --no-deps --find-links pgo-wheel --force-reinstall
-          python bench.py
+          python bench.py jiter jiter-cache
           rustup run stable bash -c 'echo LLVM_PROFDATA=$RUSTUP_HOME/toolchains/$RUSTUP_TOOLCHAIN/lib/rustlib/${{ env.RUST_HOST }}/bin/llvm-profdata >> "$GITHUB_ENV"'
 
       - name: merge pgo data
