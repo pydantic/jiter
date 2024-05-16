@@ -3,6 +3,8 @@ import json
 from random import random
 from pathlib import Path
 
+THIS_DIR = Path(__file__).parent
+
 data = []
 no_strings = True
 for i in range(1_000):
@@ -14,4 +16,4 @@ for i in range(1_000):
     else:
         data.append(list(range(int(random()*500))))
 
-Path('benches/big.json').write_text(json.dumps(data, separators=(',', ':')))
+(THIS_DIR / 'big.json').write_text(json.dumps(data, separators=(',', ':')))

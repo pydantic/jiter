@@ -1,0 +1,18 @@
+[package]
+name = "jiter-python"
+publish = false
+version = {workspace = true}
+edition = {workspace = true}
+authors = {workspace = true}
+
+[dependencies]
+pyo3 = { workspace = true, default-features = true, features = ["num-bigint", "auto-initialize"] }
+jiter = { path = "../jiter", features = ["python"] }
+
+[features]
+# must be enabled when building with `cargo build`, maturin enables this automatically
+extension-module = ["pyo3/extension-module"]
+
+[lib]
+name = "jiter_python"
+crate-type = ["cdylib", "rlib"]

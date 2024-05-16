@@ -1,8 +1,10 @@
+use std::fmt;
+
 use crate::errors::{json_err, JsonResult, LinePosition};
 use crate::number_decoder::AbstractNumberDecoder;
 use crate::string_decoder::{AbstractStringDecoder, Tape};
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct Peek(u8);
 
 #[allow(non_upper_case_globals)] // while testing
@@ -18,8 +20,25 @@ impl Peek {
     pub const Object: Self = Self(b'{');
 }
 
+impl fmt::Debug for Peek {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            b'n' => write!(f, "Null"),
+            b't' => write!(f, "True"),
+            b'f' => write!(f, "False"),
+            b'-' => write!(f, "Minus"),
+            b'I' => write!(f, "Infinity"),
+            b'N' => write!(f, "NaN"),
+            b'"' => write!(f, "String"),
+            b'[' => write!(f, "Array"),
+            b'{' => write!(f, "Object"),
+            _ => write!(f, "Peek({:?})", self.0 as char),
+        }
+    }
+}
+
 impl Peek {
-    const fn new(next: u8) -> Self {
+    pub const fn new(next: u8) -> Self {
         Self(next)
     }
 

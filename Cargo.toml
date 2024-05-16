@@ -1,36 +1,20 @@
-[package]
-name = "jiter"
-version = "0.2.1"
+[workspace]
+members = [
+    "crates/jiter",
+    "crates/jiter-python",
+    "crates/fuzz",
+]
+resolver = "2"
+
+[workspace.package]
+authors = ["Samuel Colvin <samuel@pydantic.dev>"]
+version = "0.3.0"
 edition = "2021"
-description = "Iterable JSON parser"
-readme = "README.md"
 license = "MIT"
 keywords = ["JSON", "parsing", "deserialization", "iter"]
 categories = ["parser-implementations", "parsing"]
 homepage = "https://github.com/pydantic/jiter/"
 repository = "https://github.com/pydantic/jiter/"
-
-[dependencies]
-num-bigint = "0.4.4"
-num-traits = "0.2.16"
-ahash = "0.8.0"
-smallvec = "1.11.0"
-pyo3 = { version = "0.21.0", default-features=false, features = ["num-bigint"], optional = true }
-lexical-parse-float = { version = "0.8.5", features =  ["format"] }
-
-[features]
-python = ["dep:pyo3", "dep:pyo3-build-config"]
-
-[dev-dependencies]
-bencher = "0.1.5"
-paste = "1.0.7"
-serde_json = {version = "1.0.87", features = ["preserve_order", "arbitrary_precision", "float_roundtrip"]}
-serde = "1.0.147"
-pyo3 = { version = "0.21.0", default-features=false, features = ["num-bigint", "auto-initialize"] }
-codspeed-bencher-compat = "2.3.1"
-
-[build-dependencies]
-pyo3-build-config = { version = "0.21.0", optional = true }
 
 [profile.bench]
 debug = true
@@ -42,19 +26,5 @@ codegen-units = 1
 inherits = "release"
 debug = true
 
-[[test]]
-name = "python"
-required-features = ["python"]
-
-[[bench]]
-name = "main"
-harness = false
-
-[[bench]]
-name = "python"
-required-features = ["python"]
-harness = false
-
-# get docs.rs to include python docs
-[package.metadata.docs.rs]
-all-features = true
+[workspace.dependencies]
+pyo3 = { version = "0.21.0", default-features = false}
