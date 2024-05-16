@@ -490,13 +490,13 @@ jobs:
         with:
           pattern: pypi_files_*
           merge-multiple: true
-          path: dist
+          path: crates/jiter-python/dist
 
       - name: run tests
         run: |
           cd crates/jiter-python
           pip install typing-extensions
-          pip install -r crates/jiter-python/tests/requirements.txt
+          pip install -r tests/requirements.txt
           pip install jiter --no-index --no-deps --find-links dist --force-reinstall
           pytest
 
