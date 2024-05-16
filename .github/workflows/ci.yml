@@ -558,9 +558,6 @@ jobs:
           twine check --strict dist/*
 
       - name: upload to pypi
-        run: |
-          cd crates/jiter-python
-          twine upload dist/*
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.pypi_token }}
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: crates/jiter-python/dist/
