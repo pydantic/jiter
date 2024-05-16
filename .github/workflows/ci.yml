@@ -28,7 +28,7 @@ jobs:
     - name: set up python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.11'
+        python-version: '3.12'
 
     - uses: dtolnay/rust-toolchain@master
       with:
@@ -79,7 +79,7 @@ jobs:
     - name: set up python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.11'
+        python-version: '3.12'
 
     - uses: dtolnay/rust-toolchain@stable
 
@@ -203,7 +203,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [linux, macos, windows]
+        os: [linux]  # windows and macos builds added manually
         target: [x86_64, aarch64]
         manylinux: [auto]
         include:
@@ -255,8 +255,10 @@ jobs:
           #   target: aarch64
           #   interpreter: 3.11 3.12
         exclude:
-          - os: windows
-            target: aarch64
+          # PGO optimized below
+          - os: linux
+            manylinux: auto
+            target: x86_64
 
     runs-on: ${{ (matrix.os == 'linux' && 'ubuntu') || matrix.os }}-latest
     steps:
@@ -265,7 +267,7 @@ jobs:
       - name: set up python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
           architecture: ${{ matrix.python-architecture || 'x64' }}
 
       - name: build wheels
@@ -275,7 +277,6 @@ jobs:
           manylinux: ${{ matrix.manylinux }}
           args: --release --out dist --interpreter ${{ matrix.interpreter || '3.8 3.9 3.10 3.11 3.12' }}
           rust-toolchain: stable
-          docker-options: -e CI
           working-directory: crates/jiter-python
 
       - run: ${{ (matrix.os == 'windows' && 'dir') || 'ls -lh' }} crates/jiter-python/dist/
@@ -340,7 +341,6 @@ jobs:
             --out pgo-wheel
             --interpreter ${{ matrix.interpreter }}
           rust-toolchain: stable
-          docker-options: -e CI
           working-directory: crates/jiter-python
         env:
           RUSTFLAGS: "-Cprofile-generate=${{ github.workspace }}/profdata"
@@ -372,7 +372,6 @@ jobs:
             --out dist
             --interpreter ${{ matrix.interpreter }}
           rust-toolchain: stable
-          docker-options: -e CI
           working-directory: crates/jiter-python
         env:
           RUSTFLAGS: "-Cprofile-use=${{ github.workspace }}/merged.profdata"
