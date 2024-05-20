@@ -15,3 +15,13 @@ extension-module = ["pyo3/extension-module"]
 [lib]
 name = "jiter_python"
 crate-type = ["cdylib", "rlib"]
+
+[lints.clippy]
+dbg_macro = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+# in general we lint against the pedantic group, but we will whitelist
+# certain lints which we don't want to enforce (for now)
+pedantic = { level = "deny", priority = -1 }
+missing_errors_doc = "allow"
+must_use_candidate = "allow"

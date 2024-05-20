@@ -492,11 +492,10 @@ jobs:
 
       - name: run tests
         run: |
-          cd crates/jiter-python
           python3 -m pip install -U pip -r tests/requirements.txt
           python3 -m pip install jiter --no-index --no-deps --find-links dist --force-reinstall
           python3 -m pytest
-
+        working-directory: crates/jiter-python
 
   # https://github.com/marketplace/actions/alls-green#why used for branch protection checks
   check:
