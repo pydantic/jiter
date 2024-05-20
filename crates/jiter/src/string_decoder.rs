@@ -314,7 +314,7 @@ fn parse_u4(data: &[u8], mut index: usize) -> JsonResult<(u16, usize)> {
         .get(index + 1..index + 5)
         .ok_or_else(|| json_error!(EofWhileParsingString, data.len()))?;
 
-    for c in u4.iter() {
+    for c in u4 {
         index += 1;
         let hex = match c {
             b'0'..=b'9' => (c & 0x0f) as u16,

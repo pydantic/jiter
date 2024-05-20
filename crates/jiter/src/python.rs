@@ -183,9 +183,7 @@ impl<'j, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck> PythonParser<'j
             // AFAIK this shouldn't happen since the key will always be a string  which is hashable
             // we panic here rather than returning a result and using `?` below as it's up to 14% faster
             // presumably because there are fewer branches
-            if r == -1 {
-                panic!("PyDict_SetItem failed")
-            }
+            assert_ne!(r, -1, "PyDict_SetItem failed");
         };
         let mut check_keys = KeyCheck::default();
         if let Some(first_key) = self.parser.object_first::<StringDecoder>(&mut self.tape)? {

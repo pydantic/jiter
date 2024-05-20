@@ -177,7 +177,7 @@ unsafe fn full_calc(byte_vec: SimdVecu8_16, last_digit: u32) -> u64 {
     // transmute the 2x64-bit lane into an array;
     let t: [u64; 2] = transmute(x);
     // since the data started out as digits, it's safe to assume the result fits in a u64
-    t[0].wrapping_mul(100000000).wrapping_add(t[1])
+    t[0].wrapping_mul(100_000_000).wrapping_add(t[1])
 }
 
 fn next_is_float(data: &[u8], index: usize) -> bool {
@@ -207,6 +207,7 @@ pub fn decode_string_chunk(
         } else {
             // this chunk contains either a stop character or a non-ascii character
             let a: [u8; 16] = unsafe { transmute(byte_vec) };
+            #[allow(clippy::redundant_else)]
             if let Some(r) = StringChunk::decode_array(a, &mut index, ascii_only) {
                 return r;
             } else {

@@ -266,13 +266,13 @@ pub(crate) fn consume_nan(data: &[u8], index: usize) -> JsonResult<usize> {
 }
 
 fn consume_ident<const SIZE: usize>(data: &[u8], mut index: usize, expected: [u8; SIZE]) -> JsonResult<usize> {
-    match data.get(index + 1..index + SIZE + 1) {
+    match data.get(index + 1..=index + SIZE) {
         Some(s) if s == expected => Ok(index + SIZE + 1),
         // TODO very sadly iterating over expected cause extra branches in the generated assembly
         //   and is significantly slower than just returning an error
         _ => {
             index += 1;
-            for c in expected.iter() {
+            for c in &expected {
                 match data.get(index) {
                     Some(v) if v == c => index += 1,
                     Some(_) => return json_err!(ExpectedSomeIdent, index),
