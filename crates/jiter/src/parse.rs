@@ -1,4 +1,5 @@
 use std::fmt;
+use std::ops::Range;
 
 use crate::errors::{json_err, JsonResult, LinePosition};
 use crate::number_decoder::AbstractNumberDecoder;
@@ -67,9 +68,11 @@ impl<'j> Parser<'j> {
     pub fn new(data: &'j [u8]) -> Self {
         Self { data, index: 0 }
     }
-}
 
-impl<'j> Parser<'j> {
+    pub fn slice(&self, range: Range<usize>) -> Option<&[u8]> {
+        self.data.get(range)
+    }
+
     pub fn current_position(&self) -> LinePosition {
         LinePosition::find(self.data, self.index)
     }

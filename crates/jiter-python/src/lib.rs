@@ -2,7 +2,7 @@ use std::sync::OnceLock;
 
 use pyo3::prelude::*;
 
-use jiter::{map_json_error, python_parse, JsonFloat, StringCacheMode};
+use jiter::{map_json_error, JsonFloat, PythonParseBuilder, StringCacheMode};
 
 #[pyfunction(
     signature = (
@@ -12,7 +12,8 @@ use jiter::{map_json_error, python_parse, JsonFloat, StringCacheMode};
         allow_inf_nan=true,
         cache_strings=StringCacheMode::All,
         allow_partial=false,
-        catch_duplicate_keys=false
+        catch_duplicate_keys=false,
+        lossless_floats=false,
     )
 )]
 pub fn from_json<'py>(
@@ -22,16 +23,18 @@ pub fn from_json<'py>(
     cache_strings: StringCacheMode,
     allow_partial: bool,
     catch_duplicate_keys: bool,
+    lossless_floats: bool,
 ) -> PyResult<Bound<'py, PyAny>> {
-    python_parse(
-        py,
-        json_data,
+    let parse_builder = PythonParseBuilder {
         allow_inf_nan,
-        cache_strings,
+        cache_mode: cache_strings,
         allow_partial,
         catch_duplicate_keys,
-    )
-    .map_err(|e| map_json_error(json_data, &e))
+        lossless_floats,
+    };
+    parse_builder
+        .python_parse(py, json_data)
+        .map_err(|e| map_json_error(json_data, &e))
 }
 
 pub fn get_jiter_version() -> &'static str {
