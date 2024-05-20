@@ -1,3 +1,4 @@
+import decimal
 from typing import Any, Literal
 
 def from_json(
@@ -39,3 +40,23 @@ def cache_usage() -> int:
     Returns:
         Size of the string cache in bytes.
     """
+
+
+class JsonFloat:
+    """
+    Represents a float from JSON, by holding the underlying string representing a float.
+    """
+    def __init__(self, json_float: str):
+        ...
+
+    def as_float(self) -> float:
+        ...
+
+    def as_decimal(self) -> decimal.Decimal:
+        ...
+
+    def __str__(self):
+        ...
+
+    def __repr__(self):
+        ...

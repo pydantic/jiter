@@ -2,7 +2,7 @@ use std::sync::OnceLock;
 
 use pyo3::prelude::*;
 
-use jiter::{map_json_error, python_parse, StringCacheMode};
+use jiter::{map_json_error, python_parse, JsonFloat, StringCacheMode};
 
 #[pyfunction(
     signature = (
@@ -65,5 +65,6 @@ fn jiter_python(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(from_json, m)?)?;
     m.add_function(wrap_pyfunction!(cache_clear, m)?)?;
     m.add_function(wrap_pyfunction!(cache_usage, m)?)?;
+    m.add_class::<JsonFloat>()?;
     Ok(())
 }

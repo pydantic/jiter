@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 import jiter
 import pytest
 from math import inf
@@ -144,3 +146,23 @@ def test_unicode_cache():
     jiter.cache_clear()
     parsed = jiter.from_json(json)
     assert parsed == {"💩": "£"}
+
+
+def test_json_float():
+    f = jiter.JsonFloat('123.45')
+    assert str(f) == '123.45'
+    assert repr(f) == 'JsonFloat(123.45)'
+    assert f.as_float() == 123.45
+    assert f.as_decimal() == Decimal('123.45')
+
+
+def test_json_float_scientific():
+    f = jiter.JsonFloat('123e4')
+    assert str(f) == '123e4'
+    assert f.as_float() == 123e4
+    assert f.as_decimal() == Decimal('123e4')
+
+
+def test_json_float_invalid():
+    with pytest.raises(ValueError, match='trailing characters at line 1 column 6'):
+        jiter.JsonFloat('123.4x')
