@@ -12,6 +12,7 @@ The API is extremely minimal:
 ```python
 def from_json(
     json_data: bytes,
+    /,
     *,
     allow_inf_nan: bool = True,
     cache_strings: Literal[True, False, "all", "keys", "none"] = True,

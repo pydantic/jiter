@@ -2,6 +2,7 @@ from typing import Any, Literal
 
 def from_json(
     json_data: bytes,
+    /,
     *,
     allow_inf_nan: bool = True,
     cache_strings: Literal[True, False, "all", "keys", "none"] = True,

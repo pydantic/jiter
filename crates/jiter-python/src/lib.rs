@@ -6,7 +6,8 @@ use jiter::{map_json_error, python_parse, StringCacheMode};
 
 #[pyfunction(
     signature = (
-        data,
+        json_data,
+        /,
         *,
         allow_inf_nan=true,
         cache_strings=StringCacheMode::All,
@@ -16,22 +17,21 @@ use jiter::{map_json_error, python_parse, StringCacheMode};
 )]
 pub fn from_json<'py>(
     py: Python<'py>,
-    data: &[u8],
+    json_data: &[u8],
     allow_inf_nan: bool,
     cache_strings: StringCacheMode,
     allow_partial: bool,
     catch_duplicate_keys: bool,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let json_bytes = data;
     python_parse(
         py,
-        json_bytes,
+        json_data,
         allow_inf_nan,
         cache_strings,
         allow_partial,
         catch_duplicate_keys,
     )
-    .map_err(|e| map_json_error(json_bytes, &e))
+    .map_err(|e| map_json_error(json_data, &e))
 }
 
 pub fn get_jiter_version() -> &'static str {
