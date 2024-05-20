@@ -18,6 +18,7 @@ use crate::JsonErrorType;
 /// Parse a JSON value from a byte slice and return a Python object.
 ///
 /// # Arguments
+///
 /// - `py`: [Python](https://docs.rs/pyo3/latest/pyo3/marker/struct.Python.html) marker token.
 /// - `json_data`: The JSON data to parse.
 /// - `allow_inf_nan`: Whether to allow `(-)Infinity` and `NaN` values.

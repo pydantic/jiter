@@ -6,6 +6,8 @@ mod lazy_index_map;
 mod number_decoder;
 mod parse;
 #[cfg(feature = "python")]
+mod py_float;
+#[cfg(feature = "python")]
 mod py_string_cache;
 #[cfg(feature = "python")]
 mod python;
