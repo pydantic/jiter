@@ -10,7 +10,7 @@ use pyo3::ToPyObject;
 use smallvec::SmallVec;
 
 use crate::errors::{json_err, json_error, JsonError, JsonResult, DEFAULT_RECURSION_LIMIT};
-use crate::number_decoder::{AbstractNumberDecoder, NumberAny, NumberInt, NumberRange};
+use crate::number_decoder::{AbstractNumberDecoder, NumberAny, NumberRange};
 use crate::parse::{Parser, Peek};
 use crate::py_string_cache::{StringCacheAll, StringCacheKeys, StringCacheMode, StringMaybeCache, StringNoCache};
 use crate::string_decoder::{StringDecoder, Tape};
@@ -281,9 +281,7 @@ impl MaybeParseNumber for ParseNumberLossy {
         allow_inf_nan: bool,
     ) -> JsonResult<Bound<'py, PyAny>> {
         match parser.consume_number::<NumberAny>(peek.into_inner(), allow_inf_nan) {
-            Ok(NumberAny::Int(NumberInt::Int(int))) => Ok(int.to_object(py).into_bound(py)),
-            Ok(NumberAny::Int(NumberInt::BigInt(big_int))) => Ok(big_int.to_object(py).into_bound(py)),
-            Ok(NumberAny::Float(float)) => Ok(float.to_object(py).into_bound(py)),
+            Ok(number) => Ok(number.to_object(py).into_bound(py)),
             Err(e) => {
                 if !peek.is_num() {
                     Err(json_error!(ExpectedSomeValue, parser.index))
@@ -308,11 +306,7 @@ impl MaybeParseNumber for ParseNumberLossless {
             Ok(NumberRange::Int(int_range)) => {
                 let bytes = parser.slice(int_range).unwrap();
                 let (num, _) = NumberAny::decode(bytes, 0, peek.into_inner(), allow_inf_nan)?;
-                match num {
-                    NumberAny::Int(NumberInt::Int(int)) => Ok(int.to_object(py).into_bound(py)),
-                    NumberAny::Int(NumberInt::BigInt(big_int)) => Ok(big_int.to_object(py).into_bound(py)),
-                    NumberAny::Float(_) => unreachable!("got float from parsing int"),
-                }
+                Ok(num.to_object(py).into_bound(py))
             }
             Ok(NumberRange::Float(float_range)) => {
                 let bytes = parser.slice(float_range).unwrap();

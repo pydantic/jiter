@@ -187,3 +187,9 @@ def test_lossless_floats():
     assert f.as_bytes() == b'123.456789123456789e45'
     assert str(f) == '123.456789123456789e45'
     assert repr(f) == 'LosslessFloat(123.456789123456789e45)'
+
+
+def test_lossless_floats_int():
+    v = jiter.from_json(b'123', lossless_floats=True)
+    assert isinstance(v, int)
+    assert v == 123

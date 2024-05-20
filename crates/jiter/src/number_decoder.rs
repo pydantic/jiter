@@ -113,6 +113,17 @@ pub enum NumberAny {
     Float(f64),
 }
 
+#[cfg(feature = "python")]
+impl pyo3::ToPyObject for NumberAny {
+    fn to_object(&self, py: pyo3::Python<'_>) -> pyo3::PyObject {
+        match self {
+            Self::Int(NumberInt::Int(int)) => int.to_object(py),
+            Self::Int(NumberInt::BigInt(big_int)) => big_int.to_object(py),
+            Self::Float(float) => float.to_object(py),
+        }
+    }
+}
+
 impl From<NumberAny> for f64 {
     fn from(num: NumberAny) -> Self {
         match num {
