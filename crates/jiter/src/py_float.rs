@@ -8,16 +8,16 @@ use crate::Jiter;
 /// Represents a float from JSON, by holding the underlying bytes representing a float from JSON.
 #[derive(Debug, Clone)]
 #[pyclass]
-pub struct JsonFloat(Vec<u8>);
+pub struct LosslessFloat(Vec<u8>);
 
-impl From<Vec<u8>> for JsonFloat {
+impl From<Vec<u8>> for LosslessFloat {
     fn from(raw: Vec<u8>) -> Self {
         Self(raw)
     }
 }
 
 #[pymethods]
-impl JsonFloat {
+impl LosslessFloat {
     #[new]
     fn new(raw: Vec<u8>) -> PyResult<Self> {
         let s = Self(raw);
@@ -53,7 +53,7 @@ impl JsonFloat {
     }
 
     fn __repr__(&self) -> PyResult<String> {
-        self.__str__().map(|s| format!("JsonFloat({s})"))
+        self.__str__().map(|s| format!("LosslessFloat({s})"))
     }
 }
 

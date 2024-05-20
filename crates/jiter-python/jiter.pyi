@@ -24,7 +24,7 @@ def from_json(
             - False / 'none' - cache nothing
         allow_partial: if True, return parsed content when reaching EOF without closing objects and arrays
         catch_duplicate_keys: if True, raise an exception if objects contain the same key multiple times
-        lossless_floats: if True, preserve full detail on floats using `JsonFloat`
+        lossless_floats: if True, preserve full detail on floats using `LosslessFloat`
 
     Returns:
         Python object built from the JSON input.
@@ -44,12 +44,12 @@ def cache_usage() -> int:
     """
 
 
-class JsonFloat:
+class LosslessFloat:
     """
     Represents a float from JSON, by holding the underlying bytes representing a float from JSON.
     """
     def __init__(self, json_float: bytes):
-        """Construct a JsonFloat object from a JSON bytes slice"""
+        """Construct a LosslessFloat object from a JSON bytes slice"""
 
     def as_float(self) -> float:
         """Construct a Python float from the JSON bytes slice"""

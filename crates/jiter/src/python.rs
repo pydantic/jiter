@@ -14,7 +14,7 @@ use crate::number_decoder::{AbstractNumberDecoder, NumberAny, NumberInt, NumberR
 use crate::parse::{Parser, Peek};
 use crate::py_string_cache::{StringCacheAll, StringCacheKeys, StringCacheMode, StringMaybeCache, StringNoCache};
 use crate::string_decoder::{StringDecoder, Tape};
-use crate::{JsonErrorType, JsonFloat};
+use crate::{JsonErrorType, LosslessFloat};
 
 #[derive(Default)]
 #[allow(clippy::struct_excessive_bools)]
@@ -27,7 +27,7 @@ pub struct PythonParseBuilder {
     pub allow_partial: bool,
     /// Whether to catch duplicate keys in objects.
     pub catch_duplicate_keys: bool,
-    /// Whether to preserve full detail on floats using [`JsonFloat`]
+    /// Whether to preserve full detail on floats using [`LosslessFloat`]
     pub lossless_floats: bool,
 }
 
@@ -316,7 +316,7 @@ impl MaybeParseNumber for ParseNumberLossless {
             }
             Ok(NumberRange::Float(float_range)) => {
                 let bytes = parser.slice(float_range).unwrap();
-                let json_float: JsonFloat = bytes.to_vec().into();
+                let json_float: LosslessFloat = bytes.to_vec().into();
                 Ok(json_float.into_py(py).into_bound(py))
             }
             Err(e) => {
