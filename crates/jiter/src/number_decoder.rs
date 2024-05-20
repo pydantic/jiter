@@ -194,7 +194,7 @@ impl IntParse {
                 index += 1;
                 return match data.get(index) {
                     Some(b'.') => Ok((Self::Float, index)),
-                    Some(b'e') | Some(b'E') => Ok((Self::Float, index)),
+                    Some(b'e' | b'E') => Ok((Self::Float, index)),
                     Some(digit) if digit.is_ascii_digit() => json_err!(InvalidNumber, index),
                     _ => Ok((Self::Int(NumberInt::Int(0)), index)),
                 };
@@ -213,7 +213,7 @@ impl IntParse {
             IntChunk::Done(value) => {
                 let mut value_i64 = value as i64;
                 if !positive {
-                    value_i64 = -value_i64
+                    value_i64 = -value_i64;
                 }
                 return Ok((Self::Int(NumberInt::Int(value_i64)), new_index));
             }
@@ -379,7 +379,7 @@ impl AbstractNumberDecoder for NumberRange {
                         let end = consume_decimal(data, index)?;
                         Ok((start..end, end))
                     }
-                    Some(b'e') | Some(b'E') => {
+                    Some(b'e' | b'E') => {
                         index += 1;
                         let end = consume_exponential(data, index)?;
                         Ok((start..end, end))
@@ -420,6 +420,7 @@ impl AbstractNumberDecoder for NumberRange {
             if (new_index - start) > 4300 {
                 return json_err!(NumberOutOfRange, start + 4301);
             }
+            #[allow(clippy::single_match_else)]
             match chunk {
                 IntChunk::Ongoing(_) => {
                     index = new_index;
@@ -446,7 +447,7 @@ impl AbstractNumberDecoder for NumberRange {
 
 fn consume_exponential(data: &[u8], mut index: usize) -> JsonResult<usize> {
     match data.get(index) {
-        Some(b'-') | Some(b'+') => {
+        Some(b'-' | b'+') => {
             index += 1;
         }
         Some(v) if v.is_ascii_digit() => (),

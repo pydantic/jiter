@@ -1,7 +1,7 @@
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyList, PyString};
+use pyo3::types::PyString;
 
-use jiter::{cache_clear, cache_usage, map_json_error, pystring_fast_new, python_parse, JsonValue, StringCacheMode};
+use jiter::{pystring_fast_new, JsonValue, StringCacheMode};
 
 #[test]
 fn test_to_py_object_numeric() {

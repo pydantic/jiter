@@ -1,5 +1,3 @@
-use std::fmt;
-
 /// Enum representing all possible errors in JSON syntax.
 ///
 /// Almost all of `JsonErrorType` is copied from [serde_json](https://github.com/serde-rs) so errors match
@@ -196,9 +194,9 @@ pub enum JiterErrorType {
 impl std::fmt::Display for JiterErrorType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::JsonError(error_type) => write!(f, "{}", error_type),
+            Self::JsonError(error_type) => write!(f, "{error_type}"),
             Self::WrongType { expected, actual } => {
-                write!(f, "expected {} but found {}", expected, actual)
+                write!(f, "expected {expected} but found {actual}")
             }
         }
     }
@@ -254,8 +252,8 @@ pub struct LinePosition {
     pub column: usize,
 }
 
-impl fmt::Display for LinePosition {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl std::fmt::Display for LinePosition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "line {} column {}", self.line, self.column)
     }
 }

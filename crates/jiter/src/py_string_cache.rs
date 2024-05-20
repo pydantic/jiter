@@ -95,7 +95,7 @@ pub fn cache_usage(py: Python) -> usize {
 }
 
 pub fn cache_clear(py: Python) {
-    get_string_cache!(py).borrow_mut().clear()
+    get_string_cache!(py).borrow_mut().clear();
 }
 
 pub fn cached_py_string<'py>(py: Python<'py>, s: &str, ascii_only: bool) -> Bound<'py, PyString> {
