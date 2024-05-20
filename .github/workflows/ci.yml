@@ -492,16 +492,15 @@ jobs:
 
       - name: run tests
         run: |
-          cd crates/jiter-python
           python3 -m pip install -U pip -r tests/requirements.txt
           python3 -m pip install jiter --no-index --no-deps --find-links dist --force-reinstall
           python3 -m pytest
-
+        working-directory: crates/jiter-python
 
   # https://github.com/marketplace/actions/alls-green#why used for branch protection checks
   check:
     if: always()
-    needs: [test-linux, test-macos, bench, fuzz, fuzz-skip, lint]
+    needs: [test-linux, test-macos, bench, fuzz, fuzz-skip, lint, test-builds-arch, test-builds-os, build-sdist]
     runs-on: ubuntu-latest
     steps:
       - name: Decide whether the needed jobs succeeded or failed
@@ -528,7 +527,7 @@ jobs:
         CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
   release-python:
-    needs: [test-builds-arch, test-builds-os, build-sdist, check]
+    needs: [check]
     if: "success() && startsWith(github.ref, 'refs/tags/jiter-python-v')"
     runs-on: ubuntu-latest
     environment: release-python

@@ -50,7 +50,7 @@ pub fn get_jiter_version() -> &'static str {
 
 #[pyfunction]
 pub fn cache_clear(py: Python<'_>) {
-    jiter::cache_clear(py)
+    jiter::cache_clear(py);
 }
 
 #[pyfunction]
