@@ -5,21 +5,18 @@ use std::io::Read;
 
 use pyo3::Python;
 
-use jiter::{cache_clear, python_parse, StringCacheMode};
+use jiter::{cache_clear, PythonParseBuilder, StringCacheMode};
 
 fn python_parse_numeric(bench: &mut Bencher) {
     Python::with_gil(|py| {
         cache_clear(py);
         bench.iter(|| {
-            python_parse(
-                py,
-                br#"  { "int": 1, "bigint": 123456789012345678901234567890, "float": 1.2}  "#,
-                false,
-                StringCacheMode::All,
-                false,
-                false,
-            )
-            .unwrap()
+            PythonParseBuilder::default()
+                .python_parse(
+                    py,
+                    br#"  { "int": 1, "bigint": 123456789012345678901234567890, "float": 1.2}  "#,
+                )
+                .unwrap()
         });
     })
 }
@@ -28,15 +25,9 @@ fn python_parse_other(bench: &mut Bencher) {
     Python::with_gil(|py| {
         cache_clear(py);
         bench.iter(|| {
-            python_parse(
-                py,
-                br#"["string", true, false, null]"#,
-                false,
-                StringCacheMode::All,
-                false,
-                false,
-            )
-            .unwrap()
+            PythonParseBuilder::default()
+                .python_parse(py, br#"["string", true, false, null]"#)
+                .unwrap()
         });
     })
 }
@@ -49,7 +40,14 @@ fn _python_parse_file(path: &str, bench: &mut Bencher, cache_mode: StringCacheMo
 
     Python::with_gil(|py| {
         cache_clear(py);
-        bench.iter(|| python_parse(py, json_data, false, cache_mode, false, false).unwrap());
+        bench.iter(|| {
+            PythonParseBuilder {
+                cache_mode,
+                ..Default::default()
+            }
+            .python_parse(py, json_data)
+            .unwrap()
+        });
     })
 }
 
