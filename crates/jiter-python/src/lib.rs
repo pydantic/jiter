@@ -2,7 +2,7 @@ use std::sync::OnceLock;
 
 use pyo3::prelude::*;
 
-use jiter::{map_json_error, python_parse, StringCacheMode};
+use jiter::{map_json_error, python_parse, PartialMode, StringCacheMode};
 
 #[pyfunction(
     signature = (
@@ -11,7 +11,7 @@ use jiter::{map_json_error, python_parse, StringCacheMode};
         *,
         allow_inf_nan=true,
         cache_strings=StringCacheMode::All,
-        allow_partial=false,
+        allow_partial=PartialMode::Off,
         catch_duplicate_keys=false
     )
 )]
@@ -20,7 +20,7 @@ pub fn from_json<'py>(
     json_data: &[u8],
     allow_inf_nan: bool,
     cache_strings: StringCacheMode,
-    allow_partial: bool,
+    allow_partial: PartialMode,
     catch_duplicate_keys: bool,
 ) -> PyResult<Bound<'py, PyAny>> {
     python_parse(

@@ -1562,5 +1562,17 @@ fn jiter_skip_invalid_long_float() {
 #[test]
 fn jiter_value_invalid_long_float() {
     let e = JsonValue::parse(br#"2121515572557277572557277e"#, false).unwrap_err();
-    assert_eq!(e.error_type, JsonErrorType::EofWhileParsingValue,);
+    assert_eq!(e.error_type, JsonErrorType::EofWhileParsingValue);
+}
+
+#[test]
+fn jiter_partial_string() {
+    let mut jiter = Jiter::new(br#"["foo"#).with_allow_partial_strings();
+    assert_eq!(jiter.next_array().unwrap(), Some(Peek::String));
+    assert_eq!(jiter.next_str().unwrap(), "foo");
+    let e = jiter.array_step().unwrap_err();
+    assert_eq!(
+        e.error_type,
+        JiterErrorType::JsonError(JsonErrorType::EofWhileParsingList)
+    );
 }

@@ -62,11 +62,22 @@ def test_extracted_value_error():
 def test_partial_array():
     json = b'["string", true, null, 1, "foo'
     parsed = jiter.from_json(json, allow_partial=True)
-    assert parsed == ["string", True, None, 1, "foo"]
+    assert parsed == ["string", True, None, 1]
 
     # test that stopping at every points is ok
     for i in range(1, len(json)):
         parsed = jiter.from_json(json[:i], allow_partial=True)
+        assert isinstance(parsed, list)
+
+
+def test_partial_array_trailing_strings():
+    json = b'["string", true, null, 1, "foo'
+    parsed = jiter.from_json(json, allow_partial='trailing-strings')
+    assert parsed == ["string", True, None, 1, "foo"]
+
+    # test that stopping at every points is ok
+    for i in range(1, len(json)):
+        parsed = jiter.from_json(json[:i], allow_partial='trailing-strings')
         assert isinstance(parsed, list)
 
 
@@ -93,7 +104,7 @@ def test_partial_object():
 def test_partial_object_string():
     json = b'{"a": 1, "b": 2, "c": "foo'
     parsed = jiter.from_json(json, allow_partial=True)
-    assert parsed == {"a": 1, "b": 2, "c": "foo"}
+    assert parsed == {"a": 1, "b": 2}
 
     # test that stopping at every points is ok
     for i in range(1, len(json)):
@@ -102,6 +113,21 @@ def test_partial_object_string():
 
     json = b'{"title": "Pride and Prejudice", "author": "Jane A'
     parsed = jiter.from_json(json, allow_partial=True)
+    assert parsed == {"title": "Pride and Prejudice"}
+
+
+def test_partial_object_string_trailing_strings():
+    json = b'{"a": 1, "b": 2, "c": "foo'
+    parsed = jiter.from_json(json, allow_partial='trailing-strings')
+    assert parsed == {"a": 1, "b": 2, "c": "foo"}
+
+    # test that stopping at every points is ok
+    for i in range(1, len(json)):
+        parsed = jiter.from_json(json, allow_partial=True)
+        assert isinstance(parsed, dict)
+
+    json = b'{"title": "Pride and Prejudice", "author": "Jane A'
+    parsed = jiter.from_json(json, allow_partial='trailing-strings')
     assert parsed == {"title": "Pride and Prejudice", "author": "Jane A"}
 
 

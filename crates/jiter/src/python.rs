@@ -1,10 +1,10 @@
 use ahash::AHashSet;
 use std::marker::PhantomData;
 
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::ffi;
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyList, PyString};
+use pyo3::types::{PyBool, PyDict, PyList, PyString};
 
 use smallvec::SmallVec;
 
@@ -34,12 +34,12 @@ pub fn python_parse<'py>(
     json_data: &[u8],
     allow_inf_nan: bool,
     cache_mode: StringCacheMode,
-    allow_partial: bool,
+    partial_mode: impl Into<PartialMode>,
     catch_duplicate_keys: bool,
 ) -> JsonResult<Bound<'py, PyAny>> {
     macro_rules! ppp {
         ($string_cache:ident, $key_check:ident) => {
-            PythonParser::<$string_cache, $key_check>::parse(py, json_data, allow_inf_nan, allow_partial)
+            PythonParser::<$string_cache, $key_check>::parse(py, json_data, allow_inf_nan, partial_mode.into())
         };
     }
 
@@ -71,7 +71,7 @@ struct PythonParser<'j, StringCache, KeyCheck> {
     tape: Tape,
     recursion_limit: u8,
     allow_inf_nan: bool,
-    allow_partial: bool,
+    partial_mode: PartialMode,
 }
 
 impl<'j, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck> PythonParser<'j, StringCache, KeyCheck> {
@@ -79,7 +79,7 @@ impl<'j, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck> PythonParser<'j
         py: Python<'py>,
         json_data: &[u8],
         allow_inf_nan: bool,
-        allow_partial: bool,
+        partial_mode: PartialMode,
     ) -> JsonResult<Bound<'py, PyAny>> {
         let mut slf = PythonParser {
             _string_cache: PhantomData::<StringCache>,
@@ -88,12 +88,12 @@ impl<'j, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck> PythonParser<'j
             tape: Tape::default(),
             recursion_limit: DEFAULT_RECURSION_LIMIT,
             allow_inf_nan,
-            allow_partial,
+            partial_mode,
         };
 
         let peek = slf.parser.peek()?;
         let v = slf.py_take_value(py, peek)?;
-        if !allow_partial {
+        if !slf.partial_mode.is_active() {
             slf.parser.finish()?;
         }
         Ok(v)
@@ -116,7 +116,7 @@ impl<'j, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck> PythonParser<'j
             Peek::String => {
                 let s = self
                     .parser
-                    .consume_string::<StringDecoder>(&mut self.tape, self.allow_partial)?;
+                    .consume_string::<StringDecoder>(&mut self.tape, self.partial_mode.allow_trailing_str())?;
                 Ok(StringCache::get_value(py, s.as_str(), s.ascii_only()).into_any())
             }
             Peek::Array => {
@@ -208,7 +208,7 @@ impl<'j, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck> PythonParser<'j
     }
 
     fn _allow_partial_err(&self, e: &JsonError) -> bool {
-        if self.allow_partial {
+        if self.partial_mode.is_active() {
             matches!(
                 e.error_type,
                 JsonErrorType::EofWhileParsingList
@@ -233,6 +233,52 @@ impl<'j, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck> PythonParser<'j
 
         self.recursion_limit += 1;
         r
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum PartialMode {
+    Off,
+    On,
+    TrailingStrings,
+}
+
+const PARTIAL_ERROR: &str = "Invalid partial mode, should be `'off'`, `'on'`, `'trailing-strings'` or a `bool`";
+
+impl<'py> FromPyObject<'py> for PartialMode {
+    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+        if let Ok(bool_mode) = ob.downcast::<PyBool>() {
+            Ok(bool_mode.is_true().into())
+        } else if let Ok(str_mode) = ob.extract::<&str>() {
+            match str_mode {
+                "off" => Ok(Self::Off),
+                "on" => Ok(Self::On),
+                "trailing-strings" => Ok(Self::TrailingStrings),
+                _ => Err(PyValueError::new_err(PARTIAL_ERROR)),
+            }
+        } else {
+            Err(PyTypeError::new_err(PARTIAL_ERROR))
+        }
+    }
+}
+
+impl From<bool> for PartialMode {
+    fn from(mode: bool) -> Self {
+        if mode {
+            Self::On
+        } else {
+            Self::Off
+        }
+    }
+}
+
+impl PartialMode {
+    fn is_active(self) -> bool {
+        !matches!(self, Self::Off)
+    }
+
+    fn allow_trailing_str(self) -> bool {
+        matches!(self, Self::TrailingStrings)
     }
 }
 
