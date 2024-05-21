@@ -34,12 +34,12 @@ pub fn python_parse<'py>(
     json_data: &[u8],
     allow_inf_nan: bool,
     cache_mode: StringCacheMode,
-    partial_mode: impl Into<PartialMode>,
+    partial_mode: PartialMode,
     catch_duplicate_keys: bool,
 ) -> JsonResult<Bound<'py, PyAny>> {
     macro_rules! ppp {
         ($string_cache:ident, $key_check:ident) => {
-            PythonParser::<$string_cache, $key_check>::parse(py, json_data, allow_inf_nan, partial_mode.into())
+            PythonParser::<$string_cache, $key_check>::parse(py, json_data, allow_inf_nan, partial_mode)
         };
     }
 

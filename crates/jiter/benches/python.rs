@@ -5,7 +5,7 @@ use std::io::Read;
 
 use pyo3::Python;
 
-use jiter::{cache_clear, python_parse, StringCacheMode};
+use jiter::{cache_clear, python_parse, PartialMode, StringCacheMode};
 
 fn python_parse_numeric(bench: &mut Bencher) {
     Python::with_gil(|py| {
@@ -16,7 +16,7 @@ fn python_parse_numeric(bench: &mut Bencher) {
                 br#"  { "int": 1, "bigint": 123456789012345678901234567890, "float": 1.2}  "#,
                 false,
                 StringCacheMode::All,
-                false,
+                PartialMode::Off,
                 false,
             )
             .unwrap()
@@ -33,7 +33,7 @@ fn python_parse_other(bench: &mut Bencher) {
                 br#"["string", true, false, null]"#,
                 false,
                 StringCacheMode::All,
-                false,
+                PartialMode::Off,
                 false,
             )
             .unwrap()
@@ -49,7 +49,7 @@ fn _python_parse_file(path: &str, bench: &mut Bencher, cache_mode: StringCacheMo
 
     Python::with_gil(|py| {
         cache_clear(py);
-        bench.iter(|| python_parse(py, json_data, false, cache_mode, false, false).unwrap());
+        bench.iter(|| python_parse(py, json_data, false, cache_mode, PartialMode::Off, false).unwrap());
     })
 }
 
