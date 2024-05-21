@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::fmt::Debug;
 use std::ops::Range;
 use std::str::{from_utf8, from_utf8_unchecked};
 
@@ -14,7 +13,7 @@ pub trait AbstractStringDecoder<'t, 'j>
 where
     'j: 't,
 {
-    type Output: Debug;
+    type Output: std::fmt::Debug;
 
     fn decode(
         data: &'j [u8],

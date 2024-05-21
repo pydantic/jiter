@@ -69,5 +69,6 @@ match_bool = "allow"
 doc_markdown = "allow"
 implicit_clone = "allow"
 iter_without_into_iter = "allow"
+return_self_not_must_use = "allow"
 inline_always = "allow"  # TODO remove?
 match_same_arms = "allow"  # TODO remove?

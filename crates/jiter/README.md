@@ -69,7 +69,7 @@ fn main() {
                 "+44 2345678"
             ]
         }"#;
-    let mut jiter = Jiter::new(json_data.as_bytes(), true, false);
+    let mut jiter = Jiter::new(json_data.as_bytes()).with_allow_inf_nan();
     assert_eq!(jiter.next_object().unwrap(), Some("name"));
     assert_eq!(jiter.next_str().unwrap(), "John Doe");
     assert_eq!(jiter.next_key().unwrap(), Some("age"));

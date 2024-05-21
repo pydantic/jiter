@@ -36,14 +36,24 @@ impl<'j> Jiter<'j> {
     /// # Arguments
     /// - `data`: The JSON data to be parsed.
     /// - `allow_inf_nan`: Whether to allow `NaN`, `Infinity` and `-Infinity` as numbers.
-    pub fn new(data: &'j [u8], allow_inf_nan: bool, allow_partial_strings: bool) -> Self {
+    pub fn new(data: &'j [u8]) -> Self {
         Self {
             data,
             parser: Parser::new(data),
             tape: Tape::default(),
-            allow_inf_nan,
-            allow_partial_strings,
+            allow_inf_nan: false,
+            allow_partial_strings: false,
         }
+    }
+
+    pub fn with_allow_inf_nan(mut self) -> Self {
+        self.allow_inf_nan = true;
+        self
+    }
+
+    pub fn with_allow_partial_strings(mut self) -> Self {
+        self.allow_partial_strings = true;
+        self
     }
 
     /// Get the current [LinePosition] of the parser.
