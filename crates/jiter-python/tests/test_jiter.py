@@ -62,7 +62,7 @@ def test_extracted_value_error():
 def test_partial_array():
     json = b'["string", true, null, 1, "foo'
     parsed = jiter.from_json(json, allow_partial=True)
-    assert parsed == ["string", True, None, 1]
+    assert parsed == ["string", True, None, 1, "foo"]
 
     # test that stopping at every points is ok
     for i in range(1, len(json)):
@@ -88,6 +88,21 @@ def test_partial_object():
     for i in range(1, len(json)):
         parsed = jiter.from_json(json, allow_partial=True)
         assert isinstance(parsed, dict)
+
+
+def test_partial_object_string():
+    json = b'{"a": 1, "b": 2, "c": "foo'
+    parsed = jiter.from_json(json, allow_partial=True)
+    assert parsed == {"a": 1, "b": 2, "c": "foo"}
+
+    # test that stopping at every points is ok
+    for i in range(1, len(json)):
+        parsed = jiter.from_json(json, allow_partial=True)
+        assert isinstance(parsed, dict)
+
+    json = b'{"title": "Pride and Prejudice", "author": "Jane A'
+    parsed = jiter.from_json(json, allow_partial=True)
+    assert parsed == {"title": "Pride and Prejudice", "author": "Jane A"}
 
 
 def test_partial_nested():

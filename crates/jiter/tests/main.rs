@@ -95,7 +95,7 @@ macro_rules! single_expect_ok_or_error {
             #[allow(non_snake_case)]
             #[test]
             fn [< single_element_ok__ $name >]() {
-                let mut jiter = Jiter::new($json.as_bytes(), true);
+                let mut jiter = Jiter::new($json.as_bytes(), true, false);
                 let elements = json_vec(&mut jiter, None).unwrap().join(", ");
                 assert_eq!(elements, $expected);
                 jiter.finish().unwrap();
@@ -108,7 +108,7 @@ macro_rules! single_expect_ok_or_error {
             #[allow(non_snake_case)]
             #[test]
             fn [< single_element_xerror__ $name >]() {
-                let mut jiter = Jiter::new($json.as_bytes(), true);
+                let mut jiter = Jiter::new($json.as_bytes(), true, false);
                 let result = json_vec(&mut jiter, None);
                 let first_value = match result {
                     Ok(v) => v,
@@ -239,7 +239,7 @@ single_tests! {
 fn invalid_string_controls() {
     let json = "\"123\x08\x0c\n\r\t\"";
     let b = json.as_bytes();
-    let mut jiter = Jiter::new(b, false);
+    let mut jiter = Jiter::new(b, false, false);
     let e = jiter.next_str().unwrap_err();
     assert_eq!(
         e.error_type,
@@ -257,7 +257,7 @@ fn invalid_string_controls() {
 fn json_parse_str() {
     let json = r#" "foobar" "#;
     let data = json.as_bytes();
-    let mut jiter = Jiter::new(data, false);
+    let mut jiter = Jiter::new(data, false, false);
     let peek = jiter.peek().unwrap();
     assert_eq!(peek, Peek::String);
     assert_eq!(jiter.current_position(), LinePosition::new(1, 2));
@@ -274,7 +274,7 @@ macro_rules! string_tests {
                 #[test]
                 fn [< string_parsing_ $name >]() {
                     let data = $json.as_bytes();
-                    let mut jiter = Jiter::new(data, false);
+                    let mut jiter = Jiter::new(data, false, false);
                     let str = jiter.next_str().unwrap();
                     assert_eq!(str, $expected);
                     jiter.finish().unwrap();
@@ -301,7 +301,7 @@ macro_rules! string_test_errors {
                 #[test]
                 fn [< string_parsing_errors_ $name >]() {
                     let data = $json.as_bytes();
-                    let mut jiter = Jiter::new(data, false);
+                    let mut jiter = Jiter::new(data, false, false);
                     match jiter.next_str() {
                         Ok(t) => panic!("unexpectedly valid: {:?} -> {:?}", $json, t),
                         Err(e) => {
@@ -340,7 +340,7 @@ string_test_errors! {
 fn invalid_unicode_code() {
     let json = vec![34, 92, 34, 206, 44, 163, 34];
     // dbg!(json.iter().map(|b| *b as char).collect::<Vec<_>>());
-    let mut jiter = Jiter::new(&json, false);
+    let mut jiter = Jiter::new(&json, false, false);
     let e = jiter.next_str().unwrap_err();
     assert_eq!(
         e.error_type,
@@ -354,7 +354,7 @@ fn invalid_unicode_code() {
 fn invalid_control() {
     let json = vec![34, 206, 34];
     // dbg!(json.iter().map(|b| *b as char).collect::<Vec<_>>());
-    let mut jiter = Jiter::new(&json, false);
+    let mut jiter = Jiter::new(&json, false, false);
     let e = jiter.next_str().unwrap_err();
     assert_eq!(
         e.error_type,
@@ -412,7 +412,7 @@ fn utf8_range_long() {
 #[test]
 fn nan_disallowed() {
     let json = r#"[NaN]"#;
-    let mut jiter = Jiter::new(json.as_bytes(), false);
+    let mut jiter = Jiter::new(json.as_bytes(), false, false);
     assert_eq!(jiter.next_array().unwrap().unwrap(), Peek::NaN);
     let e = jiter.next_number().unwrap_err();
     assert_eq!(
@@ -426,7 +426,7 @@ fn nan_disallowed() {
 #[test]
 fn inf_disallowed() {
     let json = r#"[Infinity]"#;
-    let mut jiter = Jiter::new(json.as_bytes(), false);
+    let mut jiter = Jiter::new(json.as_bytes(), false, false);
     assert_eq!(jiter.next_array().unwrap().unwrap(), Peek::Infinity);
     let e = jiter.next_number().unwrap_err();
     assert_eq!(
@@ -440,7 +440,7 @@ fn inf_disallowed() {
 #[test]
 fn inf_neg_disallowed() {
     let json = r#"[-Infinity]"#;
-    let mut jiter = Jiter::new(json.as_bytes(), false);
+    let mut jiter = Jiter::new(json.as_bytes(), false, false);
     assert_eq!(jiter.next_array().unwrap().unwrap(), Peek::Minus);
     let e = jiter.next_number().unwrap_err();
     assert_eq!(e.error_type, JiterErrorType::JsonError(JsonErrorType::InvalidNumber));
@@ -451,7 +451,7 @@ fn inf_neg_disallowed() {
 #[test]
 fn num_after() {
     let json = r#"2:"#; // `:` is 58, directly after 9
-    let mut jiter = Jiter::new(json.as_bytes(), false);
+    let mut jiter = Jiter::new(json.as_bytes(), false, false);
     let num = jiter.next_number().unwrap();
     assert_eq!(num, NumberAny::Int(NumberInt::Int(2)));
     let e = jiter.finish().unwrap_err();
@@ -466,7 +466,7 @@ fn num_after() {
 #[test]
 fn num_before() {
     let json = r#"2/"#; // `/` is 47, directly before 0
-    let mut jiter = Jiter::new(json.as_bytes(), false);
+    let mut jiter = Jiter::new(json.as_bytes(), false, false);
     let num = jiter.next_number().unwrap();
     assert_eq!(num, NumberAny::Int(NumberInt::Int(2)));
     let e = jiter.finish().unwrap_err();
@@ -481,7 +481,7 @@ fn num_before() {
 #[test]
 fn nan_disallowed_wrong_type() {
     let json = r#"[NaN]"#;
-    let mut jiter = Jiter::new(json.as_bytes(), false);
+    let mut jiter = Jiter::new(json.as_bytes(), false, false);
     assert_eq!(jiter.next_array().unwrap().unwrap(), Peek::NaN);
     let e = jiter.next_str().unwrap_err();
     assert_eq!(
@@ -517,7 +517,7 @@ fn value_disallow_nan() {
 #[test]
 fn key_str() {
     let json = r#"{"foo": "bar"}"#;
-    let mut jiter = Jiter::new(json.as_bytes(), false);
+    let mut jiter = Jiter::new(json.as_bytes(), false, false);
     assert_eq!(jiter.next_object().unwrap().unwrap(), "foo");
     assert_eq!(jiter.next_str().unwrap(), "bar");
     assert!(jiter.next_key().unwrap().is_none());
@@ -527,7 +527,7 @@ fn key_str() {
 #[test]
 fn key_bytes() {
     let json = r#"{"foo": "bar"}"#.as_bytes();
-    let mut jiter = Jiter::new(json, false);
+    let mut jiter = Jiter::new(json, false, false);
     assert_eq!(jiter.next_object_bytes().unwrap().unwrap(), b"foo");
     assert_eq!(jiter.next_bytes().unwrap(), *b"bar");
     assert!(jiter.next_key().unwrap().is_none());
@@ -734,7 +734,7 @@ fn pass1_to_value() {
 fn pass1_skip() {
     let json = read_file("./benches/pass1.json");
     let json_data = json.as_bytes();
-    let mut jiter = Jiter::new(json_data, false);
+    let mut jiter = Jiter::new(json_data, false, false);
     jiter.next_skip().unwrap();
     jiter.finish().unwrap();
 }
@@ -754,7 +754,7 @@ fn escaped_string() {
 
 #[test]
 fn jiter_object() {
-    let mut jiter = Jiter::new(br#"{"foo": "bar", "spam": [   1, -2, "x"]}"#, false);
+    let mut jiter = Jiter::new(br#"{"foo": "bar", "spam": [   1, -2, "x"]}"#, false, false);
     assert_eq!(jiter.next_object().unwrap(), Some("foo"));
     assert_eq!(jiter.next_str().unwrap(), "bar");
     assert_eq!(jiter.next_key().unwrap(), Some("spam"));
@@ -771,7 +771,7 @@ fn jiter_object() {
 
 #[test]
 fn jiter_inf() {
-    let mut jiter = Jiter::new(b"[Infinity, -Infinity, NaN]", true);
+    let mut jiter = Jiter::new(b"[Infinity, -Infinity, NaN]", true, false);
     assert_eq!(jiter.next_array().unwrap(), Some(Peek::Infinity));
     assert_eq!(jiter.next_float().unwrap(), f64::INFINITY);
     assert_eq!(jiter.array_step().unwrap(), Some(Peek::Minus));
@@ -784,7 +784,7 @@ fn jiter_inf() {
 
 #[test]
 fn jiter_bool() {
-    let mut jiter = Jiter::new(b"[true, false, null]", false);
+    let mut jiter = Jiter::new(b"[true, false, null]", false, false);
     assert_eq!(jiter.next_array().unwrap(), Some(Peek::True));
     assert_eq!(jiter.next_bool().unwrap(), true);
     assert_eq!(jiter.array_step().unwrap(), Some(Peek::False));
@@ -797,7 +797,7 @@ fn jiter_bool() {
 
 #[test]
 fn jiter_bytes() {
-    let mut jiter = Jiter::new(br#"{"foo": "bar", "new-line": "\\n"}"#, false);
+    let mut jiter = Jiter::new(br#"{"foo": "bar", "new-line": "\\n"}"#, false, false);
     assert_eq!(jiter.next_object_bytes().unwrap().unwrap(), b"foo");
     assert_eq!(jiter.next_bytes().unwrap(), b"bar");
     assert_eq!(jiter.next_key_bytes().unwrap().unwrap(), b"new-line");
@@ -808,7 +808,7 @@ fn jiter_bytes() {
 
 #[test]
 fn jiter_number() {
-    let mut jiter = Jiter::new(br#"  [1, 2.2, 3, 4.1, 5.67]"#, false);
+    let mut jiter = Jiter::new(br#"  [1, 2.2, 3, 4.1, 5.67]"#, false, false);
     assert_eq!(jiter.next_array().unwrap().unwrap().into_inner(), b'1');
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(1));
     assert_eq!(jiter.array_step().unwrap().unwrap().into_inner(), b'2');
@@ -830,7 +830,7 @@ fn jiter_number() {
 
 #[test]
 fn jiter_bytes_u_escape() {
-    let mut jiter = Jiter::new(br#"{"foo": "xx \u00a3"}"#, false);
+    let mut jiter = Jiter::new(br#"{"foo": "xx \u00a3"}"#, false, false);
     assert_eq!(jiter.next_object_bytes().unwrap().unwrap(), b"foo");
     assert_eq!(jiter.next_bytes().unwrap(), b"xx \\u00a3");
 
@@ -841,14 +841,14 @@ fn jiter_bytes_u_escape() {
 
 #[test]
 fn jiter_empty_array() {
-    let mut jiter = Jiter::new(b"[]", false);
+    let mut jiter = Jiter::new(b"[]", false, false);
     assert_eq!(jiter.next_array().unwrap(), None);
     jiter.finish().unwrap();
 }
 
 #[test]
 fn jiter_trailing_bracket() {
-    let mut jiter = Jiter::new(b"[1]]", false);
+    let mut jiter = Jiter::new(b"[1]]", false, false);
     assert_eq!(jiter.next_array().unwrap().unwrap().into_inner(), b'1');
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(1));
     assert!(jiter.array_step().unwrap().is_none());
@@ -862,7 +862,7 @@ fn jiter_trailing_bracket() {
 
 #[test]
 fn jiter_wrong_type() {
-    let mut jiter = Jiter::new(b" 123", false);
+    let mut jiter = Jiter::new(b" 123", false, false);
     let e = jiter.next_str().unwrap_err();
     assert_eq!(
         e.error_type,
@@ -885,7 +885,7 @@ fn test_crazy_massive_int() {
     let mut s = "5".to_string();
     s.push_str(&"0".repeat(500));
     s.push_str("E-6666");
-    let mut jiter = Jiter::new(s.as_bytes(), false);
+    let mut jiter = Jiter::new(s.as_bytes(), false, false);
     assert_eq!(jiter.next_float().unwrap(), 0.0);
     jiter.finish().unwrap();
 }
@@ -950,7 +950,7 @@ macro_rules! number_bytes {
             paste::item! {
                 #[test]
                 fn [< $name >]() {
-                    let mut jiter = Jiter::new($json, false);
+                    let mut jiter = Jiter::new($json, false, false);
                     let bytes = jiter.next_number_bytes().unwrap();
                     assert_eq!(bytes, $expected);
                 }
@@ -1071,7 +1071,7 @@ fn readme_jiter() {
                 "+44 2345678"
             ]
         }"#;
-    let mut jiter = Jiter::new(json_data.as_bytes(), false);
+    let mut jiter = Jiter::new(json_data.as_bytes(), false, false);
     assert_eq!(jiter.next_object().unwrap(), Some("name"));
     assert_eq!(jiter.next_str().unwrap(), "John Doe");
     assert_eq!(jiter.next_key().unwrap(), Some("age"));
@@ -1094,7 +1094,7 @@ fn readme_jiter() {
 #[test]
 fn jiter_clone() {
     let json = r#"[1, 2]"#;
-    let mut jiter1 = Jiter::new(json.as_bytes(), false);
+    let mut jiter1 = Jiter::new(json.as_bytes(), false, false);
     assert_eq!(jiter1.next_array().unwrap().unwrap().into_inner(), b'1');
     let n = jiter1.next_number().unwrap();
     assert_eq!(n, NumberAny::Int(NumberInt::Int(1)));
@@ -1118,7 +1118,7 @@ fn jiter_clone() {
 
 #[test]
 fn jiter_invalid_value() {
-    let mut jiter = Jiter::new(b" bar", false);
+    let mut jiter = Jiter::new(b" bar", false, false);
     let e = jiter.next_value().unwrap_err();
     assert_eq!(
         e.error_type,
@@ -1132,7 +1132,7 @@ fn jiter_invalid_value() {
 fn jiter_wrong_types() {
     macro_rules! expect_wrong_type_inner {
         ($actual:path, $input:expr, $method: ident, $expected:path) => {
-            let mut jiter = Jiter::new($input, false);
+            let mut jiter = Jiter::new($input, false, false);
             let result = jiter.$method();
             if $actual == $expected || matches!(($actual, $expected), (JsonType::Int, JsonType::Float)) {
                 // Type matches, or int input to float
@@ -1182,7 +1182,7 @@ fn peek_debug() {
 
 #[test]
 fn jiter_invalid_numbers() {
-    let mut jiter = Jiter::new(b" -a", false);
+    let mut jiter = Jiter::new(b" -a", false, false);
     let peek = jiter.peek().unwrap();
     let e = jiter.known_int(peek).unwrap_err();
     assert_eq!(e.error_type, JiterErrorType::JsonError(JsonErrorType::InvalidNumber));
@@ -1196,7 +1196,7 @@ fn jiter_invalid_numbers() {
 
 #[test]
 fn jiter_invalid_numbers_expected_some_value() {
-    let mut jiter = Jiter::new(b" bar", false);
+    let mut jiter = Jiter::new(b" bar", false, false);
     let peek = jiter.peek().unwrap();
     let e = jiter.known_int(peek).unwrap_err();
     assert_eq!(
@@ -1280,7 +1280,7 @@ fn test_into_static() {
 
 #[test]
 fn jiter_next_value_borrowed() {
-    let mut jiter = Jiter::new(br#" "v"  "#, false);
+    let mut jiter = Jiter::new(br#" "v"  "#, false, false);
     let v = jiter.next_value().unwrap();
     let s = match v {
         JsonValue::Str(s) => s,
@@ -1292,7 +1292,7 @@ fn jiter_next_value_borrowed() {
 
 #[test]
 fn jiter_next_value_owned() {
-    let mut jiter = Jiter::new(br#" "v"  "#, false);
+    let mut jiter = Jiter::new(br#" "v"  "#, false, false);
     let v = jiter.next_value_owned().unwrap();
     let s = match v {
         JsonValue::Str(s) => s,
@@ -1366,7 +1366,7 @@ fn test_number_int_try_from_bytes() {
 
 #[test]
 fn jiter_skip_whole_object() {
-    let mut jiter = Jiter::new(br#"{"x": 1}"#, false);
+    let mut jiter = Jiter::new(br#"{"x": 1}"#, false, false);
     jiter.next_skip().unwrap();
     jiter.finish().unwrap();
 }
@@ -1383,6 +1383,7 @@ fn jiter_skip_in_object() {
         "is_object": {"x": 1, "y": ["2"], "z": {}},
         "last": 123
      } "#,
+        false,
         false,
     );
 
@@ -1434,6 +1435,7 @@ fn jiter_skip_in_array() {
         "last item"
      ] "#,
         true,
+        false,
     );
 
     assert_eq!(jiter.next_array(), Ok(Some(Peek::True)));
@@ -1482,14 +1484,14 @@ fn jiter_skip_in_array() {
 
 #[test]
 fn jiter_skip_backslash_strings() {
-    let mut jiter = Jiter::new(br#" ["\"", "\n", "\t", "\u00a3", "\\"] "#, false);
+    let mut jiter = Jiter::new(br#" ["\"", "\n", "\t", "\u00a3", "\\"] "#, false, false);
     jiter.next_skip().unwrap();
     jiter.finish().unwrap();
 }
 
 #[test]
 fn jiter_skip_invalid_ident() {
-    let mut jiter = Jiter::new(br#"trUe"#, true);
+    let mut jiter = Jiter::new(br#"trUe"#, true, false);
     let e = jiter.next_skip().unwrap_err();
     assert_eq!(
         e.error_type,
@@ -1499,7 +1501,7 @@ fn jiter_skip_invalid_ident() {
 
 #[test]
 fn jiter_skip_invalid_string() {
-    let mut jiter = Jiter::new(br#" "foo "#, true);
+    let mut jiter = Jiter::new(br#" "foo "#, true, false);
     let e = jiter.next_skip().unwrap_err();
     assert_eq!(
         e.error_type,
@@ -1509,21 +1511,21 @@ fn jiter_skip_invalid_string() {
 
 #[test]
 fn jiter_skip_invalid_int() {
-    let mut jiter = Jiter::new(br#"01"#, false);
+    let mut jiter = Jiter::new(br#"01"#, false, false);
     let e = jiter.next_skip().unwrap_err();
     assert_eq!(e.error_type, JiterErrorType::JsonError(JsonErrorType::InvalidNumber));
 }
 
 #[test]
 fn jiter_skip_invalid_object() {
-    let mut jiter = Jiter::new(br#"{{"#, false);
+    let mut jiter = Jiter::new(br#"{{"#, false, false);
     let e = jiter.next_skip().unwrap_err();
     assert_eq!(e.error_type, JiterErrorType::JsonError(JsonErrorType::KeyMustBeAString));
 }
 
 #[test]
 fn jiter_skip_invalid_string_u() {
-    let mut jiter = Jiter::new(br#" "\uddBd" "#, false);
+    let mut jiter = Jiter::new(br#" "\uddBd" "#, false, false);
     let e = jiter.next_skip().unwrap_err();
     assert_eq!(
         e.error_type,
@@ -1533,7 +1535,7 @@ fn jiter_skip_invalid_string_u() {
 
 #[test]
 fn jiter_skip_invalid_nan() {
-    let mut jiter = Jiter::new(b"NaN", false);
+    let mut jiter = Jiter::new(b"NaN", false, false);
     let e = jiter.next_skip().unwrap_err();
     assert_eq!(
         e.error_type,
@@ -1544,7 +1546,7 @@ fn jiter_skip_invalid_nan() {
 #[test]
 fn jiter_skip_invalid_string_high() {
     let json = vec![34, 92, 34, 206, 44, 163, 34];
-    let mut jiter = Jiter::new(&json, false);
+    let mut jiter = Jiter::new(&json, false, false);
     // NOTE this would raise an error with next_value etc, but next_skip does not check UTF-8
     jiter.next_skip().unwrap();
     jiter.finish().unwrap();
@@ -1552,7 +1554,7 @@ fn jiter_skip_invalid_string_high() {
 
 #[test]
 fn jiter_skip_invalid_long_float() {
-    let mut jiter = Jiter::new(br#"2121515572557277572557277e"#, false);
+    let mut jiter = Jiter::new(br#"2121515572557277572557277e"#, false, false);
     let e = jiter.next_skip().unwrap_err();
     assert_eq!(
         e.error_type,

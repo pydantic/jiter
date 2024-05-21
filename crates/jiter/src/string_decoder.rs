@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::fmt::Debug;
 use std::ops::Range;
 use std::str::{from_utf8, from_utf8_unchecked};
 
@@ -13,9 +14,14 @@ pub trait AbstractStringDecoder<'t, 'j>
 where
     'j: 't,
 {
-    type Output;
+    type Output: Debug;
 
-    fn decode(data: &'j [u8], index: usize, tape: &'t mut Tape) -> JsonResult<(Self::Output, usize)>;
+    fn decode(
+        data: &'j [u8],
+        index: usize,
+        tape: &'t mut Tape,
+        allow_partial: bool,
+    ) -> JsonResult<(Self::Output, usize)>;
 }
 
 pub struct StringDecoder;
@@ -69,15 +75,22 @@ where
 {
     type Output = StringOutput<'t, 'j>;
 
-    fn decode(data: &'j [u8], index: usize, tape: &'t mut Tape) -> JsonResult<(Self::Output, usize)> {
+    fn decode(
+        data: &'j [u8],
+        index: usize,
+        tape: &'t mut Tape,
+        allow_partial: bool,
+    ) -> JsonResult<(Self::Output, usize)> {
         let start = index + 1;
 
-        match decode_chunk(data, start, true)? {
-            (StringChunk::Quote, ascii_only, index) => {
+        match decode_chunk(data, start, true, allow_partial)? {
+            (StringChunk::StringEnd, ascii_only, index) => {
                 let s = to_str(&data[start..index], ascii_only, start)?;
                 Ok((StringOutput::Data(s, ascii_only), index + 1))
             }
-            (StringChunk::Backslash, ascii_only, index) => decode_to_tape(data, index, tape, start, ascii_only),
+            (StringChunk::Backslash, ascii_only, index) => {
+                decode_to_tape(data, index, tape, start, ascii_only, allow_partial)
+            }
         }
     }
 }
@@ -88,6 +101,7 @@ fn decode_to_tape<'t, 'j>(
     tape: &'t mut Tape,
     start: usize,
     mut ascii_only: bool,
+    allow_partial: bool,
 ) -> JsonResult<(StringOutput<'t, 'j>, usize)> {
     tape.clear();
     let mut chunk_start = start;
@@ -115,8 +129,8 @@ fn decode_to_tape<'t, 'j>(
             return json_err!(EofWhileParsingString, index);
         }
 
-        match decode_chunk(data, index, ascii_only)? {
-            (StringChunk::Quote, ascii_only, new_index) => {
+        match decode_chunk(data, index, ascii_only, allow_partial)? {
+            (StringChunk::StringEnd, ascii_only, new_index) => {
                 tape.extend_from_slice(&data[index..new_index]);
                 index = new_index + 1;
                 let s = to_str(tape, ascii_only, start)?;
@@ -132,31 +146,41 @@ fn decode_to_tape<'t, 'j>(
 }
 
 #[inline(always)]
-pub fn decode_chunk(data: &[u8], index: usize, ascii_only: bool) -> JsonResult<(StringChunk, bool, usize)> {
+pub fn decode_chunk(
+    data: &[u8],
+    index: usize,
+    ascii_only: bool,
+    allow_partial: bool,
+) -> JsonResult<(StringChunk, bool, usize)> {
     // TODO x86_64: use simd
 
     #[cfg(target_arch = "aarch64")]
     {
-        crate::simd_aarch64::decode_string_chunk(data, index, ascii_only)
+        crate::simd_aarch64::decode_string_chunk(data, index, ascii_only, allow_partial)
     }
     #[cfg(not(target_arch = "aarch64"))]
     {
-        StringChunk::decode_fallback(data, index, ascii_only)
+        StringChunk::decode_fallback(data, index, ascii_only, allow_partial)
     }
 }
 
 pub(crate) enum StringChunk {
-    Quote,
+    StringEnd,
     Backslash,
 }
 
 impl StringChunk {
     #[inline(always)]
-    pub fn decode_fallback(data: &[u8], mut index: usize, mut ascii_only: bool) -> JsonResult<(Self, bool, usize)> {
+    pub fn decode_fallback(
+        data: &[u8],
+        mut index: usize,
+        mut ascii_only: bool,
+        allow_partial: bool,
+    ) -> JsonResult<(Self, bool, usize)> {
         while let Some(next) = data.get(index) {
             if !JSON_ASCII[*next as usize] {
                 match &CHAR_TYPE[*next as usize] {
-                    CharType::Quote => return Ok((Self::Quote, ascii_only, index)),
+                    CharType::Quote => return Ok((Self::StringEnd, ascii_only, index)),
                     CharType::Backslash => return Ok((Self::Backslash, ascii_only, index)),
                     CharType::ControlChar => return json_err!(ControlCharacterWhileParsingString, index),
                     CharType::Other => {
@@ -166,7 +190,11 @@ impl StringChunk {
             }
             index += 1;
         }
-        json_err!(EofWhileParsingString, index)
+        if allow_partial {
+            Ok((Self::StringEnd, ascii_only, index))
+        } else {
+            json_err!(EofWhileParsingString, index)
+        }
     }
 
     /// decode an array (generally from SIMD) return the result of the chunk, or none if the non-ascii character
@@ -181,7 +209,7 @@ impl StringChunk {
         for u8_char in data {
             if !JSON_ASCII[u8_char as usize] {
                 return match &CHAR_TYPE[u8_char as usize] {
-                    CharType::Quote => Some(Ok((Self::Quote, ascii_only, *index))),
+                    CharType::Quote => Some(Ok((Self::StringEnd, ascii_only, *index))),
                     CharType::Backslash => Some(Ok((Self::Backslash, ascii_only, *index))),
                     CharType::ControlChar => Some(json_err!(ControlCharacterWhileParsingString, *index)),
                     CharType::Other => {
@@ -338,13 +366,18 @@ where
 {
     type Output = Range<usize>;
 
-    fn decode(data: &'j [u8], mut index: usize, _tape: &'t mut Tape) -> JsonResult<(Self::Output, usize)> {
+    fn decode(
+        data: &'j [u8],
+        mut index: usize,
+        _tape: &'t mut Tape,
+        allow_partial: bool,
+    ) -> JsonResult<(Self::Output, usize)> {
         index += 1;
         let start = index;
 
         loop {
-            index = match decode_chunk(data, index, true)? {
-                (StringChunk::Quote, _, index) => {
+            index = match decode_chunk(data, index, true, allow_partial)? {
+                (StringChunk::StringEnd, _, index) => {
                     let r = start..index;
                     return Ok((r, index + 1));
                 }

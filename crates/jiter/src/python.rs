@@ -114,7 +114,9 @@ impl<'j, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck> PythonParser<'j
                 Ok(false.to_object(py).into_bound(py))
             }
             Peek::String => {
-                let s = self.parser.consume_string::<StringDecoder>(&mut self.tape)?;
+                let s = self
+                    .parser
+                    .consume_string::<StringDecoder>(&mut self.tape, self.allow_partial)?;
                 Ok(StringCache::get_value(py, s.as_str(), s.ascii_only()).into_any())
             }
             Peek::Array => {

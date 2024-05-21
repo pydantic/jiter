@@ -14,6 +14,7 @@ pub struct Jiter<'j> {
     parser: Parser<'j>,
     tape: Tape,
     allow_inf_nan: bool,
+    allow_partial_strings: bool,
 }
 
 impl Clone for Jiter<'_> {
@@ -24,6 +25,7 @@ impl Clone for Jiter<'_> {
             parser: self.parser.clone(),
             tape: Tape::default(),
             allow_inf_nan: self.allow_inf_nan,
+            allow_partial_strings: self.allow_partial_strings,
         }
     }
 }
@@ -34,12 +36,13 @@ impl<'j> Jiter<'j> {
     /// # Arguments
     /// - `data`: The JSON data to be parsed.
     /// - `allow_inf_nan`: Whether to allow `NaN`, `Infinity` and `-Infinity` as numbers.
-    pub fn new(data: &'j [u8], allow_inf_nan: bool) -> Self {
+    pub fn new(data: &'j [u8], allow_inf_nan: bool, allow_partial_strings: bool) -> Self {
         Self {
             data,
             parser: Parser::new(data),
             tape: Tape::default(),
             allow_inf_nan,
+            allow_partial_strings,
         }
     }
 
@@ -186,7 +189,10 @@ impl<'j> Jiter<'j> {
 
     /// Knowing the next value is a string, parse it.
     pub fn known_str(&mut self) -> JiterResult<&str> {
-        match self.parser.consume_string::<StringDecoder>(&mut self.tape) {
+        match self
+            .parser
+            .consume_string::<StringDecoder>(&mut self.tape, self.allow_partial_strings)
+        {
             Ok(output) => Ok(output.as_str()),
             Err(e) => Err(e.into()),
         }
@@ -203,7 +209,9 @@ impl<'j> Jiter<'j> {
 
     /// Knowing the next value is a string, parse it and return bytes from the original JSON data.
     pub fn known_bytes(&mut self) -> JiterResult<&[u8]> {
-        let range = self.parser.consume_string::<StringDecoderRange>(&mut self.tape)?;
+        let range = self
+            .parser
+            .consume_string::<StringDecoderRange>(&mut self.tape, self.allow_partial_strings)?;
         Ok(&self.data[range])
     }
 
