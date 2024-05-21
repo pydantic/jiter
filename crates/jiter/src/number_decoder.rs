@@ -23,10 +23,7 @@ impl From<NumberInt> for f64 {
     fn from(num: NumberInt) -> Self {
         match num {
             NumberInt::Int(int) => int as f64,
-            NumberInt::BigInt(big_int) => match big_int.to_f64() {
-                Some(f) => f,
-                None => f64::NAN,
-            },
+            NumberInt::BigInt(big_int) => big_int.to_f64().unwrap_or(f64::NAN),
         }
     }
 }
@@ -99,7 +96,7 @@ impl AbstractNumberDecoder for NumberFloat {
                     }
                 }
             } else if digit == &b'I' {
-                consume_inf(data, index, positive, allow_inf_nan)
+                consume_inf_f64(data, index, positive, allow_inf_nan)
             } else {
                 json_err!(InvalidNumber, index)
             }
@@ -114,6 +111,17 @@ impl AbstractNumberDecoder for NumberFloat {
 pub enum NumberAny {
     Int(NumberInt),
     Float(f64),
+}
+
+#[cfg(feature = "python")]
+impl pyo3::ToPyObject for NumberAny {
+    fn to_object(&self, py: pyo3::Python<'_>) -> pyo3::PyObject {
+        match self {
+            Self::Int(NumberInt::Int(int)) => int.to_object(py),
+            Self::Int(NumberInt::BigInt(big_int)) => big_int.to_object(py),
+            Self::Float(float) => float.to_object(py),
+        }
+    }
 }
 
 impl From<NumberAny> for f64 {
@@ -137,25 +145,29 @@ impl AbstractNumberDecoder for NumberAny {
                 NumberFloat::decode(data, start, first, allow_inf_nan).map(|(f, index)| (Self::Float(f), index))
             }
             IntParse::FloatInf(positive) => {
-                consume_inf(data, index, positive, allow_inf_nan).map(|(f, index)| (Self::Float(f), index))
+                consume_inf_f64(data, index, positive, allow_inf_nan).map(|(f, index)| (Self::Float(f), index))
             }
             IntParse::FloatNaN => consume_nan(data, index, allow_inf_nan).map(|(f, index)| (Self::Float(f), index)),
         }
     }
 }
 
-fn consume_inf(data: &[u8], index: usize, positive: bool, allow_inf_nan: bool) -> JsonResult<(f64, usize)> {
+fn consume_inf(data: &[u8], index: usize, positive: bool, allow_inf_nan: bool) -> JsonResult<usize> {
     if allow_inf_nan {
-        let end = crate::parse::consume_infinity(data, index)?;
-        if positive {
-            Ok((f64::INFINITY, end))
-        } else {
-            Ok((f64::NEG_INFINITY, end))
-        }
+        crate::parse::consume_infinity(data, index)
     } else if positive {
         json_err!(ExpectedSomeValue, index)
     } else {
         json_err!(InvalidNumber, index)
+    }
+}
+
+fn consume_inf_f64(data: &[u8], index: usize, positive: bool, allow_inf_nan: bool) -> JsonResult<(f64, usize)> {
+    let end = consume_inf(data, index, positive, allow_inf_nan)?;
+    if positive {
+        Ok((f64::INFINITY, end))
+    } else {
+        Ok((f64::NEG_INFINITY, end))
     }
 }
 
@@ -348,10 +360,29 @@ pub(crate) static INT_CHAR_MAP: [bool; 256] = {
     ]
 };
 
-pub struct NumberRange;
+pub struct NumberRange {
+    pub range: Range<usize>,
+    pub is_int: bool,
+}
+
+impl NumberRange {
+    fn int(data: Range<usize>) -> Self {
+        Self {
+            range: data,
+            is_int: true,
+        }
+    }
+
+    fn float(data: Range<usize>) -> Self {
+        Self {
+            range: data,
+            is_int: false,
+        }
+    }
+}
 
 impl AbstractNumberDecoder for NumberRange {
-    type Output = Range<usize>;
+    type Output = Self;
 
     fn decode(data: &[u8], mut index: usize, first: u8, allow_inf_nan: bool) -> JsonResult<(Self::Output, usize)> {
         let start = index;
@@ -359,7 +390,7 @@ impl AbstractNumberDecoder for NumberRange {
         let positive = match first {
             b'N' => {
                 let (_, end) = consume_nan(data, index, allow_inf_nan)?;
-                return Ok((start..end, end));
+                return Ok((Self::float(start..end), end));
             }
             b'-' => false,
             _ => true,
@@ -377,20 +408,20 @@ impl AbstractNumberDecoder for NumberRange {
                     Some(b'.') => {
                         index += 1;
                         let end = consume_decimal(data, index)?;
-                        Ok((start..end, end))
+                        Ok((Self::float(start..end), end))
                     }
                     Some(b'e' | b'E') => {
                         index += 1;
                         let end = consume_exponential(data, index)?;
-                        Ok((start..end, end))
+                        Ok((Self::float(start..end), end))
                     }
                     Some(digit) if digit.is_ascii_digit() => json_err!(InvalidNumber, index),
-                    _ => return Ok((start..index, index)),
+                    _ => return Ok((Self::int(start..index), index)),
                 };
             }
             Some(b'I') => {
-                let (_, end) = consume_inf(data, index, positive, allow_inf_nan)?;
-                return Ok((start..end, end));
+                let end = consume_inf(data, index, positive, allow_inf_nan)?;
+                return Ok((Self::float(start..end), end));
             }
             Some(digit) if (b'1'..=b'9').contains(digit) => (),
             Some(_) => return json_err!(InvalidNumber, index),
@@ -406,14 +437,14 @@ impl AbstractNumberDecoder for NumberRange {
                 } else if matches!(digit, b'.') {
                     index += 1;
                     let end = consume_decimal(data, index)?;
-                    return Ok((start..end, end));
+                    return Ok((Self::float(start..end), end));
                 } else if matches!(digit, b'e' | b'E') {
                     index += 1;
                     let end = consume_exponential(data, index)?;
-                    return Ok((start..end, end));
+                    return Ok((Self::float(start..end), end));
                 }
             }
-            return Ok((start..index, index));
+            return Ok((Self::int(start..index), index));
         }
         loop {
             let (chunk, new_index) = IntChunk::parse_big(data, index);
@@ -425,18 +456,18 @@ impl AbstractNumberDecoder for NumberRange {
                 IntChunk::Ongoing(_) => {
                     index = new_index;
                 }
-                IntChunk::Done(_) => return Ok((start..new_index, new_index)),
+                IntChunk::Done(_) => return Ok((Self::int(start..new_index), new_index)),
                 IntChunk::Float => {
                     return match data.get(new_index) {
                         Some(b'.') => {
                             index = new_index + 1;
                             let end = consume_decimal(data, index)?;
-                            Ok((start..end, end))
+                            Ok((Self::float(start..end), end))
                         }
                         _ => {
                             index = new_index + 1;
                             let end = consume_exponential(data, index)?;
-                            Ok((start..end, end))
+                            Ok((Self::float(start..end), end))
                         }
                     }
                 }

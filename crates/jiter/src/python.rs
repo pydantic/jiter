@@ -5,57 +5,71 @@ use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::ffi;
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyList, PyString};
+use pyo3::ToPyObject;
 
 use smallvec::SmallVec;
 
 use crate::errors::{json_err, json_error, JsonError, JsonResult, DEFAULT_RECURSION_LIMIT};
-use crate::number_decoder::{NumberAny, NumberInt};
+use crate::number_decoder::{AbstractNumberDecoder, NumberAny, NumberRange};
 use crate::parse::{Parser, Peek};
 use crate::py_string_cache::{StringCacheAll, StringCacheKeys, StringCacheMode, StringMaybeCache, StringNoCache};
 use crate::string_decoder::{StringDecoder, Tape};
-use crate::JsonErrorType;
+use crate::{JsonErrorType, LosslessFloat};
 
-/// Parse a JSON value from a byte slice and return a Python object.
-///
-/// # Arguments
-/// - `py`: [Python](https://docs.rs/pyo3/latest/pyo3/marker/struct.Python.html) marker token.
-/// - `json_data`: The JSON data to parse.
-/// - `allow_inf_nan`: Whether to allow `(-)Infinity` and `NaN` values.
-/// - `cache_strings`: Whether to cache strings to avoid constructing new Python objects,
-/// - `allow_partial`: Whether to allow partial JSON data.
-/// - `catch_duplicate_keys`: Whether to catch duplicate keys in objects.
-/// this should have a significant improvement on performance but increases memory slightly.
-///
-/// # Returns
-///
-/// A [PyObject](https://docs.rs/pyo3/latest/pyo3/type.PyObject.html) representing the parsed JSON value.
-pub fn python_parse<'py>(
-    py: Python<'py>,
-    json_data: &[u8],
-    allow_inf_nan: bool,
-    cache_mode: StringCacheMode,
-    partial_mode: PartialMode,
-    catch_duplicate_keys: bool,
-) -> JsonResult<Bound<'py, PyAny>> {
-    macro_rules! ppp {
-        ($string_cache:ident, $key_check:ident) => {
-            PythonParser::<$string_cache, $key_check>::parse(py, json_data, allow_inf_nan, partial_mode)
-        };
-    }
+#[derive(Default)]
+#[allow(clippy::struct_excessive_bools)]
+pub struct PythonParseBuilder {
+    /// Whether to allow `(-)Infinity` and `NaN` values.
+    pub allow_inf_nan: bool,
+    /// Whether to cache strings to avoid constructing new Python objects,
+    pub cache_mode: StringCacheMode,
+    /// Whether to allow partial JSON data.
+    pub partial_mode: PartialMode,
+    /// Whether to catch duplicate keys in objects.
+    pub catch_duplicate_keys: bool,
+    /// Whether to preserve full detail on floats using [`LosslessFloat`]
+    pub lossless_floats: bool,
+}
 
-    match cache_mode {
-        StringCacheMode::All => match catch_duplicate_keys {
-            true => ppp!(StringCacheAll, DuplicateKeyCheck),
-            false => ppp!(StringCacheAll, NoopKeyCheck),
-        },
-        StringCacheMode::Keys => match catch_duplicate_keys {
-            true => ppp!(StringCacheKeys, DuplicateKeyCheck),
-            false => ppp!(StringCacheKeys, NoopKeyCheck),
-        },
-        StringCacheMode::None => match catch_duplicate_keys {
-            true => ppp!(StringNoCache, DuplicateKeyCheck),
-            false => ppp!(StringNoCache, NoopKeyCheck),
-        },
+impl PythonParseBuilder {
+    /// Parse a JSON value from a byte slice and return a Python object.
+    ///
+    /// # Arguments
+    ///
+    /// - `py`: [Python](https://docs.rs/pyo3/latest/pyo3/marker/struct.Python.html) marker token.
+    /// - `json_data`: The JSON data to parse.
+    /// this should have a significant improvement on performance but increases memory slightly.
+    ///
+    /// # Returns
+    ///
+    /// A [PyObject](https://docs.rs/pyo3/latest/pyo3/type.PyObject.html) representing the parsed JSON value.
+    pub fn python_parse<'py>(self, py: Python<'py>, json_data: &[u8]) -> JsonResult<Bound<'py, PyAny>> {
+        macro_rules! ppp {
+            ($string_cache:ident, $key_check:ident, $parse_number:ident) => {
+                PythonParser::<$string_cache, $key_check, $parse_number>::parse(
+                    py,
+                    json_data,
+                    self.allow_inf_nan,
+                    self.partial_mode,
+                )
+            };
+        }
+        macro_rules! ppp_group {
+            ($string_cache:ident) => {
+                match (self.catch_duplicate_keys, self.lossless_floats) {
+                    (true, true) => ppp!($string_cache, DuplicateKeyCheck, ParseNumberLossless),
+                    (true, false) => ppp!($string_cache, DuplicateKeyCheck, ParseNumberLossy),
+                    (false, true) => ppp!($string_cache, NoopKeyCheck, ParseNumberLossless),
+                    (false, false) => ppp!($string_cache, NoopKeyCheck, ParseNumberLossy),
+                }
+            };
+        }
+
+        match self.cache_mode {
+            StringCacheMode::All => ppp_group!(StringCacheAll),
+            StringCacheMode::Keys => ppp_group!(StringCacheKeys),
+            StringCacheMode::None => ppp_group!(StringNoCache),
+        }
     }
 }
 
@@ -64,9 +78,10 @@ pub fn map_json_error(json_data: &[u8], json_error: &JsonError) -> PyErr {
     PyValueError::new_err(json_error.description(json_data))
 }
 
-struct PythonParser<'j, StringCache, KeyCheck> {
+struct PythonParser<'j, StringCache, KeyCheck, ParseNumber> {
     _string_cache: PhantomData<StringCache>,
     _key_check: PhantomData<KeyCheck>,
+    _parse_number: PhantomData<ParseNumber>,
     parser: Parser<'j>,
     tape: Tape,
     recursion_limit: u8,
@@ -74,7 +89,9 @@ struct PythonParser<'j, StringCache, KeyCheck> {
     partial_mode: PartialMode,
 }
 
-impl<'j, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck> PythonParser<'j, StringCache, KeyCheck> {
+impl<'j, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: MaybeParseNumber>
+    PythonParser<'j, StringCache, KeyCheck, ParseNumber>
+{
     fn parse<'py>(
         py: Python<'py>,
         json_data: &[u8],
@@ -84,6 +101,7 @@ impl<'j, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck> PythonParser<'j
         let mut slf = PythonParser {
             _string_cache: PhantomData::<StringCache>,
             _key_check: PhantomData::<KeyCheck>,
+            _parse_number: PhantomData::<ParseNumber>,
             parser: Parser::new(json_data),
             tape: Tape::default(),
             recursion_limit: DEFAULT_RECURSION_LIMIT,
@@ -144,23 +162,7 @@ impl<'j, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck> PythonParser<'j
                 }
                 Ok(dict.into_any())
             }
-            _ => {
-                let n = self
-                    .parser
-                    .consume_number::<NumberAny>(peek.into_inner(), self.allow_inf_nan);
-                match n {
-                    Ok(NumberAny::Int(NumberInt::Int(int))) => Ok(int.to_object(py).into_bound(py)),
-                    Ok(NumberAny::Int(NumberInt::BigInt(big_int))) => Ok(big_int.to_object(py).into_bound(py)),
-                    Ok(NumberAny::Float(float)) => Ok(float.to_object(py).into_bound(py)),
-                    Err(e) => {
-                        if !peek.is_num() {
-                            Err(json_error!(ExpectedSomeValue, self.parser.index))
-                        } else {
-                            Err(e)
-                        }
-                    }
-                }
-            }
+            _ => ParseNumber::parse_number(py, &mut self.parser, peek, self.allow_inf_nan),
         }
     }
 
@@ -243,6 +245,12 @@ pub enum PartialMode {
     TrailingStrings,
 }
 
+impl Default for PartialMode {
+    fn default() -> Self {
+        Self::Off
+    }
+}
+
 const PARTIAL_ERROR: &str = "Invalid partial mode, should be `'off'`, `'on'`, `'trailing-strings'` or a `bool`";
 
 impl<'py> FromPyObject<'py> for PartialMode {
@@ -304,6 +312,69 @@ impl MaybeKeyCheck for DuplicateKeyCheck {
             Ok(())
         } else {
             Err(JsonError::new(JsonErrorType::DuplicateKey(key.to_owned()), index))
+        }
+    }
+}
+
+trait MaybeParseNumber {
+    fn parse_number<'py>(
+        py: Python<'py>,
+        parser: &mut Parser,
+        peek: Peek,
+        allow_inf_nan: bool,
+    ) -> JsonResult<Bound<'py, PyAny>>;
+}
+
+struct ParseNumberLossy;
+
+impl MaybeParseNumber for ParseNumberLossy {
+    fn parse_number<'py>(
+        py: Python<'py>,
+        parser: &mut Parser,
+        peek: Peek,
+        allow_inf_nan: bool,
+    ) -> JsonResult<Bound<'py, PyAny>> {
+        match parser.consume_number::<NumberAny>(peek.into_inner(), allow_inf_nan) {
+            Ok(number) => Ok(number.to_object(py).into_bound(py)),
+            Err(e) => {
+                if !peek.is_num() {
+                    Err(json_error!(ExpectedSomeValue, parser.index))
+                } else {
+                    Err(e)
+                }
+            }
+        }
+    }
+}
+
+struct ParseNumberLossless;
+
+impl MaybeParseNumber for ParseNumberLossless {
+    fn parse_number<'py>(
+        py: Python<'py>,
+        parser: &mut Parser,
+        peek: Peek,
+        allow_inf_nan: bool,
+    ) -> JsonResult<Bound<'py, PyAny>> {
+        match parser.consume_number::<NumberRange>(peek.into_inner(), allow_inf_nan) {
+            Ok(number_range) => {
+                let bytes = parser.slice(number_range.range).unwrap();
+                let obj = if number_range.is_int {
+                    NumberAny::decode(bytes, 0, peek.into_inner(), allow_inf_nan)?
+                        .0
+                        .to_object(py)
+                } else {
+                    LosslessFloat::new_unchecked(bytes.to_vec()).into_py(py)
+                };
+                Ok(obj.into_bound(py))
+            }
+            Err(e) => {
+                if !peek.is_num() {
+                    Err(json_error!(ExpectedSomeValue, parser.index))
+                } else {
+                    Err(e)
+                }
+            }
         }
     }
 }

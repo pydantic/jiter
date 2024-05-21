@@ -2,8 +2,9 @@ use std::sync::OnceLock;
 
 use pyo3::prelude::*;
 
-use jiter::{map_json_error, python_parse, PartialMode, StringCacheMode};
+use jiter::{map_json_error, LosslessFloat, PartialMode, PythonParseBuilder, StringCacheMode};
 
+#[allow(clippy::fn_params_excessive_bools)]
 #[pyfunction(
     signature = (
         json_data,
@@ -12,7 +13,8 @@ use jiter::{map_json_error, python_parse, PartialMode, StringCacheMode};
         allow_inf_nan=true,
         cache_strings=StringCacheMode::All,
         allow_partial=PartialMode::Off,
-        catch_duplicate_keys=false
+        catch_duplicate_keys=false,
+        lossless_floats=false,
     )
 )]
 pub fn from_json<'py>(
@@ -22,16 +24,18 @@ pub fn from_json<'py>(
     cache_strings: StringCacheMode,
     allow_partial: PartialMode,
     catch_duplicate_keys: bool,
+    lossless_floats: bool,
 ) -> PyResult<Bound<'py, PyAny>> {
-    python_parse(
-        py,
-        json_data,
+    let parse_builder = PythonParseBuilder {
         allow_inf_nan,
-        cache_strings,
-        allow_partial,
+        cache_mode: cache_strings,
+        partial_mode: allow_partial,
         catch_duplicate_keys,
-    )
-    .map_err(|e| map_json_error(json_data, &e))
+        lossless_floats,
+    };
+    parse_builder
+        .python_parse(py, json_data)
+        .map_err(|e| map_json_error(json_data, &e))
 }
 
 pub fn get_jiter_version() -> &'static str {
@@ -65,5 +69,6 @@ fn jiter_python(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(from_json, m)?)?;
     m.add_function(wrap_pyfunction!(cache_clear, m)?)?;
     m.add_function(wrap_pyfunction!(cache_usage, m)?)?;
+    m.add_class::<LosslessFloat>()?;
     Ok(())
 }
