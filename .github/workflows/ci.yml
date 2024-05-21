@@ -49,7 +49,8 @@ jobs:
         RUST_BACKTRACE: 1
         RUSTFLAGS: '-C instrument-coverage'
 
-    - run: coverage-prepare --ignore-filename-regex '/tests/' lcov $(find target/debug/deps -regex '.*/main[^.]*')
+    - run: coverage-prepare --ignore-filename-regex '/tests/' lcov $(find ../../target/debug/deps -regex '.*/main[^.]*')
+      working-directory: crates/jiter
 
     - run: cargo test --doc
 
@@ -97,7 +98,8 @@ jobs:
         RUST_BACKTRACE: 1
         RUSTFLAGS: '-C instrument-coverage'
 
-    - run: coverage-prepare --ignore-filename-regex '/tests/' lcov $(find target/debug/deps -regex '.*/main[^.]*')
+    - run: coverage-prepare --ignore-filename-regex '/tests/' lcov $(find ../../target/debug/deps -regex '.*/main[^.]*')
+      working-directory: crates/jiter
 
     - run: cargo test --doc
 
