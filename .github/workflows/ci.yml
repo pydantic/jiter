@@ -39,9 +39,18 @@ jobs:
       with:
         prefix-key: "v1-rust"
 
-    - uses: taiki-e/install-action@cargo-llvm-cov
+    - run: cargo install rustfilt coverage-prepare cargo-careful
+      if: steps.cache-rust.outputs.cache-hit != 'true'
 
-    - run: cargo llvm-cov --all-features --codecov --output-path codecov.json
+    - run: rustup component add llvm-tools-preview
+
+    - run: cargo test -F python
+      env:
+        RUST_BACKTRACE: 1
+        RUSTFLAGS: '-C instrument-coverage'
+
+    - run: coverage-prepare --ignore-filename-regex '/tests/' lcov $(find ../../target/debug/deps -regex '.*/main[^.]*')
+      working-directory: crates/jiter
 
     - run: cargo test --doc
 
@@ -50,7 +59,6 @@ jobs:
 
     - uses: codecov/codecov-action@v3
       with:
-        files: codecov.json
         env_vars: RUNS_ON,RUST_VERSION
         token: ${{ secrets.CODECOV_TOKEN }}
 
@@ -80,15 +88,23 @@ jobs:
     - id: cache-rust
       uses: Swatinem/rust-cache@v2
 
-    - uses: taiki-e/install-action@cargo-llvm-cov
+    - run: cargo install rustfilt coverage-prepare
+      if: steps.cache-rust.outputs.cache-hit != 'true'
 
-    - run: cargo llvm-cov --all-features --codecov --output-path codecov.json
+    - run: rustup component add llvm-tools-preview
+
+    - run: cargo test -F python
+      env:
+        RUST_BACKTRACE: 1
+        RUSTFLAGS: '-C instrument-coverage'
+
+    - run: coverage-prepare --ignore-filename-regex '/tests/' lcov $(find ../../target/debug/deps -regex '.*/main[^.]*')
+      working-directory: crates/jiter
 
     - run: cargo test --doc
 
     - uses: codecov/codecov-action@v3
       with:
-        files: codecov.json
         env_vars: RUNS_ON,RUST_VERSION
         token: ${{ secrets.CODECOV_TOKEN }}
 
