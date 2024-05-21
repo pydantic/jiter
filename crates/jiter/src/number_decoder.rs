@@ -360,9 +360,25 @@ pub(crate) static INT_CHAR_MAP: [bool; 256] = {
     ]
 };
 
-pub enum NumberRange {
-    Int(Range<usize>),
-    Float(Range<usize>),
+pub struct NumberRange {
+    pub range: Range<usize>,
+    pub is_int: bool,
+}
+
+impl NumberRange {
+    fn int(data: Range<usize>) -> Self {
+        Self {
+            range: data,
+            is_int: true,
+        }
+    }
+
+    fn float(data: Range<usize>) -> Self {
+        Self {
+            range: data,
+            is_int: false,
+        }
+    }
 }
 
 impl AbstractNumberDecoder for NumberRange {
@@ -374,7 +390,7 @@ impl AbstractNumberDecoder for NumberRange {
         let positive = match first {
             b'N' => {
                 let (_, end) = consume_nan(data, index, allow_inf_nan)?;
-                return Ok((Self::Float(start..end), end));
+                return Ok((Self::float(start..end), end));
             }
             b'-' => false,
             _ => true,
@@ -392,20 +408,20 @@ impl AbstractNumberDecoder for NumberRange {
                     Some(b'.') => {
                         index += 1;
                         let end = consume_decimal(data, index)?;
-                        Ok((Self::Float(start..end), end))
+                        Ok((Self::float(start..end), end))
                     }
                     Some(b'e' | b'E') => {
                         index += 1;
                         let end = consume_exponential(data, index)?;
-                        Ok((Self::Float(start..end), end))
+                        Ok((Self::float(start..end), end))
                     }
                     Some(digit) if digit.is_ascii_digit() => json_err!(InvalidNumber, index),
-                    _ => return Ok((Self::Int(start..index), index)),
+                    _ => return Ok((Self::int(start..index), index)),
                 };
             }
             Some(b'I') => {
                 let end = consume_inf(data, index, positive, allow_inf_nan)?;
-                return Ok((Self::Float(start..end), end));
+                return Ok((Self::float(start..end), end));
             }
             Some(digit) if (b'1'..=b'9').contains(digit) => (),
             Some(_) => return json_err!(InvalidNumber, index),
@@ -421,14 +437,14 @@ impl AbstractNumberDecoder for NumberRange {
                 } else if matches!(digit, b'.') {
                     index += 1;
                     let end = consume_decimal(data, index)?;
-                    return Ok((Self::Float(start..end), end));
+                    return Ok((Self::float(start..end), end));
                 } else if matches!(digit, b'e' | b'E') {
                     index += 1;
                     let end = consume_exponential(data, index)?;
-                    return Ok((Self::Float(start..end), end));
+                    return Ok((Self::float(start..end), end));
                 }
             }
-            return Ok((Self::Int(start..index), index));
+            return Ok((Self::int(start..index), index));
         }
         loop {
             let (chunk, new_index) = IntChunk::parse_big(data, index);
@@ -440,18 +456,18 @@ impl AbstractNumberDecoder for NumberRange {
                 IntChunk::Ongoing(_) => {
                     index = new_index;
                 }
-                IntChunk::Done(_) => return Ok((Self::Int(start..new_index), new_index)),
+                IntChunk::Done(_) => return Ok((Self::int(start..new_index), new_index)),
                 IntChunk::Float => {
                     return match data.get(new_index) {
                         Some(b'.') => {
                             index = new_index + 1;
                             let end = consume_decimal(data, index)?;
-                            Ok((Self::Float(start..end), end))
+                            Ok((Self::float(start..end), end))
                         }
                         _ => {
                             index = new_index + 1;
                             let end = consume_exponential(data, index)?;
-                            Ok((Self::Float(start..end), end))
+                            Ok((Self::float(start..end), end))
                         }
                     }
                 }

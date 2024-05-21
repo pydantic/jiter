@@ -303,15 +303,16 @@ impl MaybeParseNumber for ParseNumberLossless {
         allow_inf_nan: bool,
     ) -> JsonResult<Bound<'py, PyAny>> {
         match parser.consume_number::<NumberRange>(peek.into_inner(), allow_inf_nan) {
-            Ok(NumberRange::Int(int_range)) => {
-                let bytes = parser.slice(int_range).unwrap();
-                let (num, _) = NumberAny::decode(bytes, 0, peek.into_inner(), allow_inf_nan)?;
-                Ok(num.to_object(py).into_bound(py))
-            }
-            Ok(NumberRange::Float(float_range)) => {
-                let bytes = parser.slice(float_range).unwrap();
-                let json_float = LosslessFloat::new_unchecked(bytes.to_vec());
-                Ok(json_float.into_py(py).into_bound(py))
+            Ok(number_range) => {
+                let bytes = parser.slice(number_range.range).unwrap();
+                let obj = if number_range.is_int {
+                    NumberAny::decode(bytes, 0, peek.into_inner(), allow_inf_nan)?
+                        .0
+                        .to_object(py)
+                } else {
+                    LosslessFloat::new_unchecked(bytes.to_vec()).into_py(py)
+                };
+                Ok(obj.into_bound(py))
             }
             Err(e) => {
                 if !peek.is_num() {

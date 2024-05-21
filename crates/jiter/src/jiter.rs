@@ -170,8 +170,7 @@ impl<'j> Jiter<'j> {
             .parser
             .consume_number::<NumberRange>(peek.into_inner(), self.allow_inf_nan)
         {
-            Ok(NumberRange::Int(range)) => Ok(&self.data[range]),
-            Ok(NumberRange::Float(range)) => Ok(&self.data[range]),
+            Ok(numbe_range) => Ok(&self.data[numbe_range.range]),
             Err(e) => Err(self.maybe_number_error(e, JsonType::Float, peek)),
         }
     }
