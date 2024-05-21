@@ -89,6 +89,9 @@ def test_partial_array_first():
     with pytest.raises(ValueError, match="EOF while parsing a list at line 1 column 1"):
         jiter.from_json(json)
 
+    with pytest.raises(ValueError, match="EOF while parsing a list at line 1 column 1"):
+        jiter.from_json(json, allow_partial='off')
+
 
 def test_partial_object():
     json = b'{"a": 1, "b": 2, "c'
@@ -104,6 +107,8 @@ def test_partial_object():
 def test_partial_object_string():
     json = b'{"a": 1, "b": 2, "c": "foo'
     parsed = jiter.from_json(json, allow_partial=True)
+    assert parsed == {"a": 1, "b": 2}
+    parsed = jiter.from_json(json, allow_partial='on')
     assert parsed == {"a": 1, "b": 2}
 
     # test that stopping at every points is ok

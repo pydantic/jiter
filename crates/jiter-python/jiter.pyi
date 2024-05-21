@@ -6,7 +6,7 @@ def from_json(
     *,
     allow_inf_nan: bool = True,
     cache_strings: Literal[True, False, "all", "keys", "none"] = True,
-    allow_partial: Literal[True, False, "off", "trailing-strings", "none"] = False,
+    allow_partial: Literal[True, False, "off", "on", "trailing-strings"] = False,
     catch_duplicate_keys: bool = False,
 ) -> Any:
     """
