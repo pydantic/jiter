@@ -16,7 +16,7 @@ num-bigint = "0.4.4"
 num-traits = "0.2.16"
 ahash = "0.8.0"
 smallvec = "1.11.0"
-pyo3 = { version = "0.21.0", default-features=false, features = ["num-bigint"], optional = true }
+pyo3 = { version = "0.21.0", optional = true }
 lexical-parse-float = { version = "0.8.5", features =  ["format"] }
 
 [features]
@@ -69,5 +69,6 @@ match_bool = "allow"
 doc_markdown = "allow"
 implicit_clone = "allow"
 iter_without_into_iter = "allow"
+return_self_not_must_use = "allow"
 inline_always = "allow"  # TODO remove?
 match_same_arms = "allow"  # TODO remove?

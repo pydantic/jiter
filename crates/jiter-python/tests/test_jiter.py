@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 import jiter
 import pytest
 from math import inf
@@ -144,3 +146,50 @@ def test_unicode_cache():
     jiter.cache_clear()
     parsed = jiter.from_json(json)
     assert parsed == {"💩": "£"}
+
+
+def test_json_float():
+    f = jiter.LosslessFloat(b'123.45')
+    assert str(f) == '123.45'
+    assert repr(f) == 'LosslessFloat(123.45)'
+    assert float(f) == 123.45
+    assert f.as_decimal() == Decimal('123.45')
+    assert bytes(f) == b'123.45'
+
+
+def test_json_float_scientific():
+    f = jiter.LosslessFloat(b'123e4')
+    assert str(f) == '123e4'
+    assert float(f) == 123e4
+    assert f.as_decimal() == Decimal('123e4')
+
+
+def test_json_float_invalid():
+    with pytest.raises(ValueError, match='trailing characters at line 1 column 6'):
+        jiter.LosslessFloat(b'123.4x')
+
+
+def test_lossless_floats():
+    f = jiter.from_json(b'12.3')
+    assert isinstance(f, float)
+    assert f == 12.3
+
+    f = jiter.from_json(b'12.3', lossless_floats=True)
+    assert isinstance(f, jiter.LosslessFloat)
+    assert str(f) == '12.3'
+    assert float(f) == 12.3
+    assert f.as_decimal() == Decimal('12.3')
+
+    f = jiter.from_json(b'123.456789123456789e45', lossless_floats=True)
+    assert isinstance(f, jiter.LosslessFloat)
+    assert 123e45 < float(f) < 124e45
+    assert f.as_decimal() == Decimal('1.23456789123456789E+47')
+    assert bytes(f) == b'123.456789123456789e45'
+    assert str(f) == '123.456789123456789e45'
+    assert repr(f) == 'LosslessFloat(123.456789123456789e45)'
+
+
+def test_lossless_floats_int():
+    v = jiter.from_json(b'123', lossless_floats=True)
+    assert isinstance(v, int)
+    assert v == 123

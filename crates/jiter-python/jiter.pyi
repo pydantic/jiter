@@ -1,3 +1,4 @@
+import decimal
 from typing import Any, Literal
 
 def from_json(
@@ -5,9 +6,10 @@ def from_json(
     /,
     *,
     allow_inf_nan: bool = True,
-    cache_strings: Literal[True, False, "all", "keys", "none"] = True,
+    cache_strings: Literal[True, False, "all", "keys", "none"] = "all",
     allow_partial: bool = False,
     catch_duplicate_keys: bool = False,
+    lossless_floats: bool = False,
 ) -> Any:
     """
     Parse input bytes into a JSON object.
@@ -22,6 +24,7 @@ def from_json(
             - False / 'none' - cache nothing
         allow_partial: if True, return parsed content when reaching EOF without closing objects and arrays
         catch_duplicate_keys: if True, raise an exception if objects contain the same key multiple times
+        lossless_floats: if True, preserve full detail on floats using `LosslessFloat`
 
     Returns:
         Python object built from the JSON input.
@@ -39,3 +42,26 @@ def cache_usage() -> int:
     Returns:
         Size of the string cache in bytes.
     """
+
+
+class LosslessFloat:
+    """
+    Represents a float from JSON, by holding the underlying bytes representing a float from JSON.
+    """
+    def __init__(self, json_float: bytes):
+        """Construct a LosslessFloat object from a JSON bytes slice"""
+
+    def as_decimal(self) -> decimal.Decimal:
+        """Construct a Python Decimal from the JSON bytes slice"""
+
+    def __float__(self) -> float:
+        """Construct a Python float from the JSON bytes slice"""
+
+    def __bytes__(self) -> bytes:
+        """Return the JSON bytes slice as bytes"""
+
+    def __str__(self):
+        """Return the JSON bytes slice as a string"""
+
+    def __repr__(self):
+        ...

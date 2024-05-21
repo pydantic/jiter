@@ -13,6 +13,12 @@ pub enum StringCacheMode {
     None,
 }
 
+impl Default for StringCacheMode {
+    fn default() -> Self {
+        Self::All
+    }
+}
+
 impl<'py> FromPyObject<'py> for StringCacheMode {
     fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<StringCacheMode> {
         if let Ok(bool_mode) = ob.downcast::<PyBool>() {
