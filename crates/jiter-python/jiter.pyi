@@ -51,13 +51,13 @@ class LosslessFloat:
     def __init__(self, json_float: bytes):
         """Construct a LosslessFloat object from a JSON bytes slice"""
 
-    def as_float(self) -> float:
-        """Construct a Python float from the JSON bytes slice"""
-
     def as_decimal(self) -> decimal.Decimal:
         """Construct a Python Decimal from the JSON bytes slice"""
 
-    def as_bytes(self) -> bytes:
+    def __float__(self) -> float:
+        """Construct a Python float from the JSON bytes slice"""
+
+    def __bytes__(self) -> bytes:
         """Return the JSON bytes slice as bytes"""
 
     def __str__(self):

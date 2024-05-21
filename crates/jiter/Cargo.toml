@@ -16,7 +16,7 @@ num-bigint = "0.4.4"
 num-traits = "0.2.16"
 ahash = "0.8.0"
 smallvec = "1.11.0"
-pyo3 = { version = "0.21.0", default-features=false, features = ["num-bigint", "macros"], optional = true }
+pyo3 = { version = "0.21.0", optional = true }
 lexical-parse-float = { version = "0.8.5", features =  ["format"] }
 
 [features]

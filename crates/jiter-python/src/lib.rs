@@ -4,6 +4,7 @@ use pyo3::prelude::*;
 
 use jiter::{map_json_error, LosslessFloat, PythonParseBuilder, StringCacheMode};
 
+#[allow(clippy::fn_params_excessive_bools)]
 #[pyfunction(
     signature = (
         json_data,

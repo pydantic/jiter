@@ -310,7 +310,7 @@ impl MaybeParseNumber for ParseNumberLossless {
             }
             Ok(NumberRange::Float(float_range)) => {
                 let bytes = parser.slice(float_range).unwrap();
-                let json_float: LosslessFloat = bytes.to_vec().into();
+                let json_float = LosslessFloat::new_unchecked(bytes.to_vec());
                 Ok(json_float.into_py(py).into_bound(py))
             }
             Err(e) => {

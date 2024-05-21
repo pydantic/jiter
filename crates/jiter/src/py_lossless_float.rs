@@ -7,11 +7,11 @@ use crate::Jiter;
 
 /// Represents a float from JSON, by holding the underlying bytes representing a float from JSON.
 #[derive(Debug, Clone)]
-#[pyclass]
+#[pyclass(module = "jiter")]
 pub struct LosslessFloat(Vec<u8>);
 
-impl From<Vec<u8>> for LosslessFloat {
-    fn from(raw: Vec<u8>) -> Self {
+impl LosslessFloat {
+    pub fn new_unchecked(raw: Vec<u8>) -> Self {
         Self(raw)
     }
 }
@@ -22,11 +22,17 @@ impl LosslessFloat {
     fn new(raw: Vec<u8>) -> PyResult<Self> {
         let s = Self(raw);
         // check the string is valid by calling `as_float`
-        s.as_float()?;
+        s.__float__()?;
         Ok(s)
     }
 
-    fn as_float(&self) -> PyResult<f64> {
+    fn as_decimal<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let decimal = get_decimal_type(py)?;
+        let float_str = self.__str__()?;
+        decimal.call1((float_str,))
+    }
+
+    fn __float__(&self) -> PyResult<f64> {
         let bytes = &self.0;
         let mut jiter = Jiter::new(bytes, true);
         let f = jiter
@@ -38,13 +44,7 @@ impl LosslessFloat {
         Ok(f)
     }
 
-    fn as_decimal<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let decimal = get_decimal_type(py)?;
-        let float_str = self.__str__()?;
-        decimal.call1((float_str,))
-    }
-
-    fn as_bytes(&self) -> &[u8] {
+    fn __bytes__(&self) -> &[u8] {
         &self.0
     }
 

@@ -25,4 +25,3 @@ print_stderr = "deny"
 pedantic = { level = "deny", priority = -1 }
 missing_errors_doc = "allow"
 must_use_candidate = "allow"
-fn_params_excessive_bools = "allow"
