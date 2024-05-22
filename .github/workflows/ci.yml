@@ -556,7 +556,7 @@ jobs:
 
   release:
     needs: [check]
-    if: "success() && startsWith(github.ref, 'refs/tags/v')"
+    if: "success() && startsWith(github.ref, 'refs/tags/')"
     runs-on: ubuntu-latest
     environment: release
 
@@ -574,7 +574,7 @@ jobs:
 
   release-python:
     needs: [test-builds-arch, test-builds-os, build-sdist, check]
-    if: "success() && startsWith(github.ref, 'refs/tags/jiter-python-v')"
+    if: "success() && startsWith(github.ref, 'refs/tags/')"
     runs-on: ubuntu-latest
     environment: release-python
     permissions:
@@ -586,22 +586,20 @@ jobs:
       - name: set up python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.12'
 
       - name: get dist artifacts
         uses: actions/download-artifact@v4
         with:
           pattern: pypi_files_*
           merge-multiple: true
-          path: crates/jiter-python/dist
+          path: dist
 
-      - name: check assets
-        run: |
-          pip install -U twine
-          cd crates/jiter-python
-          twine check --strict dist/*
+      - run: pip install -U twine
+      - run: ls -l dist/
+      - run: twine check --strict dist/*
 
       - name: upload to pypi
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: crates/jiter-python/dist/
+          packages-dir: dist/
