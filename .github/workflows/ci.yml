@@ -136,7 +136,7 @@ jobs:
 
     - run: make python-install
 
-    - run: make python-dev
+    - run: pip install -e crates/jiter-python
       env:
         RUSTFLAGS: '-C instrument-coverage'
 
