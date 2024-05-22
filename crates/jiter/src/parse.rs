@@ -196,11 +196,15 @@ impl<'j> Parser<'j> {
         self.consume_ident(NULL_REST)
     }
 
-    pub fn consume_string<'t, D: AbstractStringDecoder<'t, 'j>>(&mut self, tape: &'t mut Tape) -> JsonResult<D::Output>
+    pub fn consume_string<'t, D: AbstractStringDecoder<'t, 'j>>(
+        &mut self,
+        tape: &'t mut Tape,
+        allow_partial: bool,
+    ) -> JsonResult<D::Output>
     where
         'j: 't,
     {
-        let (output, index) = D::decode(self.data, self.index, tape)?;
+        let (output, index) = D::decode(self.data, self.index, tape, allow_partial)?;
         self.index = index;
         Ok(output)
     }
@@ -220,7 +224,7 @@ impl<'j> Parser<'j> {
     where
         'j: 't,
     {
-        let (output, index) = D::decode(self.data, self.index, tape)?;
+        let (output, index) = D::decode(self.data, self.index, tape, false)?;
         self.index = index;
         if let Some(next) = self.eat_whitespace() {
             if next == b':' {

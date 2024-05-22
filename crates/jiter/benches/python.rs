@@ -5,13 +5,13 @@ use std::io::Read;
 
 use pyo3::Python;
 
-use jiter::{cache_clear, PythonParseBuilder, StringCacheMode};
+use jiter::{cache_clear, PartialMode, PythonParse, StringCacheMode};
 
 fn python_parse_numeric(bench: &mut Bencher) {
     Python::with_gil(|py| {
         cache_clear(py);
         bench.iter(|| {
-            PythonParseBuilder::default()
+            PythonParse::default()
                 .python_parse(
                     py,
                     br#"  { "int": 1, "bigint": 123456789012345678901234567890, "float": 1.2}  "#,
@@ -25,7 +25,7 @@ fn python_parse_other(bench: &mut Bencher) {
     Python::with_gil(|py| {
         cache_clear(py);
         bench.iter(|| {
-            PythonParseBuilder::default()
+            PythonParse::default()
                 .python_parse(py, br#"["string", true, false, null]"#)
                 .unwrap()
         });
@@ -41,7 +41,7 @@ fn _python_parse_file(path: &str, bench: &mut Bencher, cache_mode: StringCacheMo
     Python::with_gil(|py| {
         cache_clear(py);
         bench.iter(|| {
-            PythonParseBuilder {
+            PythonParse {
                 cache_mode,
                 ..Default::default()
             }

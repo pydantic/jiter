@@ -196,6 +196,7 @@ pub fn decode_string_chunk(
     data: &[u8],
     mut index: usize,
     mut ascii_only: bool,
+    allow_partial: bool,
 ) -> JsonResult<(StringChunk, bool, usize)> {
     while let Some(byte_chunk) = data.get(index..index + SIMD_STEP) {
         let byte_vec = load_slice(byte_chunk);
@@ -216,7 +217,7 @@ pub fn decode_string_chunk(
         }
     }
     // we got near the end of the string, fall back to the slow path
-    StringChunk::decode_fallback(data, index, ascii_only)
+    StringChunk::decode_fallback(data, index, ascii_only, allow_partial)
 }
 
 #[rustfmt::skip]

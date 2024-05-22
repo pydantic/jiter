@@ -28,4 +28,4 @@ pub use py_lossless_float::LosslessFloat;
 #[cfg(feature = "python")]
 pub use py_string_cache::{cache_clear, cache_usage, cached_py_string, pystring_fast_new, StringCacheMode};
 #[cfg(feature = "python")]
-pub use python::{map_json_error, PythonParseBuilder};
+pub use python::{map_json_error, PartialMode, PythonParse};

@@ -16,12 +16,12 @@ fuzz_target!(|json: String| {
     let json_data = json.as_bytes();
     match JsonValue::parse(json_data, false) {
         Ok(_) => {
-            let mut jiter = Jiter::new(json_data, false);
+            let mut jiter = Jiter::new(json_data);
             jiter.next_skip().unwrap();
             jiter.finish().unwrap();
         }
         Err(json_error) => {
-            let mut jiter = Jiter::new(json_data, false);
+            let mut jiter = Jiter::new(json_data);
             let jiter_error = match jiter.next_skip() {
                 Ok(_) => jiter.finish().unwrap_err(),
                 Err(e) => e,

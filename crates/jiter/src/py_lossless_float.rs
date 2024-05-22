@@ -34,7 +34,7 @@ impl LosslessFloat {
 
     fn __float__(&self) -> PyResult<f64> {
         let bytes = &self.0;
-        let mut jiter = Jiter::new(bytes, true);
+        let mut jiter = Jiter::new(bytes).with_allow_inf_nan();
         let f = jiter
             .next_float()
             .map_err(|e| PyValueError::new_err(e.description(&jiter)))?;

@@ -11,7 +11,7 @@ Documentation is available at [docs.rs/jiter](https://docs.rs/jiter).
 jiter has three interfaces:
 * [`JsonValue`] an enum representing JSON data
 * [`Jiter`] an iterator over JSON data
-* [`python_parse`] which parses a JSON string into a Python object
+* [`PythonParse`] which parses a JSON string into a Python object
 
 ## JsonValue Example
 
@@ -69,7 +69,7 @@ fn main() {
                 "+44 2345678"
             ]
         }"#;
-    let mut jiter = Jiter::new(json_data.as_bytes(), true);
+    let mut jiter = Jiter::new(json_data.as_bytes()).with_allow_inf_nan();
     assert_eq!(jiter.next_object().unwrap(), Some("name"));
     assert_eq!(jiter.next_str().unwrap(), "John Doe");
     assert_eq!(jiter.next_key().unwrap(), Some("age"));

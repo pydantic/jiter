@@ -168,7 +168,7 @@ fn take_value<'j, 's>(
             Ok(JsonValue::Null)
         }
         Peek::String => {
-            let s: StringOutput<'_, 'j> = parser.consume_string::<StringDecoder>(tape)?;
+            let s: StringOutput<'_, 'j> = parser.consume_string::<StringDecoder>(tape, false)?;
             Ok(JsonValue::Str(create_cow(s)))
         }
         Peek::Array => {
@@ -242,7 +242,7 @@ pub(crate) fn take_value_skip(
         Peek::False => parser.consume_false(),
         Peek::Null => parser.consume_null(),
         Peek::String => {
-            parser.consume_string::<StringDecoderRange>(tape)?;
+            parser.consume_string::<StringDecoderRange>(tape, false)?;
             Ok(())
         }
         Peek::Array => {
