@@ -134,7 +134,7 @@ jobs:
 
     - run: rustup component add llvm-tools-preview
 
-    - run: make install-python
+    - run: make python-install
 
     - run: make python-dev
       env:
