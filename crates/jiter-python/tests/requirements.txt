@@ -1,5 +1,3 @@
 pytest
 pytest-pretty
 dirty_equals
-orjson
-ujson

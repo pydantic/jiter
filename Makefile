@@ -17,7 +17,7 @@ test:
 
 .PHONY: python-install
 python-install:
-	pip install maturin
+	pip install -U maturin ujson orjson
 	pip install -r crates/jiter-python/tests/requirements.txt
 
 .PHONY: python-dev
