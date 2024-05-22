@@ -1,14 +1,18 @@
 import argparse
+import os
 import timeit
 from pathlib import Path
 
 import json
 
+FAST = bool(os.getenv('FAST'))
+THIS_DIR = Path(__file__).parent
+
 cases = [
-    ("medium_response", Path("../jiter/benches/medium_response.json").read_bytes()),
+    ("medium_response", (THIS_DIR / "../jiter/benches/medium_response.json").read_bytes()),
     (
         "massive_ints_array",
-        Path("../jiter/benches/massive_ints_array.json").read_bytes(),
+        (THIS_DIR / "../jiter/benches/massive_ints_array.json").read_bytes(),
     ),
     ("array_short_strings", "[{}]".format(", ".join('"123"' for _ in range(100_000)))),
     (
@@ -31,10 +35,13 @@ def run_bench(func, d):
     timer = timeit.Timer(
         "func(json_data)", setup="", globals={"func": func, "json_data": d}
     )
-    n, t = timer.autorange()
-    iter_time = t / n
-    # print(f'{func.__module__}.{func.__name__}', iter_time)
-    return iter_time
+    if FAST:
+        return timer.timeit(1)
+    else:
+        n, t = timer.autorange()
+        iter_time = t / n
+        # print(f'{func.__module__}.{func.__name__}', iter_time)
+        return iter_time
 
 
 def setup_orjson():
@@ -46,13 +53,13 @@ def setup_orjson():
 def setup_jiter_cache():
     import jiter
 
-    return lambda data: jiter.from_json(data, cache_strings=True)
+    return lambda data: jiter.from_json(data, cache_mode=True)
 
 
 def setup_jiter():
     import jiter
 
-    return lambda data: jiter.from_json(data, cache_strings=False)
+    return lambda data: jiter.from_json(data, cache_mode=False)
 
 
 def setup_ujson():
