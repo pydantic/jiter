@@ -253,7 +253,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [linux]  # windows and macos builds added manually
+        os: [linux]  # windows and macos builds added manually
         target: [x86_64, aarch64]
         manylinux: [auto]
         include:
