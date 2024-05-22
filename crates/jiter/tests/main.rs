@@ -616,6 +616,24 @@ fn bad_high_order_string_tail() {
 }
 
 #[test]
+fn simd_string_sizes() {
+    for i in 0..100 {
+        let mut json = vec![b'"'];
+        json.extend(iter::repeat(b'a').take(i));
+        json.push(b'"');
+        json.extend(iter::repeat(b' ').take(40));
+
+        let value = JsonValue::parse(&json, false).unwrap();
+        let s = match value {
+            JsonValue::Str(s) => s,
+            _ => panic!("unexpected value {value:?}"),
+        };
+        assert_eq!(s.len(), i);
+        assert!(s.as_bytes().iter().all(|&b| b == b'a'));
+    }
+}
+
+#[test]
 fn udb_string() {
     let bytes: Vec<u8> = vec![34, 92, 117, 100, 66, 100, 100, 92, 117, 100, 70, 100, 100, 34];
     let v = JsonValue::parse(&bytes, false).unwrap();
