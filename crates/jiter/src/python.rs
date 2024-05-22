@@ -18,7 +18,7 @@ use crate::{JsonErrorType, LosslessFloat};
 
 #[derive(Default)]
 #[allow(clippy::struct_excessive_bools)]
-pub struct PythonParseBuilder {
+pub struct PythonParse {
     /// Whether to allow `(-)Infinity` and `NaN` values.
     pub allow_inf_nan: bool,
     /// Whether to cache strings to avoid constructing new Python objects,
@@ -31,7 +31,7 @@ pub struct PythonParseBuilder {
     pub lossless_floats: bool,
 }
 
-impl PythonParseBuilder {
+impl PythonParse {
     /// Parse a JSON value from a byte slice and return a Python object.
     ///
     /// # Arguments

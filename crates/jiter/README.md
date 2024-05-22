@@ -11,7 +11,7 @@ Documentation is available at [docs.rs/jiter](https://docs.rs/jiter).
 jiter has three interfaces:
 * [`JsonValue`] an enum representing JSON data
 * [`Jiter`] an iterator over JSON data
-* [`python_parse`] which parses a JSON string into a Python object
+* [`PythonParse`] which parses a JSON string into a Python object
 
 ## JsonValue Example
 

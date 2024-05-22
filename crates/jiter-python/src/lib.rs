@@ -2,7 +2,7 @@ use std::sync::OnceLock;
 
 use pyo3::prelude::*;
 
-use jiter::{map_json_error, LosslessFloat, PartialMode, PythonParseBuilder, StringCacheMode};
+use jiter::{map_json_error, LosslessFloat, PartialMode, PythonParse, StringCacheMode};
 
 #[allow(clippy::fn_params_excessive_bools)]
 #[pyfunction(
@@ -11,8 +11,8 @@ use jiter::{map_json_error, LosslessFloat, PartialMode, PythonParseBuilder, Stri
         /,
         *,
         allow_inf_nan=true,
-        cache_strings=StringCacheMode::All,
-        allow_partial=PartialMode::Off,
+        cache_mode=StringCacheMode::All,
+        partial_mode=PartialMode::Off,
         catch_duplicate_keys=false,
         lossless_floats=false,
     )
@@ -21,15 +21,15 @@ pub fn from_json<'py>(
     py: Python<'py>,
     json_data: &[u8],
     allow_inf_nan: bool,
-    cache_strings: StringCacheMode,
-    allow_partial: PartialMode,
+    cache_mode: StringCacheMode,
+    partial_mode: PartialMode,
     catch_duplicate_keys: bool,
     lossless_floats: bool,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let parse_builder = PythonParseBuilder {
+    let parse_builder = PythonParse {
         allow_inf_nan,
-        cache_mode: cache_strings,
-        partial_mode: allow_partial,
+        cache_mode,
+        partial_mode,
         catch_duplicate_keys,
         lossless_floats,
     };

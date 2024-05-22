@@ -9,13 +9,13 @@ Fast iterable JSON parser.
 Documentation is available at [docs.rs/jiter](https://docs.rs/jiter).
 
 jiter has three interfaces:
-* [`JsonValue`] an enum representing JSON data
-* [`Jiter`] an iterator over JSON data
-* [`python_parse`] which parses a JSON string into a Python object
+* `JsonValue` an enum representing JSON data
+* `Jiter` an iterator over JSON data
+* `PythonParse` which parses a JSON string into a Python object
 
 ## JsonValue Example
 
-See [the `JsonValue` docs][JsonValue] for more details.
+See [the `JsonValue` docs](https://docs.rs/jiter/latest/jiter/enum.JsonValue.html) for more details.
 
 ```rust
 use jiter::JsonValue;
@@ -54,7 +54,7 @@ Object(
 
 ## Jiter Example
 
-To use [Jiter], you need to know what schema you're expecting:
+To use [Jiter](https://docs.rs/jiter/latest/jiter/struct.Jiter.html), you need to know what schema you're expecting:
 
 ```rust
 use jiter::{Jiter, NumberInt, Peek};
