@@ -144,6 +144,10 @@ jobs:
       env:
         RUST_BACKTRACE: 1
 
+    - run: python crates/jiter-python/bench.py
+      env:
+        FAST: 1
+
     - run: coverage-prepare lcov $(python -c 'import jiter.jiter;print(jiter.jiter.__file__)')
 
     - uses: codecov/codecov-action@v4
