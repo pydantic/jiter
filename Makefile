@@ -1,11 +1,5 @@
 .DEFAULT_GOAL := all
 
-
-.PHONY: install-python
-install-python:
-	pip install maturin
-	pip install -r crates/jiter-python/tests/requirements.txt
-
 .PHONY: format
 format:
 	@cargo fmt --version
@@ -21,12 +15,17 @@ lint:
 test:
 	cargo test
 
+.PHONY: python-install
+python-install:
+	pip install maturin
+	pip install -r crates/jiter-python/tests/requirements.txt
+
 .PHONY: python-dev
 python-dev:
 	maturin develop -m crates/jiter-python/Cargo.toml
 
-.PHONY: test-python
-test-python: python-dev
+.PHONY: python-test
+python-test: python-dev
 	pytest crates/jiter-python/tests
 
 .PHONY: bench
