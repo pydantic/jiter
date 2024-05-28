@@ -9,17 +9,21 @@ on:
   pull_request: {}
 
 jobs:
-  test-linux:
-    name: test rust-${{ matrix.rust-version }} on linux
+  test-rust:
+    name: test rust-${{ matrix.rust-version }} on ${{ matrix.runs-on }}
     strategy:
       fail-fast: false
       matrix:
-        rust-version: [stable, nightly]
+        runs-on: [ubuntu-latest, macos-latest]
+        rust-version: [stable]
+        include:
+          - runs-on: ubuntu-latest
+            rust-version: nightly
 
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runs-on }}
 
     env:
-      RUNS_ON: ubuntu-latest
+      RUNS_ON: ${{ matrix.runs-on }}
       RUST_VERSION: ${{ matrix.rust-version }}
 
     steps:
@@ -33,24 +37,22 @@ jobs:
     - uses: dtolnay/rust-toolchain@master
       with:
         toolchain: ${{ matrix.rust-version }}
+        components: llvm-tools-preview
 
     - id: cache-rust
       uses: Swatinem/rust-cache@v2
-      with:
-        prefix-key: "v1-rust"
 
-    - run: cargo install rustfilt coverage-prepare cargo-careful
-      if: steps.cache-rust.outputs.cache-hit != 'true'
+    - name: Install cargo-llvm-cov
+      uses: taiki-e/install-action@cargo-llvm-cov
 
-    - run: rustup component add llvm-tools-preview
+    - name: prepare coverage environment
+      run: cargo llvm-cov show-env >> $GITHUB_ENV
 
     - run: cargo test -F python
       env:
         RUST_BACKTRACE: 1
-        RUSTFLAGS: '-C instrument-coverage'
 
-    - run: coverage-prepare --ignore-filename-regex '/tests/' lcov $(find ../../target/debug/deps -regex '.*/main[^.]*')
-      working-directory: crates/jiter
+    - run: cargo llvm-cov report --codecov --output-path=coverage.json
 
     - run: cargo test --doc
 
@@ -59,52 +61,7 @@ jobs:
 
     - uses: codecov/codecov-action@v4
       with:
-        env_vars: RUNS_ON,RUST_VERSION
-        token: ${{ secrets.CODECOV_TOKEN }}
-
-  test-macos:
-    name: test on ${{ matrix.runs-on }}
-    strategy:
-      fail-fast: false
-      matrix:
-        runs-on: [macos-latest, macos-latest]
-
-    runs-on: ${{ matrix.runs-on }}
-
-    env:
-      RUNS_ON: ${{ matrix.runs-on }}
-      RUST_VERSION: stable
-
-    steps:
-    - uses: actions/checkout@v3
-
-    - name: set up python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.12'
-
-    - uses: dtolnay/rust-toolchain@stable
-
-    - id: cache-rust
-      uses: Swatinem/rust-cache@v2
-
-    - run: cargo install rustfilt coverage-prepare
-      if: steps.cache-rust.outputs.cache-hit != 'true'
-
-    - run: rustup component add llvm-tools-preview
-
-    - run: cargo test -F python
-      env:
-        RUST_BACKTRACE: 1
-        RUSTFLAGS: '-C instrument-coverage'
-
-    - run: coverage-prepare --ignore-filename-regex '/tests/' lcov $(find ../../target/debug/deps -regex '.*/main[^.]*')
-      working-directory: crates/jiter
-
-    - run: cargo test --doc
-
-    - uses: codecov/codecov-action@v4
-      with:
+        file: coverage.json
         env_vars: RUNS_ON,RUST_VERSION
         token: ${{ secrets.CODECOV_TOKEN }}
 
@@ -125,20 +82,21 @@ jobs:
         python-version: '3.12'
 
     - uses: dtolnay/rust-toolchain@stable
+      with:
+        components: llvm-tools-preview
 
     - id: cache-rust
       uses: Swatinem/rust-cache@v2
 
-    - run: cargo install rustfilt coverage-prepare
-      if: steps.cache-rust.outputs.cache-hit != 'true'
+    - name: Install cargo-llvm-cov
+      uses: taiki-e/install-action@cargo-llvm-cov
 
-    - run: rustup component add llvm-tools-preview
+    - name: prepare coverage environment
+      run: cargo llvm-cov show-env >> $GITHUB_ENV
 
     - run: make python-install
 
     - run: pip install -e crates/jiter-python
-      env:
-        RUSTFLAGS: '-C instrument-coverage'
 
     - run: pytest crates/jiter-python/tests
       env:
@@ -148,10 +106,11 @@ jobs:
       env:
         FAST: 1
 
-    - run: coverage-prepare lcov $(python -c 'import jiter.jiter;print(jiter.jiter.__file__)')
+    - run: cargo llvm-cov report --codecov --output-path=coverage.json
 
     - uses: codecov/codecov-action@v4
       with:
+        file: coverage.json
         token: ${{ secrets.CODECOV_TOKEN }}
 
   bench:
@@ -550,7 +509,7 @@ jobs:
   # https://github.com/marketplace/actions/alls-green#why used for branch protection checks
   check:
     if: always()
-    needs: [test-linux, test-macos, test-python, bench, fuzz, fuzz-skip, lint]
+    needs: [test-rust, test-python, bench, fuzz, fuzz-skip, lint]
     runs-on: ubuntu-latest
     steps:
       - name: Decide whether the needed jobs succeeded or failed
