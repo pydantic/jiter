@@ -45,14 +45,15 @@ jobs:
     - name: Install cargo-llvm-cov
       uses: taiki-e/install-action@cargo-llvm-cov
 
-    - name: prepare coverage environment
-      run: cargo llvm-cov show-env >> $GITHUB_ENV
-
-    - run: cargo test -F python
+    - run: |
+        source <(cargo llvm-cov show-env --export-prefix)
+        cargo test -F python
       env:
         RUST_BACKTRACE: 1
 
-    - run: cargo llvm-cov report --codecov --output-path=coverage.json
+    - run: |
+        source <(cargo llvm-cov show-env --export-prefix)
+        cargo llvm-cov report --codecov --output-path=coverage.json
 
     - run: cargo test --doc
 
@@ -91,22 +92,29 @@ jobs:
     - name: Install cargo-llvm-cov
       uses: taiki-e/install-action@cargo-llvm-cov
 
-    - name: prepare coverage environment
-      run: cargo llvm-cov show-env >> $GITHUB_ENV
+    - run: |
+        source <(cargo llvm-cov show-env --export-prefix)
+        make python-install
 
-    - run: make python-install
+    - run: |
+        source <(cargo llvm-cov show-env --export-prefix)
+        pip install -e crates/jiter-python
 
-    - run: pip install -e crates/jiter-python
-
-    - run: pytest crates/jiter-python/tests
+    - run: |
+        source <(cargo llvm-cov show-env --export-prefix)
+        pytest crates/jiter-python/tests
       env:
         RUST_BACKTRACE: 1
 
-    - run: python crates/jiter-python/bench.py
+    - run: |
+        source <(cargo llvm-cov show-env --export-prefix)
+        python crates/jiter-python/bench.py
       env:
         FAST: 1
 
-    - run: cargo llvm-cov report --codecov --output-path=coverage.json
+    - run: |
+        source <(cargo llvm-cov show-env --export-prefix)
+        cargo llvm-cov report --codecov --output-path=coverage.json
 
     - uses: codecov/codecov-action@v4
       with:
