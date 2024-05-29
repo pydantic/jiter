@@ -286,15 +286,16 @@ fn take_value_skip_recursive(
     let mut current_recursion_depth = 0;
 
     macro_rules! push_recursion {
-        ($value:expr) => {
-            if current_recursion_depth >= recursion_limit {
-                return Err(json_error!(RecursionLimitExceeded, parser.index));
-            }
+        ($next_peek:expr, $value:expr) => {
+            peek = $next_peek;
             recursion_stack.set(
                 current_recursion_depth,
                 std::mem::replace(&mut current_recursion, $value),
             );
-            current_recursion_depth += 1
+            current_recursion_depth += 1;
+            if current_recursion_depth >= recursion_limit {
+                return Err(json_error!(RecursionLimitExceeded, parser.index));
+            }
         };
     }
 
@@ -308,18 +309,14 @@ fn take_value_skip_recursive(
             }
             Peek::Array => {
                 if let Some(next_peek) = parser.array_first()? {
-                    push_recursion!(ARRAY);
-                    peek = next_peek;
-
+                    push_recursion!(next_peek, ARRAY);
                     // immediately jump to process the first value in the array
                     continue;
                 }
             }
             Peek::Object => {
                 if parser.object_first::<StringDecoderRange>(tape)?.is_some() {
-                    push_recursion!(OBJECT);
-                    peek = parser.peek()?;
-
+                    push_recursion!(parser.peek()?, OBJECT);
                     // immediately jump to process the first value in the object
                     continue;
                 }
