@@ -118,6 +118,7 @@ fn decode_to_tape<'t, 'j>(
                 b't' => tape.push(b'\t'),
                 b'u' => {
                     let (c, new_index) = parse_escape(data, index)?;
+                    ascii_only = false;
                     index = new_index;
                     tape.extend_from_slice(c.encode_utf8(&mut [0_u8; 4]).as_bytes());
                 }
