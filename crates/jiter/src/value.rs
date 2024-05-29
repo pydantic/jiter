@@ -231,7 +231,51 @@ fn take_value<'j, 's>(
 /// like `take_value`, but nothing is returned, should be faster than `take_value`, useful when you don't care
 /// about the value, but just want to consume it
 pub(crate) fn take_value_skip(
+    peek: Peek,
+    parser: &mut Parser,
+    tape: &mut Tape,
+    recursion_limit: u8,
+    allow_inf_nan: bool,
+) -> JsonResult<()> {
+    match peek {
+        Peek::True => parser.consume_true(),
+        Peek::False => parser.consume_false(),
+        Peek::Null => parser.consume_null(),
+        Peek::String => parser.consume_string::<StringDecoderRange>(tape, false).map(drop),
+        Peek::Array => {
+            if let Some(next_peek) = parser.array_first()? {
+                take_value_skip_recursive(next_peek, ARRAY, parser, tape, recursion_limit, allow_inf_nan)
+            } else {
+                Ok(())
+            }
+        }
+        Peek::Object => {
+            if parser.object_first::<StringDecoderRange>(tape)?.is_some() {
+                take_value_skip_recursive(parser.peek()?, OBJECT, parser, tape, recursion_limit, allow_inf_nan)
+            } else {
+                Ok(())
+            }
+        }
+        _ => parser
+            .consume_number::<NumberRange>(peek.into_inner(), allow_inf_nan)
+            .map(drop)
+            .map_err(|e| {
+                if !peek.is_num() {
+                    json_error!(ExpectedSomeValue, parser.index)
+                } else {
+                    e
+                }
+            }),
+    }
+}
+
+const ARRAY: bool = false;
+const OBJECT: bool = true;
+
+#[inline(never)] // this is an iterative algo called only from take_value_skip, no point in inlining
+fn take_value_skip_recursive(
     mut peek: Peek,
+    mut current_recursion: bool,
     parser: &mut Parser,
     tape: &mut Tape,
     recursion_limit: u8,
@@ -239,18 +283,18 @@ pub(crate) fn take_value_skip(
 ) -> JsonResult<()> {
     let mut recursion_stack = bitvec::bitarr![0; 256];
     let recursion_limit: usize = recursion_limit.into();
-    let mut current_recursion = 0;
-
-    const ARRAY: bool = false;
-    const OBJECT: bool = true;
+    let mut current_recursion_depth = 0;
 
     macro_rules! push_recursion {
         ($value:expr) => {
-            if current_recursion >= recursion_limit {
+            if current_recursion_depth >= recursion_limit {
                 return Err(json_error!(RecursionLimitExceeded, parser.index));
             }
-            recursion_stack.set(current_recursion, $value);
-            current_recursion += 1
+            recursion_stack.set(
+                current_recursion_depth,
+                std::mem::replace(&mut current_recursion, $value),
+            );
+            current_recursion_depth += 1
         };
     }
 
@@ -267,7 +311,7 @@ pub(crate) fn take_value_skip(
                     push_recursion!(ARRAY);
                     peek = next_peek;
 
-                    // immediately jump to process the next value
+                    // immediately jump to process the first value in the array
                     continue;
                 }
             }
@@ -276,7 +320,7 @@ pub(crate) fn take_value_skip(
                     push_recursion!(OBJECT);
                     peek = parser.peek()?;
 
-                    // immediately jump to process the next value
+                    // immediately jump to process the first value in the object
                     continue;
                 }
             }
@@ -295,13 +339,7 @@ pub(crate) fn take_value_skip(
 
         // now try to advance position in the current array or object
         peek = loop {
-            let next_recursion = match current_recursion.checked_sub(1) {
-                Some(r) => r,
-                // no recursion left, we are done
-                None => return Ok(()),
-            };
-
-            match recursion_stack[next_recursion] {
+            match current_recursion {
                 ARRAY => {
                     if let Some(next_peek) = parser.array_step()? {
                         break next_peek;
@@ -314,7 +352,13 @@ pub(crate) fn take_value_skip(
                 }
             }
 
-            current_recursion = next_recursion;
+            current_recursion_depth = match current_recursion_depth.checked_sub(1) {
+                Some(r) => r,
+                // no recursion left, we are done
+                None => return Ok(()),
+            };
+
+            current_recursion = recursion_stack[current_recursion_depth];
         };
     }
 }
