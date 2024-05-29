@@ -237,14 +237,22 @@ pub(crate) fn take_value_skip(
     recursion_limit: u8,
     allow_inf_nan: bool,
 ) -> JsonResult<()> {
-    #[derive(Copy, Clone)]
-    enum Recursion {
-        Array,
-        Object,
-    }
-
-    let mut recursion_stack: SmallVec<[Recursion; 8]> = smallvec::smallvec![];
+    let mut recursion_stack = bitvec::bitarr![0; 256];
     let recursion_limit: usize = recursion_limit.into();
+    let mut current_recursion = 0;
+
+    const ARRAY: bool = false;
+    const OBJECT: bool = true;
+
+    macro_rules! push_recursion {
+        ($value:expr) => {
+            if current_recursion >= recursion_limit {
+                return Err(json_error!(RecursionLimitExceeded, parser.index));
+            }
+            recursion_stack.set(current_recursion, $value);
+            current_recursion += 1
+        };
+    }
 
     loop {
         match peek {
@@ -256,10 +264,7 @@ pub(crate) fn take_value_skip(
             }
             Peek::Array => {
                 if let Some(next_peek) = parser.array_first()? {
-                    recursion_stack.push(Recursion::Array);
-                    if recursion_stack.len() > recursion_limit {
-                        return crate::errors::json_err!(RecursionLimitExceeded, parser.index);
-                    }
+                    push_recursion!(ARRAY);
                     peek = next_peek;
 
                     // immediately jump to process the next value
@@ -268,10 +273,7 @@ pub(crate) fn take_value_skip(
             }
             Peek::Object => {
                 if parser.object_first::<StringDecoderRange>(tape)?.is_some() {
-                    recursion_stack.push(Recursion::Object);
-                    if recursion_stack.len() > recursion_limit {
-                        return crate::errors::json_err!(RecursionLimitExceeded, parser.index);
-                    }
+                    push_recursion!(OBJECT);
                     peek = parser.peek()?;
 
                     // immediately jump to process the next value
@@ -293,22 +295,26 @@ pub(crate) fn take_value_skip(
 
         // now try to advance position in the current array or object
         peek = loop {
-            match recursion_stack.last().copied() {
-                Some(Recursion::Array) => {
+            let next_recursion = match current_recursion.checked_sub(1) {
+                Some(r) => r,
+                // no recursion left, we are done
+                None => return Ok(()),
+            };
+
+            match recursion_stack[next_recursion] {
+                ARRAY => {
                     if let Some(next_peek) = parser.array_step()? {
                         break next_peek;
                     }
                 }
-                Some(Recursion::Object) => {
+                OBJECT => {
                     if parser.object_step::<StringDecoderRange>(tape)?.is_some() {
                         break parser.peek()?;
                     }
                 }
-                // no more recursion, all done
-                None => return Ok(()),
             }
 
-            recursion_stack.pop();
+            current_recursion = next_recursion;
         };
     }
 }
