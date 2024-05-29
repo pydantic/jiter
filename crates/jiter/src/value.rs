@@ -231,58 +231,84 @@ fn take_value<'j, 's>(
 /// like `take_value`, but nothing is returned, should be faster than `take_value`, useful when you don't care
 /// about the value, but just want to consume it
 pub(crate) fn take_value_skip(
-    peek: Peek,
+    mut peek: Peek,
     parser: &mut Parser,
     tape: &mut Tape,
-    mut recursion_limit: u8,
+    recursion_limit: u8,
     allow_inf_nan: bool,
 ) -> JsonResult<()> {
-    match peek {
-        Peek::True => parser.consume_true(),
-        Peek::False => parser.consume_false(),
-        Peek::Null => parser.consume_null(),
-        Peek::String => {
-            parser.consume_string::<StringDecoderRange>(tape, false)?;
-            Ok(())
-        }
-        Peek::Array => {
-            if let Some(peek_first) = parser.array_first()? {
-                check_recursion!(recursion_limit, parser.index,
-                    take_value_skip(peek_first, parser, tape, recursion_limit, allow_inf_nan)?;
-                );
-                while let Some(peek) = parser.array_step()? {
-                    check_recursion!(recursion_limit, parser.index,
-                        take_value_skip(peek, parser, tape, recursion_limit, allow_inf_nan)?;
-                    );
+    #[derive(Copy, Clone)]
+    enum Recursion {
+        Array,
+        Object,
+    }
+
+    let mut recursion_stack: SmallVec<[Recursion; 8]> = smallvec::smallvec![];
+    let recursion_limit: usize = recursion_limit.into();
+
+    loop {
+        match peek {
+            Peek::True => parser.consume_true()?,
+            Peek::False => parser.consume_false()?,
+            Peek::Null => parser.consume_null()?,
+            Peek::String => {
+                parser.consume_string::<StringDecoderRange>(tape, false)?;
+            }
+            Peek::Array => {
+                if let Some(next_peek) = parser.array_first()? {
+                    recursion_stack.push(Recursion::Array);
+                    if recursion_stack.len() > recursion_limit {
+                        return crate::errors::json_err!(RecursionLimitExceeded, parser.index);
+                    }
+                    peek = next_peek;
+
+                    // immediately jump to process the next value
+                    continue;
                 }
             }
-            Ok(())
-        }
-        Peek::Object => {
-            if parser.object_first::<StringDecoderRange>(tape)?.is_some() {
-                let peek = parser.peek()?;
-                check_recursion!(recursion_limit, parser.index,
-                    take_value_skip(peek, parser, tape, recursion_limit, allow_inf_nan)?;
-                );
-                while parser.object_step::<StringDecoderRange>(tape)?.is_some() {
-                    let peek = parser.peek()?;
-                    check_recursion!(recursion_limit, parser.index,
-                        take_value_skip(peek, parser, tape, recursion_limit, allow_inf_nan)?;
-                    );
+            Peek::Object => {
+                if parser.object_first::<StringDecoderRange>(tape)?.is_some() {
+                    recursion_stack.push(Recursion::Object);
+                    if recursion_stack.len() > recursion_limit {
+                        return crate::errors::json_err!(RecursionLimitExceeded, parser.index);
+                    }
+                    peek = parser.peek()?;
+
+                    // immediately jump to process the next value
+                    continue;
                 }
             }
-            Ok(())
-        }
-        _ => {
-            if let Err(e) = parser.consume_number::<NumberRange>(peek.into_inner(), allow_inf_nan) {
-                if !peek.is_num() {
-                    Err(json_error!(ExpectedSomeValue, parser.index))
-                } else {
-                    Err(e)
-                }
-            } else {
-                Ok(())
+            _ => {
+                parser
+                    .consume_number::<NumberRange>(peek.into_inner(), allow_inf_nan)
+                    .map_err(|e| {
+                        if !peek.is_num() {
+                            json_error!(ExpectedSomeValue, parser.index)
+                        } else {
+                            e
+                        }
+                    })?;
             }
-        }
+        };
+
+        // now try to advance position in the current array or object
+        peek = loop {
+            match recursion_stack.last().copied() {
+                Some(Recursion::Array) => {
+                    if let Some(next_peek) = parser.array_step()? {
+                        break next_peek;
+                    }
+                }
+                Some(Recursion::Object) => {
+                    if parser.object_step::<StringDecoderRange>(tape)?.is_some() {
+                        break parser.peek()?;
+                    }
+                }
+                // no more recursion, all done
+                None => return Ok(()),
+            }
+
+            recursion_stack.pop();
+        };
     }
 }
