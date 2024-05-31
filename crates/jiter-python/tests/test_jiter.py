@@ -1,3 +1,4 @@
+import json
 from decimal import Decimal
 
 import jiter
@@ -239,3 +240,17 @@ def test_lossless_floats_int():
     v = jiter.from_json(b'123', lossless_floats=True)
     assert isinstance(v, int)
     assert v == 123
+
+
+def test_unicode_roundtrip():
+    original = ['中文']
+    json_data = json.dumps(original).encode()
+    assert jiter.from_json(json_data) == original
+    assert json.loads(json_data) == original
+
+
+def test_unicode_roundtrip_ensure_ascii():
+    original = {'name': '中文'}
+    json_data = json.dumps(original, ensure_ascii=False).encode()
+    assert jiter.from_json(json_data, cache_mode=False) == original
+    assert json.loads(json_data) == original

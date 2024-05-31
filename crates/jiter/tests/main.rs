@@ -1594,3 +1594,16 @@ fn jiter_partial_string() {
         JiterErrorType::JsonError(JsonErrorType::EofWhileParsingList)
     );
 }
+
+#[test]
+fn test_unicode_roundtrip() {
+    // '"中文"'
+    let json_bytes = b"\"\\u4e2d\\u6587\"";
+    let value = JsonValue::parse(json_bytes, false).unwrap();
+    let cow = match value {
+        JsonValue::Str(s) => s,
+        _ => panic!("expected string"),
+    };
+    assert_eq!(cow, "中文");
+    assert!(matches!(cow, Cow::Owned(_)));
+}
