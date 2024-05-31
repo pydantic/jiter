@@ -962,6 +962,42 @@ fn test_recursion_limit_incr() {
     }
 }
 
+#[test]
+fn test_recursion_limit_skip_array() {
+    let json = (0..2000).map(|_| "[ ").collect::<String>();
+    let bytes = json.as_bytes();
+    let mut jiter = Jiter::new(bytes);
+    let e = jiter.next_skip().unwrap_err();
+    assert_eq!(
+        e.error_type,
+        JiterErrorType::JsonError(JsonErrorType::RecursionLimitExceeded)
+    );
+    let expected_index = JsonValue::parse(bytes, false).unwrap_err().index;
+    assert_eq!(e.index, expected_index);
+    assert_eq!(
+        e.description(&jiter),
+        format!("recursion limit exceeded at line 1 column {}", expected_index + 1)
+    );
+}
+
+#[test]
+fn test_recursion_limit_skip_object() {
+    let json = (0..2000).map(|_| "{\"a\": ").collect::<String>();
+    let bytes = json.as_bytes();
+    let mut jiter = Jiter::new(bytes);
+    let e = jiter.next_skip().unwrap_err();
+    assert_eq!(
+        e.error_type,
+        JiterErrorType::JsonError(JsonErrorType::RecursionLimitExceeded)
+    );
+    let expected_index = JsonValue::parse(bytes, false).unwrap_err().index;
+    assert_eq!(e.index, expected_index);
+    assert_eq!(
+        e.description(&jiter),
+        format!("recursion limit exceeded at line 1 column {}", expected_index + 1)
+    );
+}
+
 macro_rules! number_bytes {
     ($($name:ident: $json:literal => $expected:expr;)*) => {
         $(

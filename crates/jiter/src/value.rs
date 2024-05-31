@@ -234,55 +234,128 @@ pub(crate) fn take_value_skip(
     peek: Peek,
     parser: &mut Parser,
     tape: &mut Tape,
-    mut recursion_limit: u8,
+    recursion_limit: u8,
     allow_inf_nan: bool,
 ) -> JsonResult<()> {
     match peek {
         Peek::True => parser.consume_true(),
         Peek::False => parser.consume_false(),
         Peek::Null => parser.consume_null(),
-        Peek::String => {
-            parser.consume_string::<StringDecoderRange>(tape, false)?;
-            Ok(())
-        }
+        Peek::String => parser.consume_string::<StringDecoderRange>(tape, false).map(drop),
         Peek::Array => {
-            if let Some(peek_first) = parser.array_first()? {
-                check_recursion!(recursion_limit, parser.index,
-                    take_value_skip(peek_first, parser, tape, recursion_limit, allow_inf_nan)?;
-                );
-                while let Some(peek) = parser.array_step()? {
-                    check_recursion!(recursion_limit, parser.index,
-                        take_value_skip(peek, parser, tape, recursion_limit, allow_inf_nan)?;
-                    );
-                }
-            }
-            Ok(())
-        }
-        Peek::Object => {
-            if parser.object_first::<StringDecoderRange>(tape)?.is_some() {
-                let peek = parser.peek()?;
-                check_recursion!(recursion_limit, parser.index,
-                    take_value_skip(peek, parser, tape, recursion_limit, allow_inf_nan)?;
-                );
-                while parser.object_step::<StringDecoderRange>(tape)?.is_some() {
-                    let peek = parser.peek()?;
-                    check_recursion!(recursion_limit, parser.index,
-                        take_value_skip(peek, parser, tape, recursion_limit, allow_inf_nan)?;
-                    );
-                }
-            }
-            Ok(())
-        }
-        _ => {
-            if let Err(e) = parser.consume_number::<NumberRange>(peek.into_inner(), allow_inf_nan) {
-                if !peek.is_num() {
-                    Err(json_error!(ExpectedSomeValue, parser.index))
-                } else {
-                    Err(e)
-                }
+            if let Some(next_peek) = parser.array_first()? {
+                take_value_skip_recursive(next_peek, ARRAY, parser, tape, recursion_limit, allow_inf_nan)
             } else {
                 Ok(())
             }
         }
+        Peek::Object => {
+            if parser.object_first::<StringDecoderRange>(tape)?.is_some() {
+                take_value_skip_recursive(parser.peek()?, OBJECT, parser, tape, recursion_limit, allow_inf_nan)
+            } else {
+                Ok(())
+            }
+        }
+        _ => parser
+            .consume_number::<NumberRange>(peek.into_inner(), allow_inf_nan)
+            .map(drop)
+            .map_err(|e| {
+                if !peek.is_num() {
+                    json_error!(ExpectedSomeValue, parser.index)
+                } else {
+                    e
+                }
+            }),
+    }
+}
+
+const ARRAY: bool = false;
+const OBJECT: bool = true;
+
+#[inline(never)] // this is an iterative algo called only from take_value_skip, no point in inlining
+fn take_value_skip_recursive(
+    mut peek: Peek,
+    mut current_recursion: bool,
+    parser: &mut Parser,
+    tape: &mut Tape,
+    recursion_limit: u8,
+    allow_inf_nan: bool,
+) -> JsonResult<()> {
+    let mut recursion_stack = bitvec::bitarr![0; 256];
+    let recursion_limit: usize = recursion_limit.into();
+    let mut current_recursion_depth = 0;
+
+    macro_rules! push_recursion {
+        ($next_peek:expr, $value:expr) => {
+            peek = $next_peek;
+            recursion_stack.set(
+                current_recursion_depth,
+                std::mem::replace(&mut current_recursion, $value),
+            );
+            current_recursion_depth += 1;
+            if current_recursion_depth >= recursion_limit {
+                return Err(json_error!(RecursionLimitExceeded, parser.index));
+            }
+        };
+    }
+
+    loop {
+        match peek {
+            Peek::True => parser.consume_true()?,
+            Peek::False => parser.consume_false()?,
+            Peek::Null => parser.consume_null()?,
+            Peek::String => {
+                parser.consume_string::<StringDecoderRange>(tape, false)?;
+            }
+            Peek::Array => {
+                if let Some(next_peek) = parser.array_first()? {
+                    push_recursion!(next_peek, ARRAY);
+                    // immediately jump to process the first value in the array
+                    continue;
+                }
+            }
+            Peek::Object => {
+                if parser.object_first::<StringDecoderRange>(tape)?.is_some() {
+                    push_recursion!(parser.peek()?, OBJECT);
+                    // immediately jump to process the first value in the object
+                    continue;
+                }
+            }
+            _ => {
+                parser
+                    .consume_number::<NumberRange>(peek.into_inner(), allow_inf_nan)
+                    .map_err(|e| {
+                        if !peek.is_num() {
+                            json_error!(ExpectedSomeValue, parser.index)
+                        } else {
+                            e
+                        }
+                    })?;
+            }
+        };
+
+        // now try to advance position in the current array or object
+        peek = loop {
+            match current_recursion {
+                ARRAY => {
+                    if let Some(next_peek) = parser.array_step()? {
+                        break next_peek;
+                    }
+                }
+                OBJECT => {
+                    if parser.object_step::<StringDecoderRange>(tape)?.is_some() {
+                        break parser.peek()?;
+                    }
+                }
+            }
+
+            current_recursion_depth = match current_recursion_depth.checked_sub(1) {
+                Some(r) => r,
+                // no recursion left, we are done
+                None => return Ok(()),
+            };
+
+            current_recursion = recursion_stack[current_recursion_depth];
+        };
     }
 }
