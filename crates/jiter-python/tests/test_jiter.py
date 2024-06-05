@@ -42,10 +42,40 @@ def test_error():
 
     assert exc_info.value.kind() == 'EofWhileParsingList'
     assert exc_info.value.description() == 'EOF while parsing a list'
+    assert exc_info.value.path() == []
     assert exc_info.value.index() == 9
     assert exc_info.value.line() == 1
     assert exc_info.value.column() == 9
     assert repr(exc_info.value) == 'JsonParseError("EOF while parsing a list at line 1 column 9")'
+
+
+def test_error_path():
+    with pytest.raises(jiter.JsonParseError, match="EOF while parsing a string at line 1 column 5") as exc_info:
+        jiter.from_json(b'["str', error_in_path=True)
+
+    assert exc_info.value.kind() == 'EofWhileParsingString'
+    assert exc_info.value.description() == 'EOF while parsing a string'
+    assert exc_info.value.path() == [0]
+    assert exc_info.value.index() == 5
+    assert exc_info.value.line() == 1
+
+
+def test_error_path_empty():
+    with pytest.raises(jiter.JsonParseError) as exc_info:
+        jiter.from_json(b'"foo', error_in_path=True)
+
+    assert exc_info.value.kind() == 'EofWhileParsingString'
+    assert exc_info.value.path() == []
+
+
+def test_error_path_object():
+    with pytest.raises(jiter.JsonParseError) as exc_info:
+        jiter.from_json(b'{"foo":\n[1,\n2, x', error_in_path=True)
+
+    assert exc_info.value.kind() == 'ExpectedSomeValue'
+    assert exc_info.value.index() == 15
+    assert exc_info.value.line() == 3
+    assert exc_info.value.path() == ['foo', 2]
 
 
 def test_recursion_limit():

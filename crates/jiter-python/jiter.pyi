@@ -10,6 +10,7 @@ def from_json(
     partial_mode: Literal[True, False, "off", "on", "trailing-strings"] = False,
     catch_duplicate_keys: bool = False,
     lossless_floats: bool = False,
+    error_in_path: bool = False,
 ) -> Any:
     """
     Parse input bytes into a JSON object.
@@ -28,6 +29,7 @@ def from_json(
             - 'trailing-strings' - allow incomplete JSON, and include the last incomplete string in the output
         catch_duplicate_keys: if True, raise an exception if objects contain the same key multiple times
         lossless_floats: if True, preserve full detail on floats using `LosslessFloat`
+        error_in_path: Whether to include the JSON path to the invalid JSON in `JsonParseError`
 
     Returns:
         Python object built from the JSON input.
@@ -79,6 +81,9 @@ class JsonParseError(ValueError):
         ...
 
     def description(self) -> str:
+        ...
+
+    def path(self) -> list[str | int]:
         ...
 
     def index(self) -> int:
