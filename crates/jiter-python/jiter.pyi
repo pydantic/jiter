@@ -63,8 +63,35 @@ class LosslessFloat:
     def __bytes__(self) -> bytes:
         """Return the JSON bytes slice as bytes"""
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Return the JSON bytes slice as a string"""
 
-    def __repr__(self):
+    def __repr__(self) -> str:
+        ...
+
+
+class JsonParseError(ValueError):
+    """
+    Represents details of failed JSON parsing.
+    """
+
+    def kind(self) -> str:
+        ...
+
+    def description(self) -> str:
+        ...
+
+    def index(self) -> int:
+        ...
+
+    def line(self) -> int:
+        ...
+
+    def column(self) -> int:
+        ...
+
+    def __str__(self) -> str:
+        """String summary of the error, combined description and position"""
+
+    def __repr__(self) -> str:
         ...

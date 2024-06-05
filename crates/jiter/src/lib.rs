@@ -6,6 +6,8 @@ mod lazy_index_map;
 mod number_decoder;
 mod parse;
 #[cfg(feature = "python")]
+mod py_error;
+#[cfg(feature = "python")]
 mod py_lossless_float;
 #[cfg(feature = "python")]
 mod py_string_cache;
@@ -24,8 +26,10 @@ pub use parse::Peek;
 pub use value::{JsonArray, JsonObject, JsonValue};
 
 #[cfg(feature = "python")]
+pub use py_error::JsonParseError;
+#[cfg(feature = "python")]
 pub use py_lossless_float::LosslessFloat;
 #[cfg(feature = "python")]
 pub use py_string_cache::{cache_clear, cache_usage, cached_py_string, pystring_fast_new, StringCacheMode};
 #[cfg(feature = "python")]
-pub use python::{map_json_error, PartialMode, PythonParse};
+pub use python::{PartialMode, PythonParse};

@@ -2,7 +2,7 @@ use std::sync::OnceLock;
 
 use pyo3::prelude::*;
 
-use jiter::{map_json_error, LosslessFloat, PartialMode, PythonParse, StringCacheMode};
+use jiter::{JsonParseError, LosslessFloat, PartialMode, PythonParse, StringCacheMode};
 
 #[allow(clippy::fn_params_excessive_bools)]
 #[pyfunction(
@@ -33,9 +33,7 @@ pub fn from_json<'py>(
         catch_duplicate_keys,
         lossless_floats,
     };
-    parse_builder
-        .python_parse(py, json_data)
-        .map_err(|e| map_json_error(json_data, &e))
+    parse_builder.python_parse_exc(py, json_data)
 }
 
 pub fn get_jiter_version() -> &'static str {
@@ -70,5 +68,6 @@ fn jiter_python(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(cache_clear, m)?)?;
     m.add_function(wrap_pyfunction!(cache_usage, m)?)?;
     m.add_class::<LosslessFloat>()?;
+    m.add_class::<JsonParseError>()?;
     Ok(())
 }

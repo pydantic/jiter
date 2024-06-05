@@ -12,6 +12,7 @@ use smallvec::SmallVec;
 use crate::errors::{json_err, json_error, JsonError, JsonResult, DEFAULT_RECURSION_LIMIT};
 use crate::number_decoder::{AbstractNumberDecoder, NumberAny, NumberRange};
 use crate::parse::{Parser, Peek};
+use crate::py_error::JsonParseError;
 use crate::py_string_cache::{StringCacheAll, StringCacheKeys, StringCacheMode, StringMaybeCache, StringNoCache};
 use crate::string_decoder::{StringDecoder, Tape};
 use crate::{JsonErrorType, LosslessFloat};
@@ -71,11 +72,13 @@ impl PythonParse {
             StringCacheMode::None => ppp_group!(StringNoCache),
         }
     }
-}
 
-/// Map a `JsonError` to a `PyErr` which can be raised as an exception in Python as a `ValueError`.
-pub fn map_json_error(json_data: &[u8], json_error: &JsonError) -> PyErr {
-    PyValueError::new_err(json_error.description(json_data))
+    /// Like `python_parse`, but maps [`JsonError`] to a `PyErr` which can be raised as an exception in
+    /// Python as a [`JsonParseError`].
+    pub fn python_parse_exc<'py>(self, py: Python<'py>, json_data: &[u8]) -> PyResult<Bound<'py, PyAny>> {
+        self.python_parse(py, json_data)
+            .map_err(|e| JsonParseError::new_err(py, e, json_data))
+    }
 }
 
 struct PythonParser<'j, StringCache, KeyCheck, ParseNumber> {

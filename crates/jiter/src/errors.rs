@@ -107,6 +107,35 @@ impl std::fmt::Display for JsonErrorType {
     }
 }
 
+impl JsonErrorType {
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::FloatExpectingInt => "FloatExpectingInt",
+            Self::DuplicateKey(_) => "DuplicateKey",
+            Self::EofWhileParsingList => "EofWhileParsingList",
+            Self::EofWhileParsingObject => "EofWhileParsingObject",
+            Self::EofWhileParsingString => "EofWhileParsingString",
+            Self::EofWhileParsingValue => "EofWhileParsingValue",
+            Self::ExpectedColon => "ExpectedColon",
+            Self::ExpectedListCommaOrEnd => "ExpectedListCommaOrEnd",
+            Self::ExpectedObjectCommaOrEnd => "ExpectedObjectCommaOrEnd",
+            Self::ExpectedSomeIdent => "ExpectedSomeIdent",
+            Self::ExpectedSomeValue => "ExpectedSomeValue",
+            Self::InvalidEscape => "InvalidEscape",
+            Self::InvalidNumber => "InvalidNumber",
+            Self::NumberOutOfRange => "NumberOutOfRange",
+            Self::InvalidUnicodeCodePoint => "InvalidUnicodeCodePoint",
+            Self::ControlCharacterWhileParsingString => "ControlCharacterWhileParsingString",
+            Self::KeyMustBeAString => "KeyMustBeAString",
+            Self::LoneLeadingSurrogateInHexEscape => "LoneLeadingSurrogateInHexEscape",
+            Self::TrailingComma => "TrailingComma",
+            Self::TrailingCharacters => "TrailingCharacters",
+            Self::UnexpectedEndOfHexEscape => "UnexpectedEndOfHexEscape",
+            Self::RecursionLimitExceeded => "RecursionLimitExceeded",
+        }
+    }
+}
+
 pub type JsonResult<T> = Result<T, JsonError>;
 
 /// Represents an error from parsing JSON
