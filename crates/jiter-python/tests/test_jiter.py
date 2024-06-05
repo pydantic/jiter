@@ -240,13 +240,17 @@ def test_lossless_floats():
     assert isinstance(f, float)
     assert f == 12.3
 
-    f = jiter.from_json(b'12.3', lossless_floats=True)
+    f = jiter.from_json(b'12.3', float_mode='float')
+    assert isinstance(f, float)
+    assert f == 12.3
+
+    f = jiter.from_json(b'12.3', float_mode='lossless-float')
     assert isinstance(f, jiter.LosslessFloat)
     assert str(f) == '12.3'
     assert float(f) == 12.3
     assert f.as_decimal() == Decimal('12.3')
 
-    f = jiter.from_json(b'123.456789123456789e45', lossless_floats=True)
+    f = jiter.from_json(b'123.456789123456789e45', float_mode='lossless-float')
     assert isinstance(f, jiter.LosslessFloat)
     assert 123e45 < float(f) < 124e45
     assert f.as_decimal() == Decimal('1.23456789123456789E+47')
@@ -255,8 +259,22 @@ def test_lossless_floats():
     assert repr(f) == 'LosslessFloat(123.456789123456789e45)'
 
 
+def test_decimal_floats():
+    f = jiter.from_json(b'12.3')
+    assert isinstance(f, float)
+    assert f == 12.3
+
+    f = jiter.from_json(b'12.3', float_mode='decimal')
+    assert isinstance(f, Decimal)
+    assert f == Decimal('12.3')
+
+    f = jiter.from_json(b'123.456789123456789e45', float_mode='decimal')
+    assert isinstance(f, Decimal)
+    assert f == Decimal('1.23456789123456789E+47')
+
+
 def test_lossless_floats_int():
-    v = jiter.from_json(b'123', lossless_floats=True)
+    v = jiter.from_json(b'123', float_mode='lossless-float')
     assert isinstance(v, int)
     assert v == 123
 

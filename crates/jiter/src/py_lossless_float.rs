@@ -1,9 +1,39 @@
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::sync::GILOnceCell;
 use pyo3::types::PyType;
 
 use crate::Jiter;
+
+#[derive(Debug, Clone, Copy)]
+pub enum FloatMode {
+    Float,
+    Decimal,
+    LosslessFloat,
+}
+
+impl Default for FloatMode {
+    fn default() -> Self {
+        Self::Float
+    }
+}
+
+const FLOAT_ERROR: &str = "Invalid float mode, should be `'float'`, `'decimal'` or `'lossless-float'`";
+
+impl<'py> FromPyObject<'py> for FloatMode {
+    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+        if let Ok(str_mode) = ob.extract::<&str>() {
+            match str_mode {
+                "float" => Ok(Self::Float),
+                "decimal" => Ok(Self::Decimal),
+                "lossless-float" => Ok(Self::LosslessFloat),
+                _ => Err(PyValueError::new_err(FLOAT_ERROR)),
+            }
+        } else {
+            Err(PyTypeError::new_err(FLOAT_ERROR))
+        }
+    }
+}
 
 /// Represents a float from JSON, by holding the underlying bytes representing a float from JSON.
 #[derive(Debug, Clone)]
