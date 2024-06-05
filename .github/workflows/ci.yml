@@ -9,12 +9,33 @@ on:
   pull_request: {}
 
 jobs:
+  resolve:
+
+    runs-on: ubuntu-latest
+    outputs:
+      MSRV: ${{ steps.resolve-msrv.outputs.MSRV }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: resolve MSRV
+        id: resolve-msrv
+        run:
+          echo MSRV=`python -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["rust-version"])'` >> $GITHUB_OUTPUT
+
   test-linux:
+    needs: [resolve]
     name: test rust-${{ matrix.rust-version }} on linux
     strategy:
       fail-fast: false
       matrix:
         rust-version: [stable, nightly]
+        include:
+          - rust-version: ${{ needs.resolve.outputs.MSRV }}
 
     runs-on: ubuntu-latest
 
