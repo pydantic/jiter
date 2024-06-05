@@ -192,7 +192,7 @@ const CONTROL_16: SimdVecu8_16 = simd_const!([32u8; 16]);
 const ASCII_MAX_16: SimdVecu8_16 = simd_const!([127u8; 16]);
 
 #[inline(always)]
-pub fn decode_string_chunk(
+pub(crate) fn decode_string_chunk(
     data: &[u8],
     mut index: usize,
     mut ascii_only: bool,

@@ -15,6 +15,7 @@ keywords = ["JSON", "parsing", "deserialization", "iter"]
 categories = ["parser-implementations", "parsing"]
 homepage = "https://github.com/pydantic/jiter/"
 repository = "https://github.com/pydantic/jiter/"
+rust-version = "1.73.0"
 
 [profile.bench]
 debug = true
