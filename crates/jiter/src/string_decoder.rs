@@ -146,7 +146,7 @@ fn decode_to_tape<'t, 'j>(
 }
 
 #[inline(always)]
-pub fn decode_chunk(
+pub(crate) fn decode_chunk(
     data: &[u8],
     index: usize,
     ascii_only: bool,
