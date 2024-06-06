@@ -79,18 +79,22 @@ pub(crate) trait MaybeBuildObjectPath: MaybeBuildPath {
 }
 
 pub(crate) trait MaybeBuildPath {
-    fn new_array() -> impl MaybeBuildArrayPath;
-    fn new_object() -> impl MaybeBuildObjectPath;
+    type A: MaybeBuildArrayPath;
+    type O: MaybeBuildObjectPath;
+    fn new_array() -> Self::A;
+    fn new_object() -> Self::O;
 }
 
 pub(crate) struct NoopBuildPath;
 
 impl MaybeBuildPath for NoopBuildPath {
-    fn new_array() -> NoopBuildPath {
+    type A = NoopBuildPath;
+    type O = NoopBuildPath;
+    fn new_array() -> Self::A {
         NoopBuildPath
     }
 
-    fn new_object() -> NoopBuildPath {
+    fn new_object() -> Self::O {
         NoopBuildPath
     }
 }
@@ -117,11 +121,13 @@ pub(crate) struct ActiveBuildPath {
 }
 
 impl MaybeBuildPath for ActiveBuildPath {
-    fn new_array() -> ActiveBuildPath {
+    type A = ActiveBuildPath;
+    type O = ActiveObjectBuildPath;
+    fn new_array() -> Self::A {
         ActiveBuildPath::default()
     }
 
-    fn new_object() -> ActiveObjectBuildPath {
+    fn new_object() -> Self::O {
         ActiveObjectBuildPath::default()
     }
 }
@@ -143,11 +149,13 @@ pub(crate) struct ActiveObjectBuildPath {
 }
 
 impl MaybeBuildPath for ActiveObjectBuildPath {
-    fn new_array() -> ActiveBuildPath {
+    type A = ActiveBuildPath;
+    type O = ActiveObjectBuildPath;
+    fn new_array() -> Self::A {
         ActiveBuildPath::default()
     }
 
-    fn new_object() -> ActiveObjectBuildPath {
+    fn new_object() -> Self::O {
         ActiveObjectBuildPath::default()
     }
 }
