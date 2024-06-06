@@ -178,6 +178,7 @@ impl ToPyObject for PathItem {
     }
 }
 
+#[derive(Debug)]
 pub struct PythonJsonError {
     pub error: JsonError,
     path: Option<Vec<PathItem>>,
