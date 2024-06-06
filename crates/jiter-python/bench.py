@@ -50,7 +50,7 @@ def setup_jiter_cache():
 def setup_jiter():
     import jiter
 
-    return lambda data: jiter.from_json(data, cache_mode=False, lossless_floats=True)
+    return lambda data: jiter.from_json(data, cache_mode=False)
 
 
 def setup_ujson():
