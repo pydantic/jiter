@@ -165,6 +165,8 @@ def test_partial_error():
     msg = "Invalid partial mode, should be `'off'`, `'on'`, `'trailing-strings'` or a `bool`"
     with pytest.raises(ValueError, match=msg):
         jiter.from_json(json, partial_mode='wrong')
+    with pytest.raises(TypeError, match=msg):
+        jiter.from_json(json, partial_mode=123)
 
 
 def test_python_cache_usage_all():
