@@ -7,14 +7,14 @@ from math import inf
 from dirty_equals import IsFloatNan
 
 
-def test_python_parse_numeric():
+def test_parse_numeric():
     parsed = jiter.from_json(
         b'  { "int": 1, "bigint": 123456789012345678901234567890, "float": 1.2}  '
     )
     assert parsed == {"int": 1, "bigint": 123456789012345678901234567890, "float": 1.2}
 
 
-def test_python_parse_other_cached():
+def test_parse_other_cached():
     parsed = jiter.from_json(
         b'["string", true, false, null, NaN, Infinity, -Infinity]',
         allow_inf_nan=True,
@@ -23,7 +23,7 @@ def test_python_parse_other_cached():
     assert parsed == ["string", True, False, None, IsFloatNan(), inf, -inf]
 
 
-def test_python_parse_other_no_cache():
+def test_parse_other_no_cache():
     parsed = jiter.from_json(
         b'["string", true, false, null]',
         cache_mode=False,
@@ -31,19 +31,56 @@ def test_python_parse_other_no_cache():
     assert parsed == ["string", True, False, None]
 
 
-def test_python_disallow_nan():
-    with pytest.raises(ValueError, match="expected value at line 1 column 2"):
+def test_disallow_nan():
+    with pytest.raises(jiter.JsonParseError, match="expected value at line 1 column 2"):
         jiter.from_json(b"[NaN]", allow_inf_nan=False)
 
 
 def test_error():
-    with pytest.raises(ValueError, match="EOF while parsing a list at line 1 column 9"):
+    with pytest.raises(jiter.JsonParseError, match="EOF while parsing a list at line 1 column 9") as exc_info:
         jiter.from_json(b'["string"')
+
+    assert exc_info.value.kind() == 'EofWhileParsingList'
+    assert exc_info.value.description() == 'EOF while parsing a list'
+    assert exc_info.value.path() == []
+    assert exc_info.value.index() == 9
+    assert exc_info.value.line() == 1
+    assert exc_info.value.column() == 9
+    assert repr(exc_info.value) == 'JsonParseError("EOF while parsing a list at line 1 column 9")'
+
+
+def test_error_path():
+    with pytest.raises(jiter.JsonParseError, match="EOF while parsing a string at line 1 column 5") as exc_info:
+        jiter.from_json(b'["str', error_in_path=True)
+
+    assert exc_info.value.kind() == 'EofWhileParsingString'
+    assert exc_info.value.description() == 'EOF while parsing a string'
+    assert exc_info.value.path() == [0]
+    assert exc_info.value.index() == 5
+    assert exc_info.value.line() == 1
+
+
+def test_error_path_empty():
+    with pytest.raises(jiter.JsonParseError) as exc_info:
+        jiter.from_json(b'"foo', error_in_path=True)
+
+    assert exc_info.value.kind() == 'EofWhileParsingString'
+    assert exc_info.value.path() == []
+
+
+def test_error_path_object():
+    with pytest.raises(jiter.JsonParseError) as exc_info:
+        jiter.from_json(b'{"foo":\n[1,\n2, x', error_in_path=True)
+
+    assert exc_info.value.kind() == 'ExpectedSomeValue'
+    assert exc_info.value.index() == 15
+    assert exc_info.value.line() == 3
+    assert exc_info.value.path() == ['foo', 2]
 
 
 def test_recursion_limit():
     with pytest.raises(
-        ValueError, match="recursion limit exceeded at line 1 column 202"
+        jiter.JsonParseError, match="recursion limit exceeded at line 1 column 202"
     ):
         jiter.from_json(b"[" * 10_000)
 
@@ -150,21 +187,21 @@ def test_partial_nested():
         assert isinstance(parsed, dict)
 
 
-def test_python_cache_usage_all():
+def test_cache_usage_all():
     jiter.cache_clear()
     parsed = jiter.from_json(b'{"foo": "bar", "spam": 3}', cache_mode="all")
     assert parsed == {"foo": "bar", "spam": 3}
     assert jiter.cache_usage() == 3
 
 
-def test_python_cache_usage_keys():
+def test_cache_usage_keys():
     jiter.cache_clear()
     parsed = jiter.from_json(b'{"foo": "bar", "spam": 3}', cache_mode="keys")
     assert parsed == {"foo": "bar", "spam": 3}
     assert jiter.cache_usage() == 2
 
 
-def test_python_cache_usage_none():
+def test_cache_usage_none():
     jiter.cache_clear()
     parsed = jiter.from_json(
         b'{"foo": "bar", "spam": 3}',

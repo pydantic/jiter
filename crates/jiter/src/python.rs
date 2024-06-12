@@ -9,9 +9,13 @@ use pyo3::ToPyObject;
 
 use smallvec::SmallVec;
 
-use crate::errors::{json_err, json_error, JsonError, JsonResult, DEFAULT_RECURSION_LIMIT};
+use crate::errors::{json_error, JsonError, JsonResult, DEFAULT_RECURSION_LIMIT};
 use crate::number_decoder::{AbstractNumberDecoder, NumberAny, NumberRange};
 use crate::parse::{Parser, Peek};
+use crate::py_error::{
+    ActiveBuildPath, JsonParseError, MaybeBuildArrayPath, MaybeBuildObjectPath, MaybeBuildPath, NoopBuildPath,
+    PythonJsonResult,
+};
 use crate::py_string_cache::{StringCacheAll, StringCacheKeys, StringCacheMode, StringMaybeCache, StringNoCache};
 use crate::string_decoder::{StringDecoder, Tape};
 use crate::{JsonErrorType, LosslessFloat};
@@ -29,6 +33,8 @@ pub struct PythonParse {
     pub catch_duplicate_keys: bool,
     /// Whether to preserve full detail on floats using [`LosslessFloat`]
     pub lossless_floats: bool,
+    /// Whether to include the JSON path to the invalid JSON in [`JsonParseError`]
+    pub error_in_path: bool,
 }
 
 impl PythonParse {
@@ -43,10 +49,10 @@ impl PythonParse {
     /// # Returns
     ///
     /// A [PyObject](https://docs.rs/pyo3/latest/pyo3/type.PyObject.html) representing the parsed JSON value.
-    pub fn python_parse<'py>(self, py: Python<'py>, json_data: &[u8]) -> JsonResult<Bound<'py, PyAny>> {
+    pub fn python_parse<'py>(self, py: Python<'py>, json_data: &[u8]) -> PythonJsonResult<Bound<'py, PyAny>> {
         macro_rules! ppp {
-            ($string_cache:ident, $key_check:ident, $parse_number:ident) => {
-                PythonParser::<$string_cache, $key_check, $parse_number>::parse(
+            ($string_cache:ident, $key_check:ident, $parse_number:ident, $build_path:ident) => {
+                PythonParser::<$string_cache, $key_check, $parse_number, $build_path>::parse(
                     py,
                     json_data,
                     self.allow_inf_nan,
@@ -56,11 +62,34 @@ impl PythonParse {
         }
         macro_rules! ppp_group {
             ($string_cache:ident) => {
-                match (self.catch_duplicate_keys, self.lossless_floats) {
-                    (true, true) => ppp!($string_cache, DuplicateKeyCheck, ParseNumberLossless),
-                    (true, false) => ppp!($string_cache, DuplicateKeyCheck, ParseNumberLossy),
-                    (false, true) => ppp!($string_cache, NoopKeyCheck, ParseNumberLossless),
-                    (false, false) => ppp!($string_cache, NoopKeyCheck, ParseNumberLossy),
+                match (
+                    self.catch_duplicate_keys,
+                    self.lossless_floats,
+                    self.error_in_path,
+                ) {
+                    (true, true, true) => ppp!(
+                        $string_cache,
+                        DuplicateKeyCheck,
+                        ParseNumberLossless,
+                        ActiveBuildPath
+                    ),
+                    (true, true, false) => ppp!(
+                        $string_cache,
+                        DuplicateKeyCheck,
+                        ParseNumberLossless,
+                        NoopBuildPath
+                    ),
+                    (true, false, true) => ppp!(
+                        $string_cache,
+                        DuplicateKeyCheck,
+                        ParseNumberLossy,
+                        ActiveBuildPath
+                    ),
+                    (true, false, false) => ppp!($string_cache, DuplicateKeyCheck, ParseNumberLossy, NoopBuildPath),
+                    (false, true, true) => ppp!($string_cache, NoopKeyCheck, ParseNumberLossless, ActiveBuildPath),
+                    (false, true, false) => ppp!($string_cache, NoopKeyCheck, ParseNumberLossless, NoopBuildPath),
+                    (false, false, true) => ppp!($string_cache, NoopKeyCheck, ParseNumberLossy, ActiveBuildPath),
+                    (false, false, false) => ppp!($string_cache, NoopKeyCheck, ParseNumberLossy, NoopBuildPath),
                 }
             };
         }
@@ -71,17 +100,20 @@ impl PythonParse {
             StringCacheMode::None => ppp_group!(StringNoCache),
         }
     }
+
+    /// Like `python_parse`, but maps [`PythonJsonResult`] to a `PyErr` which can be raised as an exception in
+    /// Python as a [`JsonParseError`].
+    pub fn python_parse_exc<'py>(self, py: Python<'py>, json_data: &[u8]) -> PyResult<Bound<'py, PyAny>> {
+        self.python_parse(py, json_data)
+            .map_err(|e| JsonParseError::new_err(py, e, json_data))
+    }
 }
 
-/// Map a `JsonError` to a `PyErr` which can be raised as an exception in Python as a `ValueError`.
-pub fn map_json_error(json_data: &[u8], json_error: &JsonError) -> PyErr {
-    PyValueError::new_err(json_error.description(json_data))
-}
-
-struct PythonParser<'j, StringCache, KeyCheck, ParseNumber> {
+struct PythonParser<'j, StringCache, KeyCheck, ParseNumber, BuildPath> {
     _string_cache: PhantomData<StringCache>,
     _key_check: PhantomData<KeyCheck>,
     _parse_number: PhantomData<ParseNumber>,
+    _build_path: PhantomData<BuildPath>,
     parser: Parser<'j>,
     tape: Tape,
     recursion_limit: u8,
@@ -89,19 +121,25 @@ struct PythonParser<'j, StringCache, KeyCheck, ParseNumber> {
     partial_mode: PartialMode,
 }
 
-impl<'j, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: MaybeParseNumber>
-    PythonParser<'j, StringCache, KeyCheck, ParseNumber>
+impl<
+        'j,
+        StringCache: StringMaybeCache,
+        KeyCheck: MaybeKeyCheck,
+        ParseNumber: MaybeParseNumber,
+        BuildPath: MaybeBuildPath,
+    > PythonParser<'j, StringCache, KeyCheck, ParseNumber, BuildPath>
 {
     fn parse<'py>(
         py: Python<'py>,
         json_data: &[u8],
         allow_inf_nan: bool,
         partial_mode: PartialMode,
-    ) -> JsonResult<Bound<'py, PyAny>> {
+    ) -> PythonJsonResult<Bound<'py, PyAny>> {
         let mut slf = PythonParser {
             _string_cache: PhantomData::<StringCache>,
             _key_check: PhantomData::<KeyCheck>,
             _parse_number: PhantomData::<ParseNumber>,
+            _build_path: PhantomData::<BuildPath>,
             parser: Parser::new(json_data),
             tape: Tape::default(),
             recursion_limit: DEFAULT_RECURSION_LIMIT,
@@ -117,7 +155,7 @@ impl<'j, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: Ma
         Ok(v)
     }
 
-    fn py_take_value<'py>(&mut self, py: Python<'py>, peek: Peek) -> JsonResult<Bound<'py, PyAny>> {
+    fn py_take_value<'py>(&mut self, py: Python<'py>, peek: Peek) -> PythonJsonResult<Bound<'py, PyAny>> {
         match peek {
             Peek::Null => {
                 self.parser.consume_null()?;
@@ -138,15 +176,16 @@ impl<'j, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: Ma
                 Ok(StringCache::get_value(py, s.as_str(), s.ascii_only()).into_any())
             }
             Peek::Array => {
+                let build_path = BuildPath::new_array();
                 let peek_first = match self.parser.array_first() {
                     Ok(Some(peek)) => peek,
-                    Err(e) if !self._allow_partial_err(&e) => return Err(e),
+                    Err(e) if !self._allow_partial_err(&e) => return Err(e.into()),
                     Ok(None) | Err(_) => return Ok(PyList::empty_bound(py).into_any()),
                 };
 
                 let mut vec: SmallVec<[Bound<'_, PyAny>; 8]> = SmallVec::with_capacity(8);
-                if let Err(e) = self._parse_array(py, peek_first, &mut vec) {
-                    if !self._allow_partial_err(&e) {
+                if let Err(e) = self._parse_array(py, peek_first, &mut vec, build_path) {
+                    if !self._allow_partial_err(&e.error) {
                         return Err(e);
                     }
                 }
@@ -156,13 +195,13 @@ impl<'j, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: Ma
             Peek::Object => {
                 let dict = PyDict::new_bound(py);
                 if let Err(e) = self._parse_object(py, &dict) {
-                    if !self._allow_partial_err(&e) {
+                    if !self._allow_partial_err(&e.error) {
                         return Err(e);
                     }
                 }
                 Ok(dict.into_any())
             }
-            _ => ParseNumber::parse_number(py, &mut self.parser, peek, self.allow_inf_nan),
+            _ => ParseNumber::parse_number(py, &mut self.parser, peek, self.allow_inf_nan).map_err(Into::into),
         }
     }
 
@@ -171,17 +210,27 @@ impl<'j, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: Ma
         py: Python<'py>,
         peek_first: Peek,
         vec: &mut SmallVec<[Bound<'py, PyAny>; 8]>,
-    ) -> JsonResult<()> {
-        let v = self._check_take_value(py, peek_first)?;
+        mut build_path: impl MaybeBuildArrayPath,
+    ) -> PythonJsonResult<()> {
+        let v = self
+            ._check_take_value(py, peek_first)
+            .map_err(|e| build_path.set_index_path(e))?;
         vec.push(v);
-        while let Some(peek) = self.parser.array_step()? {
-            let v = self._check_take_value(py, peek)?;
+        while let Some(peek) = self
+            .parser
+            .array_step()
+            .map_err(|e| build_path.set_index_path(e.into()))?
+        {
+            build_path.incr_index();
+            let v = self
+                ._check_take_value(py, peek)
+                .map_err(|e| build_path.set_index_path(e))?;
             vec.push(v);
         }
         Ok(())
     }
 
-    fn _parse_object<'py>(&mut self, py: Python<'py>, dict: &Bound<'py, PyDict>) -> JsonResult<()> {
+    fn _parse_object<'py>(&mut self, py: Python<'py>, dict: &Bound<'py, PyDict>) -> PythonJsonResult<()> {
         let set_item = |key: Bound<'py, PyString>, value: Bound<'py, PyAny>| {
             let r = unsafe { ffi::PyDict_SetItem(dict.as_ptr(), key.as_ptr(), value.as_ptr()) };
             // AFAIK this shouldn't happen since the key will always be a string  which is hashable
@@ -189,20 +238,27 @@ impl<'j, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: Ma
             // presumably because there are fewer branches
             assert_ne!(r, -1, "PyDict_SetItem failed");
         };
+        let mut build_path = BuildPath::new_object();
         let mut check_keys = KeyCheck::default();
         if let Some(first_key) = self.parser.object_first::<StringDecoder>(&mut self.tape)? {
             let first_key_s = first_key.as_str();
             check_keys.check(first_key_s, self.parser.index)?;
+            build_path.set_key(first_key_s);
             let first_key = StringCache::get_key(py, first_key_s, first_key.ascii_only());
-            let peek = self.parser.peek()?;
-            let first_value = self._check_take_value(py, peek)?;
+            let peek = self.parser.peek().map_err(|e| build_path.set_key_path(e.into()))?;
+            let first_value = self
+                ._check_take_value(py, peek)
+                .map_err(|e| build_path.set_key_path(e))?;
             set_item(first_key, first_value);
             while let Some(key) = self.parser.object_step::<StringDecoder>(&mut self.tape)? {
                 let key_s = key.as_str();
+                build_path.set_key(key_s);
                 check_keys.check(key_s, self.parser.index)?;
                 let key = StringCache::get_key(py, key_s, key.ascii_only());
-                let peek = self.parser.peek()?;
-                let value = self._check_take_value(py, peek)?;
+                let peek = self.parser.peek().map_err(|e| build_path.set_key_path(e.into()))?;
+                let value = self
+                    ._check_take_value(py, peek)
+                    .map_err(|e| build_path.set_key_path(e))?;
                 set_item(key, value);
             }
         }
@@ -225,10 +281,10 @@ impl<'j, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: Ma
         }
     }
 
-    fn _check_take_value<'py>(&mut self, py: Python<'py>, peek: Peek) -> JsonResult<Bound<'py, PyAny>> {
+    fn _check_take_value<'py>(&mut self, py: Python<'py>, peek: Peek) -> PythonJsonResult<Bound<'py, PyAny>> {
         self.recursion_limit = match self.recursion_limit.checked_sub(1) {
             Some(limit) => limit,
-            None => return json_err!(RecursionLimitExceeded, self.parser.index),
+            None => return Err(json_error!(RecursionLimitExceeded, self.parser.index).into()),
         };
 
         let r = self.py_take_value(py, peek);

@@ -10,6 +10,7 @@ def from_json(
     partial_mode: Literal[True, False, "off", "on", "trailing-strings"] = False,
     catch_duplicate_keys: bool = False,
     lossless_floats: bool = False,
+    error_in_path: bool = False,
 ) -> Any:
     """
     Parse input bytes into a JSON object.
@@ -28,6 +29,7 @@ def from_json(
             - 'trailing-strings' - allow incomplete JSON, and include the last incomplete string in the output
         catch_duplicate_keys: if True, raise an exception if objects contain the same key multiple times
         lossless_floats: if True, preserve full detail on floats using `LosslessFloat`
+        error_in_path: Whether to include the JSON path to the invalid JSON in `JsonParseError`
 
     Returns:
         Python object built from the JSON input.
@@ -63,8 +65,38 @@ class LosslessFloat:
     def __bytes__(self) -> bytes:
         """Return the JSON bytes slice as bytes"""
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Return the JSON bytes slice as a string"""
 
-    def __repr__(self):
+    def __repr__(self) -> str:
+        ...
+
+
+class JsonParseError(ValueError):
+    """
+    Represents details of failed JSON parsing.
+    """
+
+    def kind(self) -> str:
+        ...
+
+    def description(self) -> str:
+        ...
+
+    def path(self) -> list[str | int]:
+        ...
+
+    def index(self) -> int:
+        ...
+
+    def line(self) -> int:
+        ...
+
+    def column(self) -> int:
+        ...
+
+    def __str__(self) -> str:
+        """String summary of the error, combined description and position"""
+
+    def __repr__(self) -> str:
         ...
