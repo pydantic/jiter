@@ -16,7 +16,7 @@ num-bigint = "0.4.4"
 num-traits = "0.2.16"
 ahash = "0.8.0"
 smallvec = "1.11.0"
-pyo3 = { version = "0.21.0", optional = true }
+pyo3 = { workspace = true, optional = true }
 lexical-parse-float = { version = "0.8.5", features =  ["format"] }
 bitvec = "1.0.1"
 
@@ -28,11 +28,11 @@ bencher = "0.1.5"
 paste = "1.0.7"
 serde_json = {version = "1.0.87", features = ["preserve_order", "arbitrary_precision", "float_roundtrip"]}
 serde = "1.0.147"
-pyo3 = { workspace = true, default-features=false, features = ["num-bigint", "auto-initialize"] }
+pyo3 = { workspace = true, features = ["num-bigint", "auto-initialize"] }
 codspeed-bencher-compat = "2.3.1"
 
 [build-dependencies]
-pyo3-build-config = { version = "0.21.0", optional = true }
+pyo3-build-config = { workspace = true, optional = true }
 
 [[test]]
 name = "python"

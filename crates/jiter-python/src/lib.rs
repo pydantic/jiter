@@ -1,43 +1,5 @@
 use std::sync::OnceLock;
 
-use pyo3::prelude::*;
-
-use jiter::{map_json_error, LosslessFloat, PartialMode, PythonParse, StringCacheMode};
-
-#[allow(clippy::fn_params_excessive_bools)]
-#[pyfunction(
-    signature = (
-        json_data,
-        /,
-        *,
-        allow_inf_nan=true,
-        cache_mode=StringCacheMode::All,
-        partial_mode=PartialMode::Off,
-        catch_duplicate_keys=false,
-        lossless_floats=false,
-    )
-)]
-pub fn from_json<'py>(
-    py: Python<'py>,
-    json_data: &[u8],
-    allow_inf_nan: bool,
-    cache_mode: StringCacheMode,
-    partial_mode: PartialMode,
-    catch_duplicate_keys: bool,
-    lossless_floats: bool,
-) -> PyResult<Bound<'py, PyAny>> {
-    let parse_builder = PythonParse {
-        allow_inf_nan,
-        cache_mode,
-        partial_mode,
-        catch_duplicate_keys,
-        lossless_floats,
-    };
-    parse_builder
-        .python_parse(py, json_data)
-        .map_err(|e| map_json_error(json_data, &e))
-}
-
 pub fn get_jiter_version() -> &'static str {
     static JITER_VERSION: OnceLock<String> = OnceLock::new();
 
@@ -52,23 +14,63 @@ pub fn get_jiter_version() -> &'static str {
     })
 }
 
-#[pyfunction]
-pub fn cache_clear(py: Python<'_>) {
-    jiter::cache_clear(py);
-}
-
-#[pyfunction]
-pub fn cache_usage(py: Python<'_>) -> usize {
-    jiter::cache_usage(py)
-}
-
-#[pymodule]
+#[pyo3::pymodule]
 #[pyo3(name = "jiter")]
-fn jiter_python(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add("__version__", get_jiter_version())?;
-    m.add_function(wrap_pyfunction!(from_json, m)?)?;
-    m.add_function(wrap_pyfunction!(cache_clear, m)?)?;
-    m.add_function(wrap_pyfunction!(cache_usage, m)?)?;
-    m.add_class::<LosslessFloat>()?;
-    Ok(())
+mod jiter_python {
+    use pyo3::prelude::*;
+
+    use jiter::{map_json_error, LosslessFloat, PartialMode, PythonParse, StringCacheMode};
+
+    use super::get_jiter_version;
+
+    #[allow(clippy::fn_params_excessive_bools)]
+    #[pyfunction(
+        signature = (
+            json_data,
+            /,
+            *,
+            allow_inf_nan=true,
+            cache_mode=StringCacheMode::All,
+            partial_mode=PartialMode::Off,
+            catch_duplicate_keys=false,
+            lossless_floats=false,
+        )
+    )]
+    pub fn from_json<'py>(
+        py: Python<'py>,
+        json_data: &[u8],
+        allow_inf_nan: bool,
+        cache_mode: StringCacheMode,
+        partial_mode: PartialMode,
+        catch_duplicate_keys: bool,
+        lossless_floats: bool,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let parse_builder = PythonParse {
+            allow_inf_nan,
+            cache_mode,
+            partial_mode,
+            catch_duplicate_keys,
+            lossless_floats,
+        };
+        parse_builder
+            .python_parse(py, json_data)
+            .map_err(|e| map_json_error(json_data, &e))
+    }
+
+    #[pyfunction]
+    pub fn cache_clear(py: Python<'_>) {
+        jiter::cache_clear(py);
+    }
+
+    #[pyfunction]
+    pub fn cache_usage(py: Python<'_>) -> usize {
+        jiter::cache_usage(py)
+    }
+
+    #[pymodule_init]
+    fn init_jiter_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
+        m.add("__version__", get_jiter_version())?;
+        m.add_class::<LosslessFloat>()?;
+        Ok(())
+    }
 }

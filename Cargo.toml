@@ -8,7 +8,7 @@ resolver = "2"
 
 [workspace.package]
 authors = ["Samuel Colvin <samuel@pydantic.dev>"]
-version = "0.4.2"
+version = "0.5.0"
 edition = "2021"
 license = "MIT"
 keywords = ["JSON", "parsing", "deserialization", "iter"]
@@ -28,4 +28,5 @@ inherits = "release"
 debug = true
 
 [workspace.dependencies]
-pyo3 = { version = "0.21.0", default-features = false}
+pyo3 = { version = "0.22.0" }
+pyo3-build-config = { version = "0.22.0" }

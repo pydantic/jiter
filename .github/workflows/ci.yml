@@ -213,7 +213,10 @@ jobs:
         cache-target: release
         bins: cargo-fuzz
 
-    - run: cargo fuzz run --fuzz-dir crates/fuzz compare_to_serde --release -- -max_total_time=300s
+    - run: |
+        # cargo fuzz defaults to musl targets, which is seeming incomatible with sanitizers according to CI failures
+        RUST_TARGET=$(rustc -Vv | grep host | cut -d ' ' -f 2)
+        cargo fuzz run --target=$RUST_TARGET --fuzz-dir crates/fuzz compare_to_serde --release -- -max_total_time=300s
 
   fuzz-skip:
     name: fuzz skip
@@ -230,7 +233,10 @@ jobs:
         cache-target: release
         bins: cargo-fuzz
 
-    - run: cargo fuzz run --fuzz-dir crates/fuzz compare_skip --release -- -max_total_time=300s
+    - run: |
+        # cargo fuzz defaults to musl targets, which is seeming incomatible with sanitizers according to CI failures
+        RUST_TARGET=$(rustc -Vv | grep host | cut -d ' ' -f 2)
+        cargo fuzz run --target=$RUST_TARGET --fuzz-dir crates/fuzz compare_skip --release -- -max_total_time=300s
 
   lint:
     runs-on: ubuntu-latest

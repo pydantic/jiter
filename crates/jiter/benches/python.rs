@@ -5,7 +5,7 @@ use std::io::Read;
 
 use pyo3::Python;
 
-use jiter::{cache_clear, PartialMode, PythonParse, StringCacheMode};
+use jiter::{cache_clear, PythonParse, StringCacheMode};
 
 fn python_parse_numeric(bench: &mut Bencher) {
     Python::with_gil(|py| {

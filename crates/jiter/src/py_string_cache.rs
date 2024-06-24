@@ -186,7 +186,7 @@ impl PyStringCache {
 
     /// clear the cache by resetting all entries to `None`
     fn clear(&mut self) {
-        self.entries.fill(None);
+        self.entries.fill_with(|| None);
     }
 }
 
