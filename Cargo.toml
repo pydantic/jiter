@@ -28,4 +28,9 @@ inherits = "release"
 debug = true
 
 [workspace.dependencies]
-pyo3 = { version = "0.21.0", default-features = false}
+pyo3 = { version = "0.22.0", default-features = false}
+pyo3-build-config = { version = "0.22.0", default-features = false}
+
+[patch.crates-io]
+pyo3 = { git = "https://github.com/pyo3/pyo3", branch = "release-0.22" }
+pyo3-build-config = { git = "https://github.com/pyo3/pyo3", branch = "release-0.22" }
