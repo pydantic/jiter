@@ -1,7 +1,5 @@
 use std::sync::OnceLock;
 
-use pyo3::prelude::*;
-
 pub fn get_jiter_version() -> &'static str {
     static JITER_VERSION: OnceLock<String> = OnceLock::new();
 
@@ -16,12 +14,14 @@ pub fn get_jiter_version() -> &'static str {
     })
 }
 
-#[pymodule]
+#[pyo3::pymodule]
 #[pyo3(name = "jiter")]
 mod jiter_python {
-    use super::*;
+    use pyo3::prelude::*;
 
     use jiter::{map_json_error, LosslessFloat, PartialMode, PythonParse, StringCacheMode};
+
+    use super::get_jiter_version;
 
     #[allow(clippy::fn_params_excessive_bools)]
     #[pyfunction(
