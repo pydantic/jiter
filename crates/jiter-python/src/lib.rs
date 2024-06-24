@@ -17,6 +17,7 @@ pub fn get_jiter_version() -> &'static str {
 }
 
 #[pymodule]
+#[pyo3(name = "jiter")]
 mod jiter_python {
     use super::*;
 
