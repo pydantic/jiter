@@ -10,7 +10,7 @@ homepage = {workspace = true}
 repository = {workspace = true}
 
 [dependencies]
-pyo3 = { workspace = true, default-features = true, features = ["num-bigint"] }
+pyo3 = { workspace = true, features = ["num-bigint"] }
 jiter = { path = "../jiter", features = ["python"] }
 
 [features]
