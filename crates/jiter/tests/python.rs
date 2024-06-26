@@ -1,7 +1,7 @@
 use pyo3::prelude::*;
 use pyo3::types::PyString;
 
-use jiter::{pystring_fast_new, JsonValue, StringCacheMode};
+use jiter::{pystring_fast_new, JsonValue, PythonParse, StringCacheMode};
 
 #[test]
 fn test_to_py_object_numeric() {
@@ -82,5 +82,13 @@ fn test_pystring_fast_new_ascii() {
     Python::with_gil(|py| {
         let s = pystring_fast_new(py, json, true);
         assert_eq!(s.to_string(), "100abc");
+    })
+}
+
+#[test]
+fn test_python_parse_default() {
+    Python::with_gil(|py| {
+        let v = PythonParse::default().python_parse(py, b"[123]").unwrap();
+        assert_eq!(v.to_string(), "[123]");
     })
 }

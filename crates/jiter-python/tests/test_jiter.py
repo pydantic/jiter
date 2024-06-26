@@ -64,6 +64,10 @@ def test_extracted_value_error():
 
 def test_partial_array():
     json = b'["string", true, null, 1, "foo'
+
+    with pytest.raises(ValueError, match='EOF while parsing a string at line 1 column 30'):
+        jiter.from_json(json, partial_mode=False)
+
     parsed = jiter.from_json(json, partial_mode=True)
     assert parsed == ["string", True, None, 1]
 
@@ -148,6 +152,21 @@ def test_partial_nested():
     for i in range(1, len(json)):
         parsed = jiter.from_json(json[:i], partial_mode=True)
         assert isinstance(parsed, dict)
+
+
+def test_partial_error():
+    json = b'["string", true, null, 1, "foo'
+
+    with pytest.raises(ValueError, match='EOF while parsing a string at line 1 column 30'):
+        jiter.from_json(json, partial_mode=False)
+
+    assert jiter.from_json(json, partial_mode=True) == ["string", True, None, 1]
+
+    msg = "Invalid partial mode, should be `'off'`, `'on'`, `'trailing-strings'` or a `bool`"
+    with pytest.raises(ValueError, match=msg):
+        jiter.from_json(json, partial_mode='wrong')
+    with pytest.raises(TypeError, match=msg):
+        jiter.from_json(json, partial_mode=123)
 
 
 def test_python_cache_usage_all():
@@ -254,3 +273,13 @@ def test_unicode_roundtrip_ensure_ascii():
     json_data = json.dumps(original, ensure_ascii=False).encode()
     assert jiter.from_json(json_data, cache_mode=False) == original
     assert json.loads(json_data) == original
+
+
+def test_catch_duplicate_keys():
+    assert jiter.from_json(b'{"foo": 1, "foo": 2}') == {"foo": 2}
+
+    with pytest.raises(ValueError, match='Detected duplicate key "foo" at line 1 column 18'):
+        jiter.from_json(b'{"foo": 1, "foo": 2}', catch_duplicate_keys=True)
+
+    with pytest.raises(ValueError, match='Detected duplicate key "foo" at line 1 column 28'):
+        jiter.from_json(b'{"foo": 1, "bar": 2, "foo": 2}', catch_duplicate_keys=True)
