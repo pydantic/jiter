@@ -24,7 +24,7 @@ pub use parse::Peek;
 pub use value::{JsonArray, JsonObject, JsonValue};
 
 #[cfg(feature = "python")]
-pub use py_lossless_float::LosslessFloat;
+pub use py_lossless_float::{FloatMode, LosslessFloat};
 #[cfg(feature = "python")]
 pub use py_string_cache::{cache_clear, cache_usage, cached_py_string, pystring_fast_new, StringCacheMode};
 #[cfg(feature = "python")]

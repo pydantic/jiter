@@ -19,7 +19,7 @@ pub fn get_jiter_version() -> &'static str {
 mod jiter_python {
     use pyo3::prelude::*;
 
-    use jiter::{map_json_error, LosslessFloat, PartialMode, PythonParse, StringCacheMode};
+    use jiter::{map_json_error, FloatMode, LosslessFloat, PartialMode, PythonParse, StringCacheMode};
 
     use super::get_jiter_version;
 
@@ -33,7 +33,7 @@ mod jiter_python {
             cache_mode=StringCacheMode::All,
             partial_mode=PartialMode::Off,
             catch_duplicate_keys=false,
-            lossless_floats=false,
+            float_mode=FloatMode::Float,
         )
     )]
     pub fn from_json<'py>(
@@ -43,14 +43,14 @@ mod jiter_python {
         cache_mode: StringCacheMode,
         partial_mode: PartialMode,
         catch_duplicate_keys: bool,
-        lossless_floats: bool,
+        float_mode: FloatMode,
     ) -> PyResult<Bound<'py, PyAny>> {
         let parse_builder = PythonParse {
             allow_inf_nan,
             cache_mode,
             partial_mode,
             catch_duplicate_keys,
-            lossless_floats,
+            float_mode,
         };
         parse_builder
             .python_parse(py, json_data)

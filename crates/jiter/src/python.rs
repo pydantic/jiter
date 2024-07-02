@@ -12,6 +12,7 @@ use smallvec::SmallVec;
 use crate::errors::{json_err, json_error, JsonError, JsonResult, DEFAULT_RECURSION_LIMIT};
 use crate::number_decoder::{AbstractNumberDecoder, NumberAny, NumberRange};
 use crate::parse::{Parser, Peek};
+use crate::py_lossless_float::{get_decimal_type, FloatMode};
 use crate::py_string_cache::{StringCacheAll, StringCacheKeys, StringCacheMode, StringMaybeCache, StringNoCache};
 use crate::string_decoder::{StringDecoder, Tape};
 use crate::{JsonErrorType, LosslessFloat};
@@ -27,8 +28,9 @@ pub struct PythonParse {
     pub partial_mode: PartialMode,
     /// Whether to catch duplicate keys in objects.
     pub catch_duplicate_keys: bool,
-    /// Whether to preserve full detail on floats using [`LosslessFloat`]
-    pub lossless_floats: bool,
+    /// How to return floats: as a `float` (`'float'`), `Decimal` (`'decimal'`) or
+    /// [`LosslessFloat`] (`'lossless-float'`)
+    pub float_mode: FloatMode,
 }
 
 impl PythonParse {
@@ -56,11 +58,13 @@ impl PythonParse {
         }
         macro_rules! ppp_group {
             ($string_cache:ident) => {
-                match (self.catch_duplicate_keys, self.lossless_floats) {
-                    (true, true) => ppp!($string_cache, DuplicateKeyCheck, ParseNumberLossless),
-                    (true, false) => ppp!($string_cache, DuplicateKeyCheck, ParseNumberLossy),
-                    (false, true) => ppp!($string_cache, NoopKeyCheck, ParseNumberLossless),
-                    (false, false) => ppp!($string_cache, NoopKeyCheck, ParseNumberLossy),
+                match (self.catch_duplicate_keys, self.float_mode) {
+                    (true, FloatMode::Float) => ppp!($string_cache, DuplicateKeyCheck, ParseNumberLossy),
+                    (true, FloatMode::Decimal) => ppp!($string_cache, DuplicateKeyCheck, ParseNumberDecimal),
+                    (true, FloatMode::LosslessFloat) => ppp!($string_cache, DuplicateKeyCheck, ParseNumberLossless),
+                    (false, FloatMode::Float) => ppp!($string_cache, NoopKeyCheck, ParseNumberLossy),
+                    (false, FloatMode::Decimal) => ppp!($string_cache, NoopKeyCheck, ParseNumberDecimal),
+                    (false, FloatMode::LosslessFloat) => ppp!($string_cache, NoopKeyCheck, ParseNumberLossless),
                 }
             };
         }
@@ -367,6 +371,45 @@ impl MaybeParseNumber for ParseNumberLossless {
                     LosslessFloat::new_unchecked(bytes.to_vec()).into_py(py)
                 };
                 Ok(obj.into_bound(py))
+            }
+            Err(e) => {
+                if !peek.is_num() {
+                    Err(json_error!(ExpectedSomeValue, parser.index))
+                } else {
+                    Err(e)
+                }
+            }
+        }
+    }
+}
+
+struct ParseNumberDecimal;
+
+impl MaybeParseNumber for ParseNumberDecimal {
+    fn parse_number<'py>(
+        py: Python<'py>,
+        parser: &mut Parser,
+        peek: Peek,
+        allow_inf_nan: bool,
+    ) -> JsonResult<Bound<'py, PyAny>> {
+        match parser.consume_number::<NumberRange>(peek.into_inner(), allow_inf_nan) {
+            Ok(number_range) => {
+                let bytes = parser.slice(number_range.range).unwrap();
+                if number_range.is_int {
+                    let obj = NumberAny::decode(bytes, 0, peek.into_inner(), allow_inf_nan)?
+                        .0
+                        .to_object(py);
+                    Ok(obj.into_bound(py))
+                } else {
+                    let decimal_type = get_decimal_type(py)
+                        .map_err(|e| JsonError::new(JsonErrorType::InternalError(e.to_string()), parser.index))?;
+                    // SAFETY: NumberRange::decode has already confirmed that bytes are a valid JSON number,
+                    // and therefore valid str
+                    let float_str = unsafe { std::str::from_utf8_unchecked(bytes) };
+                    decimal_type
+                        .call1((float_str,))
+                        .map_err(|e| JsonError::new(JsonErrorType::InternalError(e.to_string()), parser.index))
+                }
             }
             Err(e) => {
                 if !peek.is_num() {

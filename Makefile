@@ -28,6 +28,14 @@ python-dev:
 python-test: python-dev
 	pytest crates/jiter-python/tests
 
+.PHONY: python-dev-release
+python-dev-release:
+	maturin develop -m crates/jiter-python/Cargo.toml --release
+
+.PHONY: python-bench
+python-bench: python-dev-release
+	python crates/jiter-python/bench.py
+
 .PHONY: bench
 bench:
 	cargo bench  -p jiter -F python

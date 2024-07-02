@@ -240,13 +240,17 @@ def test_lossless_floats():
     assert isinstance(f, float)
     assert f == 12.3
 
-    f = jiter.from_json(b'12.3', lossless_floats=True)
+    f = jiter.from_json(b'12.3', float_mode='float')
+    assert isinstance(f, float)
+    assert f == 12.3
+
+    f = jiter.from_json(b'12.3', float_mode='lossless-float')
     assert isinstance(f, jiter.LosslessFloat)
     assert str(f) == '12.3'
     assert float(f) == 12.3
     assert f.as_decimal() == Decimal('12.3')
 
-    f = jiter.from_json(b'123.456789123456789e45', lossless_floats=True)
+    f = jiter.from_json(b'123.456789123456789e45', float_mode='lossless-float')
     assert isinstance(f, jiter.LosslessFloat)
     assert 123e45 < float(f) < 124e45
     assert f.as_decimal() == Decimal('1.23456789123456789E+47')
@@ -254,11 +258,40 @@ def test_lossless_floats():
     assert str(f) == '123.456789123456789e45'
     assert repr(f) == 'LosslessFloat(123.456789123456789e45)'
 
+    f = jiter.from_json(b'123', float_mode='lossless-float')
+    assert isinstance(f, int)
+    assert f == 123
 
-def test_lossless_floats_int():
-    v = jiter.from_json(b'123', lossless_floats=True)
-    assert isinstance(v, int)
-    assert v == 123
+    with pytest.raises(ValueError, match='expected value at line 1 column 1'):
+        jiter.from_json(b'wrong', float_mode='lossless-float')
+
+    with pytest.raises(ValueError, match='trailing characters at line 1 column 2'):
+        jiter.from_json(b'1wrong', float_mode='lossless-float')
+
+
+
+def test_decimal_floats():
+    f = jiter.from_json(b'12.3')
+    assert isinstance(f, float)
+    assert f == 12.3
+
+    f = jiter.from_json(b'12.3', float_mode='decimal')
+    assert isinstance(f, Decimal)
+    assert f == Decimal('12.3')
+
+    f = jiter.from_json(b'123.456789123456789e45', float_mode='decimal')
+    assert isinstance(f, Decimal)
+    assert f == Decimal('1.23456789123456789E+47')
+
+    f = jiter.from_json(b'123', float_mode='decimal')
+    assert isinstance(f, int)
+    assert f == 123
+
+    with pytest.raises(ValueError, match='expected value at line 1 column 1'):
+        jiter.from_json(b'wrong', float_mode='decimal')
+
+    with pytest.raises(ValueError, match='trailing characters at line 1 column 2'):
+        jiter.from_json(b'1wrong', float_mode='decimal')
 
 
 def test_unicode_roundtrip():

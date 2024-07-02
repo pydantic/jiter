@@ -5,37 +5,28 @@ from pathlib import Path
 
 import json
 
-FAST = bool(os.getenv('FAST'))
-THIS_DIR = Path(__file__).parent
+CASES = {
+    "array_short_strings": "[{}]".format(", ".join('"123"' for _ in range(100_000))),
+    "object_short_strings": "{%s}" % ", ".join(f'"{i}": "{i}x"' for i in range(100_000)),
+    "array_short_arrays": "[{}]".format(", ".join('["a", "b", "c", "d"]' for _ in range(10_000))),
+    "one_long_string": json.dumps("x" * 100),
+    "one_short_string": b'"foobar"',
+    "1m_strings": json.dumps([str(i) for i in range(1_000_000)]),
+}
 
-cases = [
-    ("medium_response", (THIS_DIR / "../jiter/benches/medium_response.json").read_bytes()),
-    (
-        "massive_ints_array",
-        (THIS_DIR / "../jiter/benches/massive_ints_array.json").read_bytes(),
-    ),
-    ("array_short_strings", "[{}]".format(", ".join('"123"' for _ in range(100_000)))),
-    (
-        "object_short_strings",
-        "{%s}" % ", ".join(f'"{i}": "{i}x"' for i in range(100_000)),
-    ),
-    (
-        "array_short_arrays",
-        "[{}]".format(", ".join('["a", "b", "c", "d"]' for _ in range(10_000))),
-    ),
-    ("one_long_string", json.dumps("x" * 100)),
-    ("one_short_string", b'"foobar"'),
-    ("1m_strings", json.dumps([str(i) for i in range(1_000_000)])),
-]
+BENCHES_DIR = Path(__file__).parent.parent / "jiter/benches/"
+
+for p in BENCHES_DIR.glob('*.json'):
+    CASES[p.stem] = p.read_bytes()
 
 
-def run_bench(func, d):
+def run_bench(func, d, fast: bool):
     if isinstance(d, str):
         d = d.encode()
     timer = timeit.Timer(
         "func(json_data)", setup="", globals={"func": func, "json_data": d}
     )
-    if FAST:
+    if fast:
         return timer.timeit(1)
     else:
         n, t = timer.autorange()
@@ -85,20 +76,21 @@ PARSERS = {
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--case", default="all", choices=[*CASES.keys(), "all"])
+    parser.add_argument("--fast", action="store_true", default=False)
     parser.add_argument(
         "parsers", nargs="*", default="all", choices=[*PARSERS.keys(), "all"]
     )
     args = parser.parse_args()
 
-    if "all" in args.parsers:
-        args.parsers = [*PARSERS.keys()]
+    parsers = [*PARSERS.keys()] if "all" in args.parsers else args.parsers
+    cases = [*CASES.keys()] if args.case == "all" else [args.case]
 
-    for name, json_data in cases:
+    for name in cases:
         print(f"Case: {name}")
 
-        times = [
-            (parser, run_bench(PARSERS[parser](), json_data)) for parser in args.parsers
-        ]
+        json_data = CASES[name]
+        times = [(parser, run_bench(PARSERS[parser](), json_data, args.fast)) for parser in parsers]
 
         times.sort(key=lambda x: x[1])
         best = times[0][1]

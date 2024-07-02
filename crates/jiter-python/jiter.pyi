@@ -9,7 +9,7 @@ def from_json(
     cache_mode: Literal[True, False, "all", "keys", "none"] = "all",
     partial_mode: Literal[True, False, "off", "on", "trailing-strings"] = False,
     catch_duplicate_keys: bool = False,
-    lossless_floats: bool = False,
+    float_mode: Literal["float", "decimal", "lossless-float"] = False,
 ) -> Any:
     """
     Parse input bytes into a JSON object.
@@ -27,7 +27,7 @@ def from_json(
             - True / 'on' - allow incomplete JSON but discard the last string if it is incomplete
             - 'trailing-strings' - allow incomplete JSON, and include the last incomplete string in the output
         catch_duplicate_keys: if True, raise an exception if objects contain the same key multiple times
-        lossless_floats: if True, preserve full detail on floats using `LosslessFloat`
+        float_mode: How to return floats: as a `float`, `Decimal` or `LosslessFloat`
 
     Returns:
         Python object built from the JSON input.

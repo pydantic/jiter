@@ -10,6 +10,9 @@ pub enum JsonErrorType {
     /// duplicate keys in an object
     DuplicateKey(String),
 
+    /// happens when getting the `Decimal` type or constructing a decimal fails
+    InternalError(String),
+
     /// NOTE: all errors from here on are copied from serde_json
     /// [src/error.rs](https://github.com/serde-rs/json/blob/v1.0.107/src/error.rs#L236)
     /// with `Io` and `Message` removed
@@ -81,6 +84,7 @@ impl std::fmt::Display for JsonErrorType {
         match self {
             Self::FloatExpectingInt => f.write_str("float value was found where an int was expected"),
             Self::DuplicateKey(s) => write!(f, "Detected duplicate key {s:?}"),
+            Self::InternalError(s) => write!(f, "Internal error: {s:?}"),
             Self::EofWhileParsingList => f.write_str("EOF while parsing a list"),
             Self::EofWhileParsingObject => f.write_str("EOF while parsing an object"),
             Self::EofWhileParsingString => f.write_str("EOF while parsing a string"),
