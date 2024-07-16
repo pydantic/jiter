@@ -93,8 +93,6 @@ _There are lies, damned lies and benchmarks._
 In particular, serde-json benchmarks use `serde_json::Value` which is significantly slower than deserializing
 to a string.
 
-For more details, see [the benchmarks](https://github.com/pydantic/jiter/tree/main/benches).
-
 ```text
 running 48 tests
 test big_jiter_iter                    ... bench:   3,662,616 ns/iter (+/- 88,878)
