@@ -40,7 +40,7 @@ impl PythonParse {
     ///
     /// - `py`: [Python](https://docs.rs/pyo3/latest/pyo3/marker/struct.Python.html) marker token.
     /// - `json_data`: The JSON data to parse.
-    /// this should have a significant improvement on performance but increases memory slightly.
+    ///   this should have a significant improvement on performance but increases memory slightly.
     ///
     /// # Returns
     ///

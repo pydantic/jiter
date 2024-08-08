@@ -262,6 +262,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: PyO3/maturin-action@v1
         with:
+          # version pinned until https://github.com/PyO3/maturin/issues/2154 is fixed
+          maturin-version: v1.6.0
           command: sdist
           args: --out dist
           rust-toolchain: stable
