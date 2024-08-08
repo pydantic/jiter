@@ -139,6 +139,29 @@ impl From<NumberAny> for f64 {
     }
 }
 
+impl TryFrom<&[u8]> for NumberAny {
+    type Error = JsonError;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        let first = *value.first().ok_or_else(|| json_error!(InvalidNumber, 0))?;
+        let (int_parse, index) = IntParse::parse(value, 0, first)?;
+        let (number, index) = match int_parse {
+            IntParse::Int(int) => (Self::Int(int), index),
+            IntParse::Float => {
+                let (f, index) = NumberFloat::decode(value, 0, first, false)?;
+                (Self::Float(f), index)
+            }
+            _ => return json_err!(InvalidNumber, index),
+        };
+
+        if index == value.len() {
+            Ok(number)
+        } else {
+            json_err!(InvalidNumber, index)
+        }
+    }
+}
+
 impl AbstractNumberDecoder for NumberAny {
     type Output = NumberAny;
 
