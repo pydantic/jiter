@@ -143,18 +143,16 @@ impl TryFrom<&[u8]> for NumberAny {
     type Error = JsonError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        let first = *value.first().ok_or_else(|| json_error!(InvalidNumber, 0))?;
-        let (int_parse, index) = IntParse::parse(value, 0, first)?;
-        let (number, index) = match int_parse {
-            IntParse::Int(int) => (Self::Int(int), index),
-            IntParse::Float => {
-                let (f, index) = NumberFloat::decode(value, 0, first, false)?;
-                (Self::Float(f), index)
-            }
-            _ => return json_err!(InvalidNumber, index),
-        };
+        Self::from_bytes(value, false)
+    }
+}
 
-        if index == value.len() {
+impl NumberAny {
+    pub fn from_bytes(data: &[u8], allow_inf_nan: bool) -> Result<Self, JsonError> {
+        let first = *data.first().ok_or_else(|| json_error!(InvalidNumber, 0))?;
+        let (number, index) = Self::decode(data, 0, first, allow_inf_nan)?;
+
+        if index == data.len() {
             Ok(number)
         } else {
             json_err!(InvalidNumber, index)

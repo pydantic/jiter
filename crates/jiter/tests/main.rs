@@ -1467,9 +1467,30 @@ fn test_number_any_try_from_bytes() {
     let e = NumberAny::try_from(b"0123".as_ref()).unwrap_err();
     assert_eq!(e.to_string(), "invalid number at index 1");
 
+    let e = NumberAny::try_from(b"NaN".as_ref()).unwrap_err();
+    assert_eq!(e.to_string(), "expected value at index 0");
+
     let too_long = "9".repeat(4309);
     let e = NumberAny::try_from(too_long.as_bytes()).unwrap_err();
     assert_eq!(e.to_string(), "number out of range at index 4301");
+}
+
+#[test]
+fn test_number_any_try_from_bytes_allow() {
+    let n = NumberAny::from_bytes(b"123", true).unwrap();
+    assert_eq!(n, NumberAny::Int(NumberInt::Int(123)));
+
+    let e = NumberAny::from_bytes(b"x23", true).unwrap_err();
+    assert_eq!(e.to_string(), "invalid number at index 0");
+
+    let n = NumberAny::from_bytes(b"NaN", true).unwrap();
+    assert_eq!(format!("{n:?}"), "Float(NaN)");
+
+    let n = NumberAny::from_bytes(b"Infinity", true).unwrap();
+    assert_eq!(format!("{n:?}"), "Float(inf)");
+
+    let e = NumberAny::from_bytes(b"NaN", false).unwrap_err();
+    assert_eq!(e.to_string(), "expected value at index 0");
 }
 
 #[test]
