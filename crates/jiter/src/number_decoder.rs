@@ -1,5 +1,8 @@
+#[cfg(feature = "num-bigint")]
 use num_bigint::BigInt;
+#[cfg(feature = "num-bigint")]
 use num_traits::cast::ToPrimitive;
+
 use std::ops::Range;
 
 use lexical_parse_float::{format as lexical_format, FromLexicalWithOptions, Options as ParseFloatOptions};
@@ -16,6 +19,7 @@ pub trait AbstractNumberDecoder {
 #[derive(Debug, Clone, PartialEq)]
 pub enum NumberInt {
     Int(i64),
+    #[cfg(feature = "num-bigint")]
     BigInt(BigInt),
 }
 
@@ -23,6 +27,7 @@ impl From<NumberInt> for f64 {
     fn from(num: NumberInt) -> Self {
         match num {
             NumberInt::Int(int) => int as f64,
+            #[cfg(feature = "num-bigint")]
             NumberInt::BigInt(big_int) => big_int.to_f64().unwrap_or(f64::NAN),
         }
     }
@@ -118,6 +123,7 @@ impl pyo3::ToPyObject for NumberAny {
     fn to_object(&self, py: pyo3::Python<'_>) -> pyo3::PyObject {
         match self {
             Self::Int(NumberInt::Int(int)) => int.to_object(py),
+            #[cfg(feature = "num-bigint")]
             Self::Int(NumberInt::BigInt(big_int)) => big_int.to_object(py),
             Self::Float(float) => float.to_object(py),
         }
@@ -220,8 +226,8 @@ impl IntParse {
         index += 1;
         let (chunk, new_index) = IntChunk::parse_small(data, index, first_value);
 
-        let mut big_value: BigInt = match chunk {
-            IntChunk::Ongoing(value) => value.into(),
+        let ongoing: u64 = match chunk {
+            IntChunk::Ongoing(value) => value,
             IntChunk::Done(value) => {
                 let mut value_i64 = value as i64;
                 if !positive {
@@ -231,61 +237,75 @@ impl IntParse {
             }
             IntChunk::Float => return Ok((Self::Float, new_index)),
         };
-        index = new_index;
 
-        // number is too big for i64, we need ot use a big int
-        loop {
-            let (chunk, new_index) = IntChunk::parse_big(data, index);
-            if (new_index - start) > 4300 {
-                return json_err!(NumberOutOfRange, start + 4301);
-            }
-            match chunk {
-                IntChunk::Ongoing(value) => {
-                    big_value *= ONGOING_CHUNK_MULTIPLIER;
-                    big_value += value;
-                    index = new_index;
+        // number is too big for i64, we need to use a BigInt,
+        // or error out if num-bigint is not enabled
+
+        #[cfg(not(feature = "num-bigint"))]
+        {
+            // silence unused variable warning
+            let _ = (ongoing, start);
+            return json_err!(NumberOutOfRange, index);
+        }
+
+        #[cfg(feature = "num-bigint")]
+        {
+            #[cfg(target_arch = "aarch64")]
+            // in aarch64 we use a 128 bit registers - 16 bytes
+            const ONGOING_CHUNK_MULTIPLIER: u64 = 10u64.pow(16);
+            #[cfg(not(target_arch = "aarch64"))]
+            // decode_int_chunk_fallback - we parse 18 bytes when the number is ongoing
+            const ONGOING_CHUNK_MULTIPLIER: u64 = 10u64.pow(18);
+
+            const POW_10: [u64; 18] = [
+                10u64.pow(0),
+                10u64.pow(1),
+                10u64.pow(2),
+                10u64.pow(3),
+                10u64.pow(4),
+                10u64.pow(5),
+                10u64.pow(6),
+                10u64.pow(7),
+                10u64.pow(8),
+                10u64.pow(9),
+                10u64.pow(10),
+                10u64.pow(11),
+                10u64.pow(12),
+                10u64.pow(13),
+                10u64.pow(14),
+                10u64.pow(15),
+                10u64.pow(16),
+                10u64.pow(17),
+            ];
+
+            let mut big_value: BigInt = ongoing.into();
+            index = new_index;
+
+            loop {
+                let (chunk, new_index) = IntChunk::parse_big(data, index);
+                if (new_index - start) > 4300 {
+                    return json_err!(NumberOutOfRange, start + 4301);
                 }
-                IntChunk::Done(value) => {
-                    big_value *= POW_10[new_index - index];
-                    big_value += value;
-                    if !positive {
-                        big_value = -big_value;
+                match chunk {
+                    IntChunk::Ongoing(value) => {
+                        big_value *= ONGOING_CHUNK_MULTIPLIER;
+                        big_value += value;
+                        index = new_index;
                     }
-                    return Ok((Self::Int(NumberInt::BigInt(big_value)), new_index));
+                    IntChunk::Done(value) => {
+                        big_value *= POW_10[new_index - index];
+                        big_value += value;
+                        if !positive {
+                            big_value = -big_value;
+                        }
+                        return Ok((Self::Int(NumberInt::BigInt(big_value)), new_index));
+                    }
+                    IntChunk::Float => return Ok((Self::Float, new_index)),
                 }
-                IntChunk::Float => return Ok((Self::Float, new_index)),
             }
         }
     }
 }
-
-static POW_10: [u64; 18] = [
-    10u64.pow(0),
-    10u64.pow(1),
-    10u64.pow(2),
-    10u64.pow(3),
-    10u64.pow(4),
-    10u64.pow(5),
-    10u64.pow(6),
-    10u64.pow(7),
-    10u64.pow(8),
-    10u64.pow(9),
-    10u64.pow(10),
-    10u64.pow(11),
-    10u64.pow(12),
-    10u64.pow(13),
-    10u64.pow(14),
-    10u64.pow(15),
-    10u64.pow(16),
-    10u64.pow(17),
-];
-
-#[cfg(target_arch = "aarch64")]
-// in aarch64 we use a 128 bit registers - 16 bytes
-static ONGOING_CHUNK_MULTIPLIER: u64 = 10u64.pow(16);
-#[cfg(not(target_arch = "aarch64"))]
-// decode_int_chunk_fallback - we parse 18 bytes when the number is ongoing
-static ONGOING_CHUNK_MULTIPLIER: u64 = 10u64.pow(18);
 
 pub(crate) enum IntChunk {
     Ongoing(u64),
@@ -362,6 +382,8 @@ pub(crate) static INT_CHAR_MAP: [bool; 256] = {
 
 pub struct NumberRange {
     pub range: Range<usize>,
+    // in some cfg configurations, this field is never read.
+    #[allow(dead_code)]
     pub is_int: bool,
 }
 

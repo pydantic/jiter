@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+#[cfg(feature = "num-bigint")]
 use num_bigint::BigInt;
 use smallvec::SmallVec;
 
@@ -16,6 +17,7 @@ pub enum JsonValue<'s> {
     Null,
     Bool(bool),
     Int(i64),
+    #[cfg(feature = "num-bigint")]
     BigInt(BigInt),
     Float(f64),
     Str(Cow<'s, str>),
@@ -34,6 +36,7 @@ impl pyo3::ToPyObject for JsonValue<'_> {
             Self::Null => py.None().to_object(py),
             Self::Bool(b) => b.to_object(py),
             Self::Int(i) => i.to_object(py),
+            #[cfg(feature = "num-bigint")]
             Self::BigInt(b) => b.to_object(py),
             Self::Float(f) => f.to_object(py),
             Self::Str(s) => s.to_object(py),
@@ -78,6 +81,7 @@ fn value_static(v: JsonValue<'_>) -> JsonValue<'static> {
         JsonValue::Null => JsonValue::Null,
         JsonValue::Bool(b) => JsonValue::Bool(b),
         JsonValue::Int(i) => JsonValue::Int(i),
+        #[cfg(feature = "num-bigint")]
         JsonValue::BigInt(b) => JsonValue::BigInt(b),
         JsonValue::Float(f) => JsonValue::Float(f),
         JsonValue::Str(s) => JsonValue::Str(s.into_owned().into()),
@@ -214,6 +218,7 @@ fn take_value<'j, 's>(
             let n = parser.consume_number::<NumberAny>(peek.into_inner(), allow_inf_nan);
             match n {
                 Ok(NumberAny::Int(NumberInt::Int(int))) => Ok(JsonValue::Int(int)),
+                #[cfg(feature = "num-bigint")]
                 Ok(NumberAny::Int(NumberInt::BigInt(big_int))) => Ok(JsonValue::BigInt(big_int)),
                 Ok(NumberAny::Float(float)) => Ok(JsonValue::Float(float)),
                 Err(e) => {
