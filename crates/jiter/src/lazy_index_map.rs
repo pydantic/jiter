@@ -149,6 +149,27 @@ impl<K: PartialEq, V: PartialEq> PartialEq for LazyIndexMap<K, V> {
     }
 }
 
+impl<K, V> FromIterator<(K, V)> for LazyIndexMap<K, V> {
+    fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
+        let vec = iter.into_iter().collect();
+        Self {
+            vec,
+            map: OnceLock::new(),
+            last_find: AtomicUsize::new(0),
+        }
+    }
+}
+
+impl<K, V> From<Vec<(K, V)>> for LazyIndexMap<K, V> {
+    fn from(vec: Vec<(K, V)>) -> Self {
+        Self {
+            vec: vec.into(),
+            map: OnceLock::new(),
+            last_find: AtomicUsize::new(0),
+        }
+    }
+}
+
 struct IterUnique<'a, K, V> {
     vec: &'a SmallVec<[(K, V); 8]>,
     map: &'a AHashMap<K, usize>,
@@ -170,5 +191,34 @@ impl<'a, K: Hash + Eq, V> Iterator for IterUnique<'a, K, V> {
             self.index += 1;
         }
         None
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::JsonValue;
+
+    #[test]
+    fn test_lazy_index_map_collect() {
+        let pairs: Vec<(Cow<'static, str>, JsonValue<'static>)> = vec![
+            ("foo".into(), JsonValue::Null),
+            ("bar".into(), JsonValue::Bool(true)),
+            ("spam".into(), JsonValue::Int(123)),
+        ];
+        let map: LazyIndexMap<_, _> = pairs.into_iter().collect();
+        assert_eq!(map.len(), 3);
+        assert_eq!(map.keys().collect::<Vec<_>>(), ["foo", "bar", "spam"]);
+        assert_eq!(map.get("bar"), Some(&JsonValue::Bool(true)));
+    }
+
+    #[test]
+    fn test_lazy_index_map_from_vec() {
+        let pairs: Vec<(Cow<'static, str>, JsonValue<'static>)> =
+            vec![("foo".into(), JsonValue::Null), ("bar".into(), JsonValue::Bool(true))];
+        let map: LazyIndexMap<_, _> = pairs.into();
+        assert_eq!(map.len(), 2);
+        assert_eq!(map.keys().collect::<Vec<_>>(), ["foo", "bar"]);
+        assert_eq!(map.get("bar"), Some(&JsonValue::Bool(true)));
     }
 }
