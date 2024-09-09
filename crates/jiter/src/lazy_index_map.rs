@@ -4,7 +4,7 @@ use std::fmt;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::mem::MaybeUninit;
 use std::slice::Iter as SliceIter;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU16, AtomicUsize, Ordering};
 
 use ahash::RandomState;
 use bitvec::order::Lsb0;
@@ -144,6 +144,8 @@ where
 }
 
 mod index_map_vec {
+    use std::sync::atomic::AtomicU16;
+
     use super::*;
 
     pub(super) struct LazyIndexMapArray<K, V> {
@@ -153,7 +155,7 @@ mod index_map_vec {
         duplicates_mask: DuplicatesMask,
     }
 
-    type DuplicatesMask = bitvec::BitArr!(for HASHMAP_THRESHOLD, in Cell<u16>);
+    type DuplicatesMask = bitvec::BitArr!(for HASHMAP_THRESHOLD, in AtomicU16);
 
     impl<K, V> LazyIndexMapArray<K, V> {
         pub fn new() -> Self {
@@ -321,7 +323,7 @@ enum LazyIndexMapIter<'a, K, V> {
     Vec {
         iter: SliceIter<'a, (K, V)>,
         // to mask duplicate entries
-        mask: <bitvec::BitArr!(for HASHMAP_THRESHOLD, in Cell<u16>) as IntoIterator>::IntoIter,
+        mask: <bitvec::BitArr!(for HASHMAP_THRESHOLD, in AtomicU16) as IntoIterator>::IntoIter,
     },
     Map(indexmap::map::Iter<'a, K, V>),
 }
