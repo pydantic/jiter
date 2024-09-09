@@ -19,6 +19,7 @@ smallvec = "2.0.0-alpha.7"
 pyo3 = { workspace = true, optional = true, features = ["num-bigint"] }
 lexical-parse-float = { version = "0.8.5", features =  ["format"] }
 bitvec = "1.0.1"
+indexmap = "2.5.0"
 
 [features]
 python = ["dep:pyo3", "dep:pyo3-build-config"]
