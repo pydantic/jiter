@@ -88,8 +88,13 @@ fn errors_equal(jiter_error: &JiterError, serde_error: &SerdeError, json_data: &
     } else if matches!(jiter_error.error_type, JiterJsonErrorType::InvalidUnicodeCodePoint) {
         // https://github.com/serde-rs/json/issues/1083
         remove_suffix(&jiter_error_str) == remove_suffix(&serde_error_str)
+    } else if jiter_error_str.starts_with("invalid escape at line")
+        && serde_error_str.starts_with("invalid escape character")
+    {
+        // see fuzz failures on #130
+        true
     } else {
-        return jiter_error_str == serde_error_str;
+        jiter_error_str == serde_error_str
     }
 }
 

@@ -616,6 +616,16 @@ fn bad_high_order_string_tail() {
 }
 
 #[test]
+fn invalid_escape_position() {
+    // from fuzzing on #130
+    let bytes = br#""con(\u0trol character (\u000.00"#;
+    let e = JsonValue::parse(bytes, false).unwrap_err();
+    assert_eq!(e.error_type, JsonErrorType::InvalidEscape);
+    assert_eq!(e.index, 8);
+    assert_eq!(e.description(bytes), "invalid escape at line 1 column 9")
+}
+
+#[test]
 fn simd_string_sizes() {
     for i in 0..100 {
         let mut json = vec![b'"'];
