@@ -30,7 +30,7 @@ pub fn values_equal(jiter_value: &JiterValue, serde_value: &SerdeValue) -> bool 
             if o1.len() != o2.len() {
                 return false;
             }
-            for (k1, v1) in o1.iter_unique() {
+            for (k1, v1) in o1.iter() {
                 if let Some(v2) = o2.get::<str>(k1.as_ref()) {
                     if !values_equal(v1, v2) {
                         return false;

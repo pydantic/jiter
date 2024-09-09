@@ -1,13 +1,10 @@
 use std::borrow::{Borrow, Cow};
-use std::cell::Cell;
 use std::fmt;
-use std::hash::{DefaultHasher, Hash, Hasher};
-use std::mem::MaybeUninit;
+use std::hash::Hash;
 use std::slice::Iter as SliceIter;
-use std::sync::atomic::{AtomicU16, AtomicUsize, Ordering};
+use std::sync::atomic::AtomicU16;
 
 use ahash::RandomState;
-use bitvec::order::Lsb0;
 use indexmap::IndexMap;
 
 /// Like [IndexMap](https://docs.rs/indexmap/latest/indexmap/) but only builds the lookup map when it's needed.
@@ -144,9 +141,13 @@ where
 }
 
 mod index_map_vec {
-    use std::sync::atomic::AtomicU16;
+    use bitvec::order::Lsb0;
+    use std::borrow::{Borrow, Cow};
+    use std::hash::{DefaultHasher, Hash, Hasher};
+    use std::mem::MaybeUninit;
+    use std::sync::atomic::{AtomicU16, AtomicUsize, Ordering};
 
-    use super::*;
+    use super::HASHMAP_THRESHOLD;
 
     pub(super) struct LazyIndexMapArray<K, V> {
         data: Box<[MaybeUninit<(K, V)>; HASHMAP_THRESHOLD]>,
@@ -334,7 +335,7 @@ impl<'a, K, V> Iterator for LazyIndexMapIter<'a, K, V> {
     fn next(&mut self) -> Option<Self::Item> {
         match self {
             LazyIndexMapIter::Vec { iter, mask } => {
-                while let Some((k, v)) = iter.next() {
+                for (k, v) in iter.by_ref() {
                     let is_not_duplicate = mask.next().expect("mask covers array length");
                     if is_not_duplicate {
                         return Some((k, v));
