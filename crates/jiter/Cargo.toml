@@ -15,7 +15,7 @@ repository = {workspace = true}
 num-bigint = "0.4.4"
 num-traits = "0.2.16"
 ahash = "0.8.0"
-smallvec = "1.11.0"
+smallvec = "2.0.0-alpha.7"
 pyo3 = { workspace = true, optional = true, features = ["num-bigint"] }
 lexical-parse-float = { version = "0.8.5", features =  ["format"] }
 bitvec = "1.0.1"

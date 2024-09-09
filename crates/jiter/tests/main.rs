@@ -1653,3 +1653,12 @@ fn test_unicode_roundtrip() {
     assert_eq!(cow, "中文");
     assert!(matches!(cow, Cow::Owned(_)));
 }
+
+#[test]
+fn test_invariant_lifetimes() {
+    let v1 = JsonValue::Str("foobar".into());
+
+    let s = "foobar".to_string();
+    let v2 = JsonValue::Str(s.as_str().into());
+    assert_eq!(v1, v2);
+}
