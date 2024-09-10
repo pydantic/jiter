@@ -2,7 +2,6 @@ use std::borrow::{Borrow, Cow};
 use std::fmt;
 use std::hash::Hash;
 use std::slice::Iter as SliceIter;
-use std::sync::atomic::AtomicU16;
 
 use ahash::RandomState;
 use indexmap::IndexMap;
@@ -73,7 +72,7 @@ where
                     let LazyIndexMapInner::Map(map) = &mut self.inner else {
                         unreachable!("just set to be a map");
                     };
-                    for (k, v) in vec.into_complete_data() {
+                    for (k, v) in vec {
                         map.insert(k, v);
                     }
                     map.insert(key, value);
@@ -129,7 +128,7 @@ where
             LazyIndexMapInner::Array(vec) => {
                 // SAFETY: data is known to be initialized up to len
                 let data = vec.data();
-                let mask = vec.duplicates_mask().clone();
+                let mask = vec.duplicates_mask();
                 LazyIndexMapIter::Vec {
                     iter: data.iter(),
                     mask: mask.into_iter(),
@@ -142,9 +141,11 @@ where
 
 mod index_map_vec {
     use bitvec::order::Lsb0;
+    use bitvec::view::BitViewSized;
+    use bitvec::BitArr;
     use std::borrow::{Borrow, Cow};
     use std::hash::{DefaultHasher, Hash, Hasher};
-    use std::mem::MaybeUninit;
+    use std::mem::{ManuallyDrop, MaybeUninit};
     use std::sync::atomic::{AtomicU16, AtomicUsize, Ordering};
 
     use super::HASHMAP_THRESHOLD;
@@ -156,7 +157,7 @@ mod index_map_vec {
         duplicates_mask: DuplicatesMask,
     }
 
-    type DuplicatesMask = bitvec::BitArr!(for HASHMAP_THRESHOLD, in AtomicU16);
+    type DuplicatesMask = BitArr!(for HASHMAP_THRESHOLD, in AtomicU16);
 
     impl<K, V> LazyIndexMapArray<K, V> {
         pub fn new() -> Self {
@@ -214,24 +215,15 @@ mod index_map_vec {
             None
         }
 
-        pub fn into_complete_data(self) -> impl IntoIterator<Item = (K, V)> {
-            self.data
-                .into_iter()
-                .take(self.len)
-                // SAFETY: reading initialized section only
-                .map(|x| unsafe { x.assume_init() })
-        }
-
-        pub fn duplicates_mask(&self) -> &DuplicatesMask {
+        pub fn duplicates_mask(&self) -> BitArr!(for HASHMAP_THRESHOLD, in u16) {
             let data = self.data();
             if self.duplicates_mask == DuplicatesMask::ZERO {
                 let new_mask = build_duplicates_mask(data);
-                // FIXME: is there a way to write the whole thing at once?
-                for i in 0..data.len() {
-                    self.duplicates_mask.set_aliased(i, new_mask[i]);
-                }
+                self.duplicates_mask.data[0].store(new_mask.data[0], Ordering::Relaxed);
+                new_mask
+            } else {
+                [self.duplicates_mask.data[0].load(Ordering::Relaxed)].into_bitarray()
             }
-            &self.duplicates_mask
         }
     }
 
@@ -263,6 +255,53 @@ mod index_map_vec {
                 last_find: AtomicUsize::new(self.last_find.load(Ordering::Relaxed)),
                 duplicates_mask: self.duplicates_mask.clone(),
             }
+        }
+    }
+
+    impl<K, V> IntoIterator for LazyIndexMapArray<K, V> {
+        type Item = (K, V);
+        type IntoIter = LazyIndexMapArrayIterator<K, V>;
+
+        fn into_iter(self) -> Self::IntoIter {
+            LazyIndexMapArrayIterator {
+                data: ManuallyDrop::new(self),
+                index: 0,
+            }
+        }
+    }
+
+    impl<K, V> Drop for LazyIndexMapArray<K, V> {
+        fn drop(&mut self) {
+            for entry in self.data.iter_mut().take(self.len) {
+                // SAFETY: initialized up to len
+                unsafe { entry.assume_init_drop() }
+            }
+        }
+    }
+
+    pub struct LazyIndexMapArrayIterator<K, V> {
+        data: ManuallyDrop<LazyIndexMapArray<K, V>>,
+        index: usize,
+    }
+
+    impl<K, V> Iterator for LazyIndexMapArrayIterator<K, V> {
+        type Item = (K, V);
+
+        fn next(&mut self) -> Option<Self::Item> {
+            if self.index < self.data.len {
+                let value = unsafe { self.data.data[self.index].assume_init_read() };
+                self.index += 1;
+                Some(value)
+            } else {
+                None
+            }
+        }
+    }
+
+    impl<K, V> Drop for LazyIndexMapArrayIterator<K, V> {
+        fn drop(&mut self) {
+            // consume the remaining values
+            for _ in self {}
         }
     }
 
@@ -324,7 +363,7 @@ enum LazyIndexMapIter<'a, K, V> {
     Vec {
         iter: SliceIter<'a, (K, V)>,
         // to mask duplicate entries
-        mask: <bitvec::BitArr!(for HASHMAP_THRESHOLD, in AtomicU16) as IntoIterator>::IntoIter,
+        mask: <bitvec::BitArr!(for HASHMAP_THRESHOLD, in u16) as IntoIterator>::IntoIter,
     },
     Map(indexmap::map::Iter<'a, K, V>),
 }
