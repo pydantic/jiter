@@ -23,7 +23,7 @@ pub enum JsonValue<'s> {
     Object(JsonObject<'s>),
 }
 
-pub type JsonArray<'s> = Arc<SmallVec<[JsonValue<'s>; 8]>>;
+pub type JsonArray<'s> = Arc<SmallVec<JsonValue<'s>, 8>>;
 pub type JsonObject<'s> = Arc<LazyIndexMap<Cow<'s, str>, JsonValue<'s>>>;
 
 #[cfg(feature = "python")]
@@ -81,7 +81,9 @@ fn value_static(v: JsonValue<'_>) -> JsonValue<'static> {
         JsonValue::BigInt(b) => JsonValue::BigInt(b),
         JsonValue::Float(f) => JsonValue::Float(f),
         JsonValue::Str(s) => JsonValue::Str(s.into_owned().into()),
-        JsonValue::Array(v) => JsonValue::Array(Arc::new(v.iter().map(JsonValue::to_static).collect::<SmallVec<_>>())),
+        JsonValue::Array(v) => {
+            JsonValue::Array(Arc::new(v.iter().map(JsonValue::to_static).collect::<SmallVec<_, 8>>()))
+        }
         JsonValue::Object(o) => JsonValue::Object(Arc::new(o.to_static())),
     }
 }
@@ -173,7 +175,7 @@ fn take_value<'j, 's>(
         }
         Peek::Array => {
             // we could do something clever about guessing the size of the array
-            let mut array: SmallVec<[JsonValue<'s>; 8]> = SmallVec::new();
+            let mut array: SmallVec<JsonValue<'s>, 8> = SmallVec::new();
             if let Some(peek_first) = parser.array_first()? {
                 check_recursion!(recursion_limit, parser.index,
                     let v = take_value(peek_first, parser, tape, recursion_limit, allow_inf_nan, create_cow)?;

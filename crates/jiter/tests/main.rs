@@ -919,11 +919,11 @@ fn test_crazy_massive_int() {
 }
 
 #[test]
-fn unique_iter_object() {
+fn iter_object() {
     let value = JsonValue::parse(br#" {"x": 1, "x": 2} "#, false).unwrap();
     if let JsonValue::Object(obj) = value {
         assert_eq!(obj.len(), 1);
-        let mut unique = obj.iter_unique();
+        let mut unique = obj.iter();
         let first = unique.next().unwrap();
         assert_eq!(first.0, "x");
         assert_eq!(first.1, &JsonValue::Int(2));
@@ -934,11 +934,11 @@ fn unique_iter_object() {
 }
 
 #[test]
-fn unique_iter_object_repeat() {
+fn iter_object_repeat() {
     let value = JsonValue::parse(br#" {"x": 1, "x": 1} "#, false).unwrap();
     if let JsonValue::Object(obj) = value {
         assert_eq!(obj.len(), 1);
-        let mut unique = obj.iter_unique();
+        let mut unique = obj.iter();
         let first = unique.next().unwrap();
         assert_eq!(first.0, "x");
         assert_eq!(first.1, &JsonValue::Int(1));
@@ -1652,4 +1652,13 @@ fn test_unicode_roundtrip() {
     };
     assert_eq!(cow, "中文");
     assert!(matches!(cow, Cow::Owned(_)));
+}
+
+#[test]
+fn test_invariant_lifetimes() {
+    let v1 = JsonValue::Str("foobar".into());
+
+    let s = "foobar".to_string();
+    let v2 = JsonValue::Str(s.as_str().into());
+    assert_eq!(v1, v2);
 }
