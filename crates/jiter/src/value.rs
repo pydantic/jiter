@@ -307,37 +307,39 @@ fn take_value_recursive<'j, 's>(
 
         // now try to advance position in the current array or object
         peek = loop {
-            current_recursion = match current_recursion {
+            match &mut current_recursion {
+                RecursedValue::Array(array) => {
+                    if let Some(next_peek) = parser.array_step()? {
+                        array.push(value);
+                        // array continuing
+                        break next_peek;
+                    }
+                }
+                RecursedValue::Object { partial, next_key } => {
+                    if let Some(yet_another_key) = parser.object_step::<StringDecoder>(tape)?.map(create_cow) {
+                        partial.insert(std::mem::replace(next_key, yet_another_key), value);
+                        // object continuing
+                        break parser.peek()?;
+                    }
+                }
+            }
+
+            value = match current_recursion {
                 RecursedValue::Array(mut array) => {
                     array.push(value);
-                    if let Some(next_peek) = parser.array_step()? {
-                        // array continuing
-                        current_recursion = RecursedValue::Array(array);
-                        break next_peek;
-                    } else if let Some(recursed) = recursion_stack.pop() {
-                        // array finished, recursing
-                        value = JsonValue::Array(Arc::new(array));
-                        recursed
-                    } else {
-                        // no recursion left and array finished
-                        return Ok(JsonValue::Array(Arc::new(array)));
-                    }
+                    JsonValue::Array(Arc::new(array))
                 }
                 RecursedValue::Object { mut partial, next_key } => {
                     partial.insert(next_key, value);
-                    if let Some(next_key) = parser.object_step::<StringDecoder>(tape)?.map(create_cow) {
-                        // object continuing
-                        current_recursion = RecursedValue::Object { partial, next_key };
-                        break parser.peek()?;
-                    } else if let Some(recursed) = recursion_stack.pop() {
-                        // object finished, recursing
-                        value = JsonValue::Object(Arc::new(LazyIndexMap::new()));
-                        recursed
-                    } else {
-                        // no recursion left and object finished
-                        return Ok(JsonValue::Object(Arc::new(partial)));
-                    }
+                    JsonValue::Object(Arc::new(partial))
                 }
+            };
+
+            if let Some(r) = recursion_stack.pop() {
+                // value is the current array or object, next turn of the loop will insert it to the parent
+                current_recursion = r;
+            } else {
+                return Ok(value);
             }
         };
     }
