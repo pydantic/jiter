@@ -25,7 +25,7 @@ pub enum JsonValue<'s> {
     Object(JsonObject<'s>),
 }
 
-pub type JsonArray<'s> = Arc<SmallVec<[JsonValue<'s>; 8]>>;
+pub type JsonArray<'s> = Arc<SmallVec<JsonValue<'s>, 8>>;
 pub type JsonObject<'s> = Arc<LazyIndexMap<Cow<'s, str>, JsonValue<'s>>>;
 
 #[cfg(feature = "python")]
@@ -85,7 +85,9 @@ fn value_static(v: JsonValue<'_>) -> JsonValue<'static> {
         JsonValue::BigInt(b) => JsonValue::BigInt(b),
         JsonValue::Float(f) => JsonValue::Float(f),
         JsonValue::Str(s) => JsonValue::Str(s.into_owned().into()),
-        JsonValue::Array(v) => JsonValue::Array(Arc::new(v.iter().map(JsonValue::to_static).collect::<SmallVec<_>>())),
+        JsonValue::Array(v) => {
+            JsonValue::Array(Arc::new(v.iter().map(JsonValue::to_static).collect::<SmallVec<_, 8>>()))
+        }
         JsonValue::Object(o) => JsonValue::Object(Arc::new(o.to_static())),
     }
 }
