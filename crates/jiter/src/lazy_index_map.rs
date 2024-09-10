@@ -10,7 +10,7 @@ use smallvec::SmallVec;
 
 /// Like [IndexMap](https://docs.rs/indexmap/latest/indexmap/) but only builds the lookup map when it's needed.
 pub struct LazyIndexMap<K, V> {
-    vec: SmallVec<[(K, V); 8]>,
+    vec: SmallVec<(K, V), 8>,
     map: OnceLock<AHashMap<K, usize>>,
     last_find: AtomicUsize,
 }
@@ -171,7 +171,7 @@ impl<K, V> From<Vec<(K, V)>> for LazyIndexMap<K, V> {
 }
 
 struct IterUnique<'a, K, V> {
-    vec: &'a SmallVec<[(K, V); 8]>,
+    vec: &'a SmallVec<(K, V), 8>,
     map: &'a AHashMap<K, usize>,
     index: usize,
 }
