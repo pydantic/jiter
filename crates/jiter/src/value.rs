@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use num_bigint::BigInt;
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 
 use crate::errors::{json_error, JsonError, JsonResult, DEFAULT_RECURSION_LIMIT};
 use crate::lazy_index_map::LazyIndexMap;
@@ -225,121 +225,216 @@ enum RecursedValue<'s> {
 #[inline(never)] // this is an iterative algo called only from take_value, no point in inlining
 fn take_value_recursive<'j, 's>(
     mut peek: Peek,
-    mut current_recursion: RecursedValue<'s>,
+    current_recursion: RecursedValue<'s>,
     parser: &mut Parser<'j>,
     tape: &mut Tape,
     recursion_limit: u8,
     allow_inf_nan: bool,
     create_cow: &impl Fn(StringOutput<'_, 'j>) -> Cow<'s, str>,
 ) -> JsonResult<JsonValue<'s>> {
-    let mut recursion_stack = SmallVec::<[RecursedValue<'_>; 8]>::new();
     let recursion_limit: usize = recursion_limit.into();
+
+    let mut recursion_stack: SmallVec<[RecursedValue; 8]> = smallvec![current_recursion];
+    let mut current_recursion = recursion_stack.last_mut().expect("just inserted one element");
 
     macro_rules! push_recursion {
         ($next_peek:expr, $value:expr) => {
             peek = $next_peek;
-            recursion_stack.push(std::mem::replace(&mut current_recursion, $value));
             if recursion_stack.len() >= recursion_limit {
                 return Err(json_error!(RecursionLimitExceeded, parser.index));
             }
+            recursion_stack.push($value);
+            current_recursion = recursion_stack.last_mut().expect("just inserted one element");
         };
     }
 
-    loop {
-        let mut value = match peek {
-            Peek::True => {
-                parser.consume_true()?;
-                JsonValue::Bool(true)
-            }
-            Peek::False => {
-                parser.consume_false()?;
-                JsonValue::Bool(false)
-            }
-            Peek::Null => {
-                parser.consume_null()?;
-                JsonValue::Null
-            }
-            Peek::String => {
-                let s = parser.consume_string::<StringDecoder>(tape, false)?;
-                JsonValue::Str(create_cow(s))
-            }
-            Peek::Array => {
-                let array = SmallVec::new();
-                if let Some(next_peek) = parser.array_first()? {
-                    push_recursion!(next_peek, RecursedValue::Array(array));
-                    // immediately jump to process the first value in the array
-                    continue;
-                } else {
-                    JsonValue::Array(Arc::new(array))
-                }
-            }
-            Peek::Object => {
-                let object = LazyIndexMap::new();
-                if let Some(next_key) = parser.object_first::<StringDecoder>(tape)? {
-                    push_recursion!(
-                        parser.peek()?,
-                        RecursedValue::Object {
-                            partial: object,
-                            next_key: create_cow(next_key)
-                        }
-                    );
-                    continue;
-                } else {
-                    JsonValue::Object(Arc::new(object))
-                }
-            }
-            _ => {
-                let n = parser.consume_number::<NumberAny>(peek.into_inner(), allow_inf_nan);
-                match n {
-                    Ok(NumberAny::Int(NumberInt::Int(int))) => JsonValue::Int(int),
-                    Ok(NumberAny::Int(NumberInt::BigInt(big_int))) => JsonValue::BigInt(big_int),
-                    Ok(NumberAny::Float(float)) => JsonValue::Float(float),
-                    Err(e) => {
-                        if !peek.is_num() {
-                            return Err(json_error!(ExpectedSomeValue, parser.index));
+    'recursion: loop {
+        let mut value = match current_recursion {
+            RecursedValue::Array(array) => loop {
+                let value = match peek {
+                    Peek::True => {
+                        parser.consume_true()?;
+                        JsonValue::Bool(true)
+                    }
+                    Peek::False => {
+                        parser.consume_false()?;
+                        JsonValue::Bool(false)
+                    }
+                    Peek::Null => {
+                        parser.consume_null()?;
+                        JsonValue::Null
+                    }
+                    Peek::String => {
+                        let s = parser.consume_string::<StringDecoder>(tape, false)?;
+                        JsonValue::Str(create_cow(s))
+                    }
+                    Peek::Array => {
+                        if let Some(next_peek) = parser.array_first()? {
+                            push_recursion!(next_peek, RecursedValue::Array(SmallVec::new()));
+                            // immediately jump to process the first value in the array
+                            continue 'recursion;
                         } else {
-                            return Err(e);
+                            JsonValue::Array(Arc::new(SmallVec::new()))
                         }
                     }
+                    Peek::Object => {
+                        let object = LazyIndexMap::new();
+                        if let Some(next_key) = parser.object_first::<StringDecoder>(tape)? {
+                            push_recursion!(
+                                parser.peek()?,
+                                RecursedValue::Object {
+                                    partial: object,
+                                    next_key: create_cow(next_key)
+                                }
+                            );
+                            continue 'recursion;
+                        } else {
+                            JsonValue::Object(Arc::new(object))
+                        }
+                    }
+                    _ => {
+                        let n = parser.consume_number::<NumberAny>(peek.into_inner(), allow_inf_nan);
+                        match n {
+                            Ok(NumberAny::Int(NumberInt::Int(int))) => JsonValue::Int(int),
+                            Ok(NumberAny::Int(NumberInt::BigInt(big_int))) => JsonValue::BigInt(big_int),
+                            Ok(NumberAny::Float(float)) => JsonValue::Float(float),
+                            Err(e) => {
+                                if !peek.is_num() {
+                                    return Err(json_error!(ExpectedSomeValue, parser.index));
+                                } else {
+                                    return Err(e);
+                                }
+                            }
+                        }
+                    }
+                };
+
+                // now try to advance position in the current array
+                if let Some(next_peek) = parser.array_step()? {
+                    array.push(value);
+                    peek = next_peek;
+                    // array continuing
+                    continue;
                 }
-            }
+
+                let Some(RecursedValue::Array(mut array)) = recursion_stack.pop() else {
+                    unreachable!("known to be in array recursion");
+                };
+
+                array.push(value);
+                break JsonValue::Array(Arc::new(array));
+            },
+            RecursedValue::Object { partial, next_key } => loop {
+                let value = match peek {
+                    Peek::True => {
+                        parser.consume_true()?;
+                        JsonValue::Bool(true)
+                    }
+                    Peek::False => {
+                        parser.consume_false()?;
+                        JsonValue::Bool(false)
+                    }
+                    Peek::Null => {
+                        parser.consume_null()?;
+                        JsonValue::Null
+                    }
+                    Peek::String => {
+                        let s = parser.consume_string::<StringDecoder>(tape, false)?;
+                        JsonValue::Str(create_cow(s))
+                    }
+                    Peek::Array => {
+                        let array = SmallVec::new();
+                        if let Some(next_peek) = parser.array_first()? {
+                            push_recursion!(next_peek, RecursedValue::Array(array));
+                            // immediately jump to process the first value in the array
+                            continue 'recursion;
+                        } else {
+                            JsonValue::Array(Arc::new(array))
+                        }
+                    }
+                    Peek::Object => {
+                        let object = LazyIndexMap::new();
+                        if let Some(yet_another_key) = parser.object_first::<StringDecoder>(tape)? {
+                            push_recursion!(
+                                parser.peek()?,
+                                RecursedValue::Object {
+                                    partial: object,
+                                    next_key: create_cow(yet_another_key)
+                                }
+                            );
+                            continue 'recursion;
+                        } else {
+                            JsonValue::Object(Arc::new(object))
+                        }
+                    }
+                    _ => {
+                        let n = parser.consume_number::<NumberAny>(peek.into_inner(), allow_inf_nan);
+                        match n {
+                            Ok(NumberAny::Int(NumberInt::Int(int))) => JsonValue::Int(int),
+                            Ok(NumberAny::Int(NumberInt::BigInt(big_int))) => JsonValue::BigInt(big_int),
+                            Ok(NumberAny::Float(float)) => JsonValue::Float(float),
+                            Err(e) => {
+                                if !peek.is_num() {
+                                    return Err(json_error!(ExpectedSomeValue, parser.index));
+                                } else {
+                                    return Err(e);
+                                }
+                            }
+                        }
+                    }
+                };
+
+                // now try to advance position in the current object
+                if let Some(yet_another_key) = parser.object_step::<StringDecoder>(tape)?.map(create_cow) {
+                    // object continuing
+                    partial.insert(std::mem::replace(next_key, yet_another_key), value);
+                    peek = parser.peek()?;
+                    continue;
+                }
+
+                let Some(RecursedValue::Object { mut partial, next_key }) = recursion_stack.pop() else {
+                    unreachable!("known to be in object recursion");
+                };
+
+                partial.insert(next_key, value);
+                break JsonValue::Object(Arc::new(partial));
+            },
         };
 
-        // now try to advance position in the current array or object
+        // current array or object has finished;
+        // try to pop and continue with the parent
         peek = loop {
-            match &mut current_recursion {
+            if let Some(next_recursion) = recursion_stack.last_mut() {
+                current_recursion = next_recursion;
+            } else {
+                return Ok(value);
+            }
+
+            value = match current_recursion {
                 RecursedValue::Array(array) => {
                     if let Some(next_peek) = parser.array_step()? {
                         array.push(value);
-                        // array continuing
                         break next_peek;
                     }
+
+                    let Some(RecursedValue::Array(mut array)) = recursion_stack.pop() else {
+                        unreachable!("known to be in object recursion");
+                    };
+                    array.push(value);
+                    JsonValue::Array(Arc::new(array))
                 }
                 RecursedValue::Object { partial, next_key } => {
                     if let Some(yet_another_key) = parser.object_step::<StringDecoder>(tape)?.map(create_cow) {
                         partial.insert(std::mem::replace(next_key, yet_another_key), value);
-                        // object continuing
                         break parser.peek()?;
                     }
-                }
-            }
 
-            value = match current_recursion {
-                RecursedValue::Array(mut array) => {
-                    array.push(value);
-                    JsonValue::Array(Arc::new(array))
-                }
-                RecursedValue::Object { mut partial, next_key } => {
+                    let Some(RecursedValue::Object { mut partial, next_key }) = recursion_stack.pop() else {
+                        unreachable!("known to be in object recursion");
+                    };
                     partial.insert(next_key, value);
                     JsonValue::Object(Arc::new(partial))
                 }
-            };
-
-            if let Some(r) = recursion_stack.pop() {
-                // value is the current array or object, next turn of the loop will insert it to the parent
-                current_recursion = r;
-            } else {
-                return Ok(value);
             }
         };
     }
