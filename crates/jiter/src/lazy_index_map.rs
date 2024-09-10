@@ -217,7 +217,7 @@ mod index_map_vec {
 
         pub fn duplicates_mask(&self) -> BitArr!(for HASHMAP_THRESHOLD, in u16) {
             let data = self.data();
-            if self.duplicates_mask == DuplicatesMask::ZERO {
+            if self.duplicates_mask == { DuplicatesMask::ZERO } {
                 let new_mask = build_duplicates_mask(data);
                 self.duplicates_mask.data[0].store(new_mask.data[0], Ordering::Relaxed);
                 new_mask
