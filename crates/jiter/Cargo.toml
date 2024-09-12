@@ -15,7 +15,7 @@ repository = { workspace = true }
 num-bigint = { version = "0.4.4", optional = true }
 num-traits = "0.2.16"
 ahash = "0.8.0"
-smallvec = "2.0.0-alpha.7"
+smallvec = { workspace = true }
 pyo3 = { workspace = true, optional = true, features = ["num-bigint"] }
 lexical-parse-float = { version = "0.8.5", features =  ["format"] }
 bitvec = "1.0.1"
@@ -29,8 +29,8 @@ num-bigint = ["dep:num-bigint", "pyo3/num-bigint"]
 bencher = { workspace = true }
 paste = { workspace = true }
 codspeed-bencher-compat = { workspace = true }
-serde_json = {version = "1.0.87", features = ["preserve_order", "arbitrary_precision", "float_roundtrip"]}
-serde = "1.0.147"
+serde_json = { workspace = true, features = ["preserve_order", "arbitrary_precision", "float_roundtrip"]}
+serde = { workspace = true }
 pyo3 = { workspace = true, features = ["auto-initialize"] }
 
 [build-dependencies]
