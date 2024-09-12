@@ -14,10 +14,10 @@ repository = {workspace = true}
 [dependencies]
 bytemuck = { version = "1.17.1", features = ["aarch64_simd", "derive", "align_offset"] }
 jiter = { workspace = true }
-serde = "1.0.210"
-serde_json = "1.0.128"
+serde = { workspace = true }
+serde_json = { workspace = true }
 simdutf8 = { version = "0.1.4", features = ["aarch64_neon"] }
-smallvec = "2.0.0-alpha.7"
+smallvec = { workspace = true }
 
 [dev-dependencies]
 bencher = { workspace = true }
