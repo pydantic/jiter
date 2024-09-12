@@ -1,4 +1,5 @@
 use std::fmt;
+use std::mem::{align_of, size_of};
 
 use jiter::JsonValue;
 
