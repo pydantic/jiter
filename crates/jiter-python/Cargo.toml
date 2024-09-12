@@ -11,7 +11,7 @@ repository = {workspace = true}
 
 [dependencies]
 pyo3 = { workspace = true, features = ["num-bigint"] }
-jiter = { path = "../jiter", features = ["python", "num-bigint"] }
+jiter = { workspace = true, features = ["python", "num-bigint"] }
 
 [features]
 # must be enabled when building with `cargo build`, maturin enables this automatically

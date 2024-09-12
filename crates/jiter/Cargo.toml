@@ -26,16 +26,12 @@ python = ["dep:pyo3", "dep:pyo3-build-config"]
 num-bigint = ["dep:num-bigint", "pyo3/num-bigint"]
 
 [dev-dependencies]
-bencher = "0.1.5"
-paste = "1.0.7"
-serde_json = { version = "1.0.87", features = [
-    "preserve_order",
-    "arbitrary_precision",
-    "float_roundtrip",
-] }
+bencher = { workspace = true }
+paste = { workspace = true }
+codspeed-bencher-compat = { workspace = true }
+serde_json = {version = "1.0.87", features = ["preserve_order", "arbitrary_precision", "float_roundtrip"]}
 serde = "1.0.147"
 pyo3 = { workspace = true, features = ["auto-initialize"] }
-codspeed-bencher-compat = "2.7.1"
 
 [build-dependencies]
 pyo3-build-config = { workspace = true, optional = true }
