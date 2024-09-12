@@ -2,31 +2,37 @@
 name = "jiter"
 description = "Fast Iterable JSON parser"
 readme = "../../README.md"
-version = {workspace = true}
-edition = {workspace = true}
-authors = {workspace = true}
-license = {workspace = true}
-keywords = {workspace = true}
-categories = {workspace = true}
-homepage = {workspace = true}
-repository = {workspace = true}
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+categories = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
 
 [dependencies]
-num-bigint = "0.4.4"
+num-bigint = { version = "0.4.4", optional = true }
 num-traits = "0.2.16"
 ahash = "0.8.0"
 smallvec = "1.11.0"
-pyo3 = { workspace = true, optional = true, features = ["num-bigint"] }
-lexical-parse-float = { version = "0.8.5", features =  ["format"] }
+pyo3 = { workspace = true, optional = true }
+lexical-parse-float = { version = "0.8.5", features = ["format"] }
 bitvec = "1.0.1"
 
 [features]
+default = ["num-bigint"]
 python = ["dep:pyo3", "dep:pyo3-build-config"]
+num-bigint = ["dep:num-bigint", "pyo3/num-bigint"]
 
 [dev-dependencies]
 bencher = "0.1.5"
 paste = "1.0.7"
-serde_json = {version = "1.0.87", features = ["preserve_order", "arbitrary_precision", "float_roundtrip"]}
+serde_json = { version = "1.0.87", features = [
+    "preserve_order",
+    "arbitrary_precision",
+    "float_roundtrip",
+] }
 serde = "1.0.147"
 pyo3 = { workspace = true, features = ["auto-initialize"] }
 codspeed-bencher-compat = "2.7.1"
@@ -71,5 +77,5 @@ doc_markdown = "allow"
 implicit_clone = "allow"
 iter_without_into_iter = "allow"
 return_self_not_must_use = "allow"
-inline_always = "allow"  # TODO remove?
-match_same_arms = "allow"  # TODO remove?
+inline_always = "allow"                      # TODO remove?
+match_same_arms = "allow"                    # TODO remove?
