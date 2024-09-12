@@ -1,3 +1,4 @@
+use std::mem::size_of;
 use std::sync::Arc;
 
 use jiter::{JsonArray, JsonValue};

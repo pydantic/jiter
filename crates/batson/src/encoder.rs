@@ -1,3 +1,5 @@
+use std::mem::align_of;
+
 use jiter::{JsonArray, JsonObject, JsonValue};
 
 use crate::array::encode_array;
