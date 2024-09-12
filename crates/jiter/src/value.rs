@@ -242,7 +242,7 @@ fn take_value_recursive<'j, 's>(
 ) -> JsonResult<JsonValue<'s>> {
     let recursion_limit: usize = recursion_limit.into();
 
-    let mut recursion_stack: SmallVec<[RecursedValue; 8]> = SmallVec::new();
+    let mut recursion_stack: SmallVec<RecursedValue, 8> = SmallVec::new();
 
     macro_rules! push_recursion {
         ($next_peek:expr, $value:expr) => {
