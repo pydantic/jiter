@@ -2,6 +2,7 @@
 members = [
     "crates/jiter",
     "crates/jiter-python",
+    "crates/batson",
     "crates/fuzz",
 ]
 resolver = "2"
@@ -29,5 +30,9 @@ inherits = "release"
 debug = true
 
 [workspace.dependencies]
+jiter = { path = "crates/jiter", version = "0.5.0" }
 pyo3 = { version = "0.22.0" }
 pyo3-build-config = { version = "0.22.0" }
+bencher = "0.1.5"
+paste = "1.0.7"
+codspeed-bencher-compat = "2.7.1"
