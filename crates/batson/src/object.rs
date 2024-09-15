@@ -42,7 +42,7 @@ impl<'b> Object<'b> {
         let start_index = d.index;
 
         for h in header_iter {
-            d.index = h.position as usize;
+            d.index = start_index + h.offset as usize;
             let possible_key = d.take_slice(h.key_length as usize)?;
             if possible_key == key.as_bytes() {
                 return Ok(true);
@@ -97,20 +97,20 @@ impl<'b> Object<'b> {
 /// # Warning
 ///
 /// **Member order matters here** since it decides the layout of the struct when serialized.
-#[derive(Debug, Copy, Clone, Pod, Zeroable)]
+#[derive(Debug, Copy, Clone, Pod, Zeroable, Eq, PartialEq)]
 #[repr(C)]
 struct SuperHeaderItem {
     key_length: u32,
     key_hash: u32,
-    position: u32,
+    offset: u32,
 }
 
 impl SuperHeaderItem {
-    fn new(key: &str, position: u32) -> Self {
+    fn new(key: &str, offset: u32) -> Self {
         Self {
             key_length: key.len() as u32,
             key_hash: djb2_hash(key),
-            position,
+            offset,
         }
     }
 
@@ -163,21 +163,28 @@ pub(crate) fn encode_object(encoder: &mut Encoder, object: &JsonObject) -> Encod
     encoder.align::<SuperHeaderItem>();
     let super_header_start = encoder.ring_fence(object.len() * size_of::<SuperHeaderItem>());
 
+    let offset_start = encoder.position();
     for (key, value) in object.iter() {
         let key_str = key.as_ref();
         // add space for the header index, to be set correctly later
         encoder.extend(&0u32.to_le_bytes());
         // push to the super header, with the position at this stage
-        super_header.push(SuperHeaderItem::new(key_str, encoder.position() as u32));
+        super_header.push(SuperHeaderItem::new(
+            key_str,
+            (encoder.position() - offset_start) as u32,
+        ));
         // now we've recorded the position, write the key and value to the encoder
         encoder.extend(key_str.as_bytes());
         encoder.encode_value(value)?;
     }
     super_header.sort_by(|a, b| a.cmp_raw(b.key_length, b.key_hash));
 
+    // iterate over the super header and set the header index for each item in the body
     for (header_index, h) in super_header.iter().enumerate() {
-        // set the header index in body
-        encoder.set_range(h.position as usize - 4, &(header_index as u32).to_le_bytes());
+        encoder.set_range(
+            offset_start + h.offset as usize - 4,
+            &(header_index as u32).to_le_bytes(),
+        );
     }
     encoder.set_range(super_header_start, bytemuck::cast_slice(&super_header));
     Ok(())
@@ -237,6 +244,56 @@ mod test {
         assert_eq!(d4.take_value().unwrap(), JsonValue::Bool(true));
 
         assert!(!obj.get(&mut d, "x").unwrap());
+    }
+
+    #[test]
+    fn offsets() {
+        let v = JsonValue::Object(Arc::new(LazyIndexMap::from(vec![
+            ("a".into(), JsonValue::Bool(true)),
+            (
+                "bb".into(),
+                JsonValue::Object(Arc::new(LazyIndexMap::from(vec![("ccc".into(), JsonValue::Int(42))]))),
+            ),
+        ])));
+        let b = encode_from_json(&v).unwrap();
+        let mut d = Decoder::new(&b);
+        let header = d.take_header().unwrap();
+        assert_eq!(header, Header::Object(2.into()));
+
+        let obj = Object::decode_header(&mut d, 2.into()).unwrap();
+
+        assert_eq!(
+            obj.super_header,
+            vec![
+                SuperHeaderItem {
+                    key_length: 1,
+                    key_hash: 177670,
+                    offset: 4
+                },
+                SuperHeaderItem {
+                    key_length: 2,
+                    key_hash: 5863241,
+                    offset: 10
+                }
+            ]
+        );
+
+        assert!(obj.get(&mut d, "bb").unwrap());
+        let header = d.take_header().unwrap();
+        assert_eq!(header, Header::Object(1.into()));
+
+        let obj = Object::decode_header(&mut d, 1.into()).unwrap();
+
+        dbg!(obj.super_header);
+        assert_eq!(
+            obj.super_header,
+            vec![SuperHeaderItem {
+                key_length: 3,
+                key_hash: 193488174,
+                // note the offset here is relative to the start of the object
+                offset: 4,
+            },]
+        );
     }
 
     #[test]

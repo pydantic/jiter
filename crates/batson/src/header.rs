@@ -272,7 +272,7 @@ impl NumberHint {
     }
 }
 
-/// String and packed array length header part
+/// String, object, and array lengths
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub(crate) enum Length {
     Empty = 0,

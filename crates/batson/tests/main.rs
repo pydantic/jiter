@@ -1,3 +1,5 @@
+use std::fs::File;
+use std::io::Read;
 use std::sync::Arc;
 
 use jiter::JsonValue;
@@ -235,3 +237,34 @@ json_round_trip_tests!(
     float_neg => r#"-123.45"#;
     float_pos => r#"123.456789"#;
 );
+
+#[test]
+fn batson_file() {
+    // check the binary format doesn't change
+    let json = r#"
+        {
+            "header_only": [6, true, false, null, 0, [], {}, ""],
+            "u8_array": [0, 1, 2, 42, 255],
+            "i64_array": [-1, 2, 44, 255, 1234, 922337203685477],
+            "het_array": [true, 123, "foo", "£100", null],
+            "true": true,
+            "false": false,
+            "null": null
+        }
+    "#;
+    let bytes = json_to_batson(json.as_bytes());
+
+    let s = batson_to_json_string(&bytes).unwrap();
+    assert_eq!(s, json.replace(" ", "").replace("\n", ""));
+
+    let file_path = "tests/batson_example.bin";
+    // std::fs::write("tests/batson_example.bin", &bytes).unwrap();
+
+    // read the file and compare
+    let mut file = File::open(file_path).unwrap();
+    let mut contents = Vec::new();
+    file.read_to_end(&mut contents).unwrap();
+    dbg!(contents.len());
+
+    assert_eq!(contents, bytes);
+}
