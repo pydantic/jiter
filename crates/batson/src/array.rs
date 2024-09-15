@@ -13,30 +13,30 @@ use crate::json_writer::JsonWriter;
 #[cfg(target_endian = "big")]
 compile_error!("big-endian architectures are not yet supported as we use `bytemuck` for zero-copy header decoding.");
 
-/// Batson heterogeneous representation
+/// Batson heterogeneous array representation
 #[derive(Debug)]
 pub(crate) struct HetArray<'b> {
-    positions: &'b [u32],
+    offsets: &'b [u32],
 }
 
 impl<'b> HetArray<'b> {
     pub fn decode_header(d: &mut Decoder<'b>, length: Length) -> DecodeResult<Self> {
         if matches!(length, Length::Empty) {
-            Ok(Self { positions: &[] })
+            Ok(Self { offsets: &[] })
         } else {
             let length = length.decode(d)?;
             let positions = d.take_slice_as(length)?;
-            Ok(Self { positions })
+            Ok(Self { offsets: positions })
         }
     }
 
     pub fn len(&self) -> usize {
-        self.positions.len()
+        self.offsets.len()
     }
 
     pub fn get(&self, d: &mut Decoder<'b>, index: usize) -> bool {
-        if let Some(position) = self.positions.get(index) {
-            d.index = *position as usize;
+        if let Some(offset) = self.offsets.get(index) {
+            d.index += *offset as usize;
             true
         } else {
             false
@@ -44,7 +44,7 @@ impl<'b> HetArray<'b> {
     }
 
     pub fn to_json(&self, d: &mut Decoder<'b>) -> DecodeResult<JsonArray<'b>> {
-        self.positions
+        self.offsets
             .iter()
             .map(|_| d.take_value())
             .collect::<DecodeResult<SmallVec<_, 8>>>()
@@ -163,15 +163,16 @@ pub(crate) fn encode_array(encoder: &mut Encoder, array: &JsonArray) -> EncodeRe
     } else {
         encoder.encode_length(Category::HetArray, array.len())?;
 
-        let mut positions: Vec<u32> = Vec::with_capacity(array.len());
+        let mut offsets: Vec<u32> = Vec::with_capacity(array.len());
         encoder.align::<u32>();
         let positions_start = encoder.ring_fence(array.len() * size_of::<u32>());
 
+        let offset_start = encoder.position();
         for value in array.iter() {
-            positions.push(encoder.position() as u32);
+            offsets.push((encoder.position() - offset_start) as u32);
             encoder.encode_value(value)?;
         }
-        encoder.set_range(positions_start, bytemuck::cast_slice(&positions));
+        encoder.set_range(positions_start, bytemuck::cast_slice(&offsets));
         Ok(())
     }
 }
@@ -304,7 +305,7 @@ mod test {
 
         let het_array = HetArray::decode_header(&mut decoder, 3.into()).unwrap();
         assert_eq!(het_array.len(), 3);
-        assert_eq!(het_array.positions, &[16, 17, 19]);
+        assert_eq!(het_array.offsets, &[0, 1, 3]);
         let decode_array = het_array.to_json(&mut decoder).unwrap();
         assert_arrays_eq!(decode_array, array);
     }
