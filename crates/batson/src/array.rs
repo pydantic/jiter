@@ -1,14 +1,16 @@
-use std::mem::size_of;
-use std::sync::Arc;
-
+use bytemuck::NoUninit;
 use jiter::{JsonArray, JsonValue};
 use smallvec::SmallVec;
+use std::mem::size_of;
+use std::sync::Arc;
 
 use crate::decoder::Decoder;
 use crate::encoder::Encoder;
 use crate::errors::{DecodeResult, EncodeResult, ToJsonResult};
 use crate::header::{Category, Header, Length, NumberHint, Primitive};
 use crate::json_writer::JsonWriter;
+use crate::object::minimum_value_size_estimate;
+use crate::EncodeError;
 
 #[cfg(target_endian = "big")]
 compile_error!("big-endian architectures are not yet supported as we use `bytemuck` for zero-copy header decoding.");
@@ -16,27 +18,36 @@ compile_error!("big-endian architectures are not yet supported as we use `bytemu
 /// Batson heterogeneous array representation
 #[derive(Debug)]
 pub(crate) struct HetArray<'b> {
-    offsets: &'b [u32],
+    offsets: HetArrayOffsets<'b>,
 }
 
 impl<'b> HetArray<'b> {
     pub fn decode_header(d: &mut Decoder<'b>, length: Length) -> DecodeResult<Self> {
-        if matches!(length, Length::Empty) {
-            Ok(Self { offsets: &[] })
-        } else {
-            let length = length.decode(d)?;
-            let positions = d.take_slice_as(length)?;
-            Ok(Self { offsets: positions })
-        }
+        let offsets = match length {
+            Length::Empty => HetArrayOffsets::U8(&[]),
+            Length::U32 => HetArrayOffsets::U32(take_slice_as(d, length)?),
+            Length::U16 => HetArrayOffsets::U16(take_slice_as(d, length)?),
+            _ => HetArrayOffsets::U8(take_slice_as(d, length)?),
+        };
+        Ok(Self { offsets })
     }
 
     pub fn len(&self) -> usize {
-        self.offsets.len()
+        match self.offsets {
+            HetArrayOffsets::U8(v) => v.len(),
+            HetArrayOffsets::U16(v) => v.len(),
+            HetArrayOffsets::U32(v) => v.len(),
+        }
     }
 
     pub fn get(&self, d: &mut Decoder<'b>, index: usize) -> bool {
-        if let Some(offset) = self.offsets.get(index) {
-            d.index += *offset as usize;
+        let opt_offset = match &self.offsets {
+            HetArrayOffsets::U8(v) => v.get(index).map(|&o| o as usize),
+            HetArrayOffsets::U16(v) => v.get(index).map(|&o| o as usize),
+            HetArrayOffsets::U32(v) => v.get(index).map(|&o| o as usize),
+        };
+        if let Some(offset) = opt_offset {
+            d.index += offset;
             true
         } else {
             false
@@ -44,8 +55,7 @@ impl<'b> HetArray<'b> {
     }
 
     pub fn to_json(&self, d: &mut Decoder<'b>) -> DecodeResult<JsonArray<'b>> {
-        self.offsets
-            .iter()
+        (0..self.len())
             .map(|_| d.take_value())
             .collect::<DecodeResult<SmallVec<_, 8>>>()
             .map(Arc::new)
@@ -64,6 +74,18 @@ impl<'b> HetArray<'b> {
         writer.end_array();
         Ok(())
     }
+}
+
+fn take_slice_as<'b, T: bytemuck::Pod>(d: &mut Decoder<'b>, length: Length) -> DecodeResult<&'b [T]> {
+    let length = length.decode(d)?;
+    d.take_slice_as(length)
+}
+
+#[derive(Debug)]
+enum HetArrayOffsets<'b> {
+    U8(&'b [u8]),
+    U16(&'b [u16]),
+    U32(&'b [u32]),
 }
 
 pub(crate) fn header_array_get(d: &mut Decoder, length: Length, index: usize) -> DecodeResult<Option<Header>> {
@@ -161,20 +183,56 @@ pub(crate) fn encode_array(encoder: &mut Encoder, array: &JsonArray) -> EncodeRe
         }
         Ok(())
     } else {
-        encoder.encode_length(Category::HetArray, array.len())?;
+        let min_size = minimum_array_size_estimate(array);
+        let encoder_position = encoder.position();
 
-        let mut offsets: Vec<u32> = Vec::with_capacity(array.len());
-        encoder.align::<u32>();
-        let positions_start = encoder.ring_fence(array.len() * size_of::<u32>());
-
-        let offset_start = encoder.position();
-        for value in array.iter() {
-            offsets.push((encoder.position() - offset_start) as u32);
-            encoder.encode_value(value)?;
+        if min_size <= u8::MAX as usize {
+            encoder.encode_length(Category::HetArray, array.len())?;
+            if encode_array_sized::<u8>(encoder, array)? {
+                return Ok(());
+            }
+            encoder.reset_position(encoder_position);
         }
-        encoder.set_range(positions_start, bytemuck::cast_slice(&offsets));
-        Ok(())
+
+        if min_size <= u16::MAX as usize {
+            encoder.encode_len_u16(Category::HetArray, u16::try_from(array.len()).unwrap());
+            if encode_array_sized::<u16>(encoder, array)? {
+                return Ok(());
+            }
+            encoder.reset_position(encoder_position);
+        }
+
+        encoder.encode_len_u32(Category::HetArray, array.len())?;
+        if encode_array_sized::<u32>(encoder, array)? {
+            Ok(())
+        } else {
+            Err(EncodeError::ArrayTooLarge)
+        }
     }
+}
+
+fn encode_array_sized<T: TryFrom<usize> + NoUninit>(encoder: &mut Encoder, array: &JsonArray) -> EncodeResult<bool> {
+    let mut offsets: Vec<T> = Vec::with_capacity(array.len());
+    encoder.align::<T>();
+    let positions_start = encoder.ring_fence(array.len() * size_of::<T>());
+
+    let offset_start = encoder.position();
+    for value in array.iter() {
+        let Ok(offset) = T::try_from(encoder.position() - offset_start) else {
+            return Ok(false);
+        };
+        offsets.push(offset);
+        encoder.encode_value(value)?;
+    }
+    encoder.set_range(positions_start, bytemuck::cast_slice(&offsets));
+    Ok(true)
+}
+
+/// Estimate the minimize amount of space needed to encode the object.
+///
+/// This is NOT recursive, instead it makes very optimistic guesses about how long arrays and objects might be.
+fn minimum_array_size_estimate(array: &JsonArray) -> usize {
+    array.iter().map(minimum_value_size_estimate).sum()
 }
 
 #[derive(Debug)]
@@ -295,6 +353,9 @@ mod test {
     #[test]
     fn array_round_trip() {
         let array = Arc::new(smallvec![JsonValue::Null, JsonValue::Int(123), JsonValue::Bool(false),]);
+        let min_size = minimum_array_size_estimate(&array);
+        assert_eq!(min_size, 4);
+
         let mut encoder = Encoder::new();
         encoder.encode_array(&array).unwrap();
         let bytes: Vec<u8> = encoder.into();
@@ -305,7 +366,13 @@ mod test {
 
         let het_array = HetArray::decode_header(&mut decoder, 3.into()).unwrap();
         assert_eq!(het_array.len(), 3);
-        assert_eq!(het_array.offsets, &[0, 1, 3]);
+
+        let offsets = match het_array.offsets {
+            HetArrayOffsets::U8(v) => v,
+            _ => panic!("expected u8 offsets"),
+        };
+
+        assert_eq!(offsets, &[0, 1, 3]);
         let decode_array = het_array.to_json(&mut decoder).unwrap();
         assert_arrays_eq!(decode_array, array);
     }
@@ -387,5 +454,90 @@ mod test {
 
         let i64_array = i64_array_to_json(&mut decoder, 5.into()).unwrap();
         assert_arrays_eq!(i64_array, array);
+    }
+
+    #[test]
+    fn test_u16_array() {
+        let mut array = vec![JsonValue::Bool(true); 100];
+        array.extend(vec![JsonValue::Int(i64::MAX); 100]);
+        let array = Arc::new(array.into());
+
+        let mut encoder = Encoder::new();
+        encoder.encode_array(&array).unwrap();
+        let bytes: Vec<u8> = encoder.into();
+
+        let mut decoder = Decoder::new(&bytes);
+        let header = decoder.take_header().unwrap();
+        assert_eq!(header, Header::HetArray(Length::U16));
+
+        let het_array = HetArray::decode_header(&mut decoder, Length::U16).unwrap();
+        assert_eq!(het_array.len(), 200);
+
+        let offsets = match het_array.offsets {
+            HetArrayOffsets::U16(v) => v,
+            _ => panic!("expected U16 offsets"),
+        };
+        assert_eq!(offsets.len(), 200);
+        assert_eq!(offsets[0], 0);
+        assert_eq!(offsets[1], 1);
+
+        let mut d = decoder.clone();
+        assert!(het_array.get(&mut d, 0));
+        assert!(compare_json_values(&d.take_value().unwrap(), &JsonValue::Bool(true)));
+
+        let mut d = decoder.clone();
+        assert!(het_array.get(&mut d, 99));
+        assert!(compare_json_values(&d.take_value().unwrap(), &JsonValue::Bool(true)));
+
+        let mut d = decoder.clone();
+        assert!(het_array.get(&mut d, 100));
+        assert!(compare_json_values(&d.take_value().unwrap(), &JsonValue::Int(i64::MAX)));
+
+        let mut d = decoder.clone();
+        assert!(het_array.get(&mut d, 199));
+        assert!(compare_json_values(&d.take_value().unwrap(), &JsonValue::Int(i64::MAX)));
+
+        let mut d = decoder.clone();
+        assert!(!het_array.get(&mut d, 200));
+
+        let decode_array = het_array.to_json(&mut decoder).unwrap();
+        assert_arrays_eq!(decode_array, array);
+    }
+
+    #[test]
+    fn test_u32_array() {
+        let long_string = "a".repeat(u16::MAX as usize);
+        let array = Arc::new(smallvec![
+            JsonValue::Str(long_string.clone().into()),
+            JsonValue::Int(42),
+        ]);
+
+        let mut encoder = Encoder::new();
+        encoder.encode_array(&array).unwrap();
+        let bytes: Vec<u8> = encoder.into();
+
+        let mut decoder = Decoder::new(&bytes);
+        let header = decoder.take_header().unwrap();
+        assert_eq!(header, Header::HetArray(Length::U32));
+
+        let het_array = HetArray::decode_header(&mut decoder, Length::U32).unwrap();
+        assert_eq!(het_array.len(), 2);
+
+        let offsets = match het_array.offsets {
+            HetArrayOffsets::U32(v) => v,
+            _ => panic!("expected U32 offsets"),
+        };
+        assert_eq!(offsets, [0, 65538]);
+
+        let mut d = decoder.clone();
+        assert!(het_array.get(&mut d, 0));
+        assert!(compare_json_values(
+            &d.take_value().unwrap(),
+            &JsonValue::Str(long_string.into())
+        ));
+
+        let mut d = decoder.clone();
+        assert!(het_array.get(&mut d, 1));
+        assert!(compare_json_values(&d.take_value().unwrap(), &JsonValue::Int(42)));
     }
 }

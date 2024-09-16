@@ -10,6 +10,7 @@ pub type EncodeResult<T> = Result<T, EncodeError>;
 pub enum EncodeError {
     StrTooLong,
     ObjectTooLarge,
+    ArrayTooLarge,
 }
 
 pub type DecodeResult<T> = Result<T, DecodeError>;

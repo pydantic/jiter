@@ -250,7 +250,8 @@ fn batson_file() {
             "het_array": [true, 123, "foo", "£100", null],
             "true": true,
             "false": false,
-            "null": null
+            "null": null,
+            "" : "empty-key"
         }
     "#;
     let bytes = json_to_batson(json.as_bytes());
