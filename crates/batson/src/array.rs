@@ -144,17 +144,17 @@ pub(crate) fn encode_array(encoder: &mut Encoder, array: &JsonArray) -> EncodeRe
     } else if let Some(packed_array) = PackedArray::new(array) {
         match packed_array {
             PackedArray::Header(array) => {
-                encoder.push(Category::HeaderArray.encode_with(array.len() as u8));
+                encoder.encode_length(Category::HeaderArray, array.len())?;
                 // no alignment necessary, it's a vec of u8
                 encoder.extend(&array);
             }
             PackedArray::I64(array) => {
-                encoder.push(Category::I64Array.encode_with(array.len() as u8));
+                encoder.encode_length(Category::I64Array, array.len())?;
                 encoder.align::<i64>();
                 encoder.extend(bytemuck::cast_slice(&array));
             }
             PackedArray::U8(array) => {
-                encoder.push(Category::U8Array.encode_with(array.len() as u8));
+                encoder.encode_length(Category::U8Array, array.len())?;
                 // no alignment necessary, it's a vec of u8
                 encoder.extend(&array);
             }
