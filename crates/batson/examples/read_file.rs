@@ -40,7 +40,11 @@ cargo run --example read_file file.json [path]
     let output_json2 = batson_to_json_string(&batson).expect("failed to convert batson to JSON");
     println!("JSON unchanged after re-encoding: {:?}", output_json == output_json2);
 
-    println!("\n\noutput json:\n{}", output_json);
+    if output_json.len() < 2000 {
+        println!("\n\noutput json:\n{}", output_json);
+    } else {
+        println!("\n\noutput json is too long to display");
+    }
 }
 
 fn to_batson_path(s: &str) -> BatsonPath {

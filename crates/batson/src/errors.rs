@@ -9,6 +9,7 @@ pub type EncodeResult<T> = Result<T, EncodeError>;
 #[derive(Debug, Copy, Clone)]
 pub enum EncodeError {
     StrTooLong,
+    ObjectTooLarge,
 }
 
 pub type DecodeResult<T> = Result<T, DecodeError>;

@@ -48,6 +48,10 @@ impl Encoder {
         self.data.len()
     }
 
+    pub fn reset_position(&mut self, position: usize) {
+        self.data.truncate(position);
+    }
+
     pub fn encode_null(&mut self) {
         let h = Category::Primitive.encode_with(Primitive::Null as u8);
         self.push(h);
@@ -141,16 +145,24 @@ impl Encoder {
                     self.push(cat.encode_with(Length::U8 as u8));
                     self.push(s);
                 } else if let Ok(int) = u16::try_from(len) {
-                    self.push(cat.encode_with(Length::U16 as u8));
-                    self.extend(&int.to_le_bytes());
-                } else if let Ok(int) = u32::try_from(len) {
-                    self.push(cat.encode_with(Length::U32 as u8));
-                    self.extend(&int.to_le_bytes());
+                    self.encode_len_u16(cat, int);
                 } else {
-                    return Err(EncodeError::StrTooLong);
+                    self.encode_len_u32(cat, len)?;
                 }
             }
         }
+        Ok(())
+    }
+
+    pub fn encode_len_u16(&mut self, cat: Category, int: u16) {
+        self.push(cat.encode_with(Length::U16 as u8));
+        self.extend(&int.to_le_bytes());
+    }
+
+    pub fn encode_len_u32(&mut self, cat: Category, len: usize) -> EncodeResult<()> {
+        self.push(cat.encode_with(Length::U32 as u8));
+        let int = u32::try_from(len).map_err(|_| EncodeError::StrTooLong)?;
+        self.extend(&int.to_le_bytes());
         Ok(())
     }
 
