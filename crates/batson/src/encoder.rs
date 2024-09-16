@@ -160,8 +160,12 @@ impl Encoder {
     }
 
     pub fn encode_len_u32(&mut self, cat: Category, len: usize) -> EncodeResult<()> {
+        let int = u32::try_from(len).map_err(|_| match cat {
+            Category::Str => EncodeError::StrTooLong,
+            Category::HetArray => EncodeError::ObjectTooLarge,
+            _ => EncodeError::ArrayTooLarge,
+        })?;
         self.push(cat.encode_with(Length::U32 as u8));
-        let int = u32::try_from(len).map_err(|_| EncodeError::StrTooLong)?;
         self.extend(&int.to_le_bytes());
         Ok(())
     }

@@ -254,7 +254,7 @@ pub(crate) fn encode_object(encoder: &mut Encoder, object: &JsonObject) -> Encod
         return encoder.encode_length(Category::Object, 0);
     }
 
-    let min_size = minimum_size_estimate(object);
+    let min_size = minimum_object_size_estimate(object);
     let encoder_position = encoder.position();
     if min_size <= u8::MAX as usize {
         encoder.encode_length(Category::Object, object.len())?;
@@ -314,23 +314,27 @@ fn encode_object_sized<S: SuperHeaderItem>(encoder: &mut Encoder, object: &JsonO
 /// Estimate the minimize amount of space needed to encode the object.
 ///
 /// This is NOT recursive, instead it makes very optimistic guesses about how long arrays and objects might be.
-fn minimum_size_estimate(object: &JsonObject) -> usize {
+fn minimum_object_size_estimate(object: &JsonObject) -> usize {
     let mut size = 0;
     for (key, value) in object.iter() {
         size += 1 + key.len(); // one byte header index and key
-        size += match value {
-            // we could try harder for floats, but this is a good enough for now
-            JsonValue::Null | JsonValue::Bool(_) | JsonValue::Float(_) => 1,
-            JsonValue::Int(i) if (0..=10).contains(i) => 1,
-            // we could try harder here, but this is a good enough for now
-            JsonValue::Int(_) => 2,
-            JsonValue::BigInt(_) => todo!("BigInt"),
-            JsonValue::Str(s) => 1 + s.len(),
-            JsonValue::Array(a) => 1 + a.len(),
-            JsonValue::Object(o) => 1 + o.len(),
-        }
+        size += minimum_value_size_estimate(value);
     }
     size
+}
+
+pub(crate) fn minimum_value_size_estimate(value: &JsonValue) -> usize {
+    match value {
+        // we could try harder for floats, but this is a good enough for now
+        JsonValue::Null | JsonValue::Bool(_) | JsonValue::Float(_) => 1,
+        JsonValue::Int(i) if (0..=10).contains(i) => 1,
+        // we could try harder here, but this is a good enough for now
+        JsonValue::Int(_) => 2,
+        JsonValue::BigInt(_) => todo!("BigInt"),
+        JsonValue::Str(s) => 1 + s.len(),
+        JsonValue::Array(a) => 1 + a.len(),
+        JsonValue::Object(o) => 1 + o.len(),
+    }
 }
 
 /// Very simple and fast hashing algorithm that nonetheless gives good distribution.
@@ -529,7 +533,7 @@ mod test {
         ]);
 
         // less than 255, so encode_from_json will try to encode with SuperHeaderItem8
-        assert_eq!(minimum_size_estimate(&v), 106);
+        assert_eq!(minimum_object_size_estimate(&v), 106);
         let b = encode_from_json(&JsonValue::Object(v)).unwrap();
 
         let mut d = Decoder::new(&b);
@@ -551,5 +555,40 @@ mod test {
         let mut d3 = d.clone();
         assert!(obj.get(&mut d3, "b").unwrap());
         assert_eq!(d3.take_value().unwrap(), JsonValue::Null);
+    }
+
+    #[test]
+    fn test_u32() {
+        let long_string = "a".repeat(u16::MAX as usize);
+        let v = Arc::new(vec![
+            ("".into(), JsonValue::Str(long_string.clone().into())),
+            // need another key to encounter the error
+            ("£".into(), JsonValue::Null),
+        ]);
+
+        let b = encode_from_json(&JsonValue::Object(v)).unwrap();
+
+        let mut decoder = Decoder::new(&b);
+        let header = decoder.take_header().unwrap();
+        assert_eq!(header, Header::Object(Length::U32));
+
+        let obj = Object::decode_header(&mut decoder, Length::U32).unwrap();
+        let obj = match obj.0 {
+            ObjectChoice::U32(o) => o,
+            _ => panic!("expected U32"),
+        };
+
+        assert_eq!(obj.len(), 2);
+
+        let mut d = decoder.clone();
+        assert!(obj.get(&mut d, "").unwrap());
+        assert!(compare_json_values(
+            &d.take_value().unwrap(),
+            &JsonValue::Str(long_string.into())
+        ));
+
+        let mut d = decoder.clone();
+        assert!(obj.get(&mut d, "£").unwrap());
+        assert!(compare_json_values(&d.take_value().unwrap(), &JsonValue::Null));
     }
 }
