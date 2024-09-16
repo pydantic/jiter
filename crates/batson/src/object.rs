@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::fmt;
 use std::mem::size_of;
 use std::sync::Arc;
 
@@ -13,37 +14,79 @@ use crate::json_writer::JsonWriter;
 use crate::ToJsonResult;
 
 #[derive(Debug)]
-pub(crate) struct Object<'b> {
-    super_header: &'b [SuperHeaderItem],
-}
+pub(crate) struct Object<'b>(ObjectChoice<'b>);
 
 impl<'b> Object<'b> {
     pub fn decode_header(d: &mut Decoder<'b>, length: Length) -> DecodeResult<Self> {
-        if matches!(length, Length::Empty) {
-            Ok(Self { super_header: &[] })
-        } else {
-            let length = length.decode(d)?;
-            let super_header = d.take_slice_as(length)?;
-            Ok(Self { super_header })
+        match length {
+            Length::Empty => Ok(Self(ObjectChoice::U16(ObjectSized { super_header: &[] }))),
+            Length::U8 | Length::U16 | Length::U32 => Ok(Self(ObjectChoice::U32(ObjectSized::new(d, length)?))),
+            _ => Ok(Self(ObjectChoice::U16(ObjectSized::new(d, length)?))),
         }
     }
 
     pub fn len(&self) -> usize {
-        self.super_header.len()
+        match &self.0 {
+            ObjectChoice::U16(o) => o.len(),
+            ObjectChoice::U32(o) => o.len(),
+        }
     }
 
     pub fn get(&self, d: &mut Decoder<'b>, key: &str) -> DecodeResult<bool> {
-        // key length and hash
-        let kl = key.len() as u32;
-        let kh = djb2_hash(key);
-        let Some(header_iter) = binary_search(self.super_header, |h| h.cmp_raw(kl, kh)) else {
+        match &self.0 {
+            ObjectChoice::U16(o) => o.get(d, key),
+            ObjectChoice::U32(o) => o.get(d, key),
+        }
+    }
+
+    pub fn to_json(&self, d: &mut Decoder<'b>) -> DecodeResult<JsonObject<'b>> {
+        match &self.0 {
+            ObjectChoice::U16(o) => o.to_json(d),
+            ObjectChoice::U32(o) => o.to_json(d),
+        }
+    }
+
+    pub fn write_json(&self, d: &mut Decoder<'b>, writer: &mut JsonWriter) -> ToJsonResult<()> {
+        match &self.0 {
+            ObjectChoice::U16(o) => o.write_json(d, writer),
+            ObjectChoice::U32(o) => o.write_json(d, writer),
+        }
+    }
+}
+
+#[derive(Debug)]
+enum ObjectChoice<'b> {
+    U16(ObjectSized<'b, SuperHeaderItem16>),
+    U32(ObjectSized<'b, SuperHeaderItem32>),
+}
+
+#[derive(Debug)]
+struct ObjectSized<'b, S: SuperHeaderItem> {
+    super_header: &'b [S],
+}
+
+impl<'b, S: SuperHeaderItem> ObjectSized<'b, S> {
+    fn new(d: &mut Decoder<'b>, length: Length) -> DecodeResult<Self> {
+        let length = length.decode(d)?;
+        let super_header: &[S] = d.take_slice_as(length)?;
+        Ok(Self { super_header })
+    }
+
+    fn len(&self) -> usize {
+        self.super_header.len()
+    }
+
+    fn get(&self, d: &mut Decoder<'b>, key: &str) -> DecodeResult<bool> {
+        // "item" for comparison only
+        let key_item = S::for_sort(key);
+        let Some(header_iter) = binary_search(self.super_header, |h| h.sort_order(&key_item)) else {
             return Ok(false);
         };
         let start_index = d.index;
 
         for h in header_iter {
-            d.index = start_index + h.offset as usize;
-            let possible_key = d.take_slice(h.key_length as usize)?;
+            d.index = start_index + h.offset();
+            let possible_key = d.take_slice(h.key_length())?;
             if possible_key == key.as_bytes() {
                 return Ok(true);
             }
@@ -53,7 +96,7 @@ impl<'b> Object<'b> {
         Ok(false)
     }
 
-    pub fn to_json(&self, d: &mut Decoder<'b>) -> DecodeResult<JsonObject<'b>> {
+    fn to_json(&self, d: &mut Decoder<'b>) -> DecodeResult<JsonObject<'b>> {
         self.super_header
             .iter()
             .map(|_| {
@@ -65,7 +108,7 @@ impl<'b> Object<'b> {
             .map(Arc::new)
     }
 
-    pub fn write_json(&self, d: &mut Decoder<'b>, writer: &mut JsonWriter) -> ToJsonResult<()> {
+    fn write_json(&self, d: &mut Decoder<'b>, writer: &mut JsonWriter) -> ToJsonResult<()> {
         let mut steps = 0..self.len();
         writer.start_object();
         if steps.next().is_some() {
@@ -83,44 +126,94 @@ impl<'b> Object<'b> {
         Ok(())
     }
 
-    pub fn take_next_key(&self, d: &mut Decoder<'b>) -> DecodeResult<&'b str> {
-        let header_index = d.take_u32()?;
-        match self.super_header.get(header_index as usize) {
-            Some(h) => d.take_str(h.key_length as usize),
+    fn take_next_key(&self, d: &mut Decoder<'b>) -> DecodeResult<&'b str> {
+        let header_index = S::take_header_index(d)?;
+        match self.super_header.get(header_index) {
+            Some(h) => d.take_str(h.key_length()),
             None => Err(d.error(DecodeErrorType::ObjectBodyIndexInvalid)),
         }
     }
 }
 
-/// Represents an item in the header
+trait SuperHeaderItem: fmt::Debug + Copy + Clone + Pod + Zeroable + Eq + PartialEq {
+    fn new(key: &str, offset: usize) -> Self;
+
+    /// For use with `sort_order`, so offset doesn't matter
+    fn for_sort(key: &str) -> Self {
+        Self::new(key, 0)
+    }
+
+    fn sort_order(&self, other: &Self) -> Ordering;
+
+    fn offset(&self) -> usize;
+
+    fn key_length(&self) -> usize;
+
+    fn header_index_le_bytes(index: usize) -> Vec<u8>;
+
+    fn take_header_index(d: &mut Decoder) -> DecodeResult<usize>;
+}
+
+/// `SuperHeader` Represents an item in the header
 ///
 /// # Warning
 ///
 /// **Member order matters here** since it decides the layout of the struct when serialized.
-#[derive(Debug, Copy, Clone, Pod, Zeroable, Eq, PartialEq)]
-#[repr(C)]
-struct SuperHeaderItem {
-    key_length: u32,
-    key_hash: u32,
-    offset: u32,
+macro_rules! super_header_item {
+    ($name:ident, $size:ty, $take_func:literal) => {
+        #[derive(Debug, Copy, Clone, Pod, Zeroable, Eq, PartialEq)]
+        #[repr(C)]
+        struct $name {
+            key_length: $size,
+            key_hash: $size,
+            offset: $size,
+        }
+
+        impl SuperHeaderItem for $name {
+            fn new(key: &str, offset: usize) -> Self {
+                Self {
+                    key_length: key.len() as $size,
+                    key_hash: djb2_hash(key) as $size,
+                    offset: offset as $size,
+                }
+            }
+
+            fn sort_order(&self, other: &Self) -> Ordering {
+                match self.key_length.cmp(&other.key_length) {
+                    Ordering::Equal => self.key_hash.cmp(&other.key_hash),
+                    x => x,
+                }
+            }
+
+            fn offset(&self) -> usize {
+                self.offset as usize
+            }
+
+            fn key_length(&self) -> usize {
+                self.key_length as usize
+            }
+
+            /// This is ugly
+            /// annoyingly we have to return a Vec here since we can't return a generic array or a slice
+            /// I tried doing something complex with generic consts, but it got too complicated
+            fn header_index_le_bytes(index: usize) -> Vec<u8> {
+                let index_size = index as $size;
+                index_size.to_le_bytes().to_vec()
+            }
+
+            fn take_header_index(d: &mut Decoder) -> DecodeResult<usize> {
+                match $take_func {
+                    "take_u16" => d.take_u16().map(|v| v as usize),
+                    "take_u32" => d.take_u32().map(|v| v as usize),
+                    _ => unreachable!("invalid take_func"),
+                }
+            }
+        }
+    };
 }
 
-impl SuperHeaderItem {
-    fn new(key: &str, offset: u32) -> Self {
-        Self {
-            key_length: key.len() as u32,
-            key_hash: djb2_hash(key),
-            offset,
-        }
-    }
-
-    fn cmp_raw(&self, key_len: u32, key_hash: u32) -> Ordering {
-        match self.key_length.cmp(&key_len) {
-            Ordering::Equal => self.key_hash.cmp(&key_hash),
-            x => x,
-        }
-    }
-}
+super_header_item!(SuperHeaderItem16, u16, "take_u16");
+super_header_item!(SuperHeaderItem32, u32, "take_u32");
 
 /// Search a sorted slice and return a sub-slice of values that match a given predicate.
 fn binary_search<'b, S>(
@@ -154,36 +247,41 @@ fn binary_search<'b, S>(
 pub(crate) fn encode_object(encoder: &mut Encoder, object: &JsonObject) -> EncodeResult<()> {
     if object.is_empty() {
         // shortcut but also no alignment!
-        return encoder.encode_length(Category::Object, 0);
+        encoder.encode_length(Category::Object, 0)
+    } else if object.len() <= 10 {
+        // TODO this logic needs to be improved, and we need to fall back to the larger size if the
+        encode_object_sized::<SuperHeaderItem16>(encoder, object)
+    } else {
+        encode_object_sized::<SuperHeaderItem32>(encoder, object)
     }
+}
 
+fn encode_object_sized<S: SuperHeaderItem>(encoder: &mut Encoder, object: &JsonObject) -> EncodeResult<()> {
     encoder.encode_length(Category::Object, object.len())?;
 
     let mut super_header = Vec::with_capacity(object.len());
-    encoder.align::<SuperHeaderItem>();
-    let super_header_start = encoder.ring_fence(object.len() * size_of::<SuperHeaderItem>());
+    encoder.align::<S>();
+    let super_header_start = encoder.ring_fence(object.len() * size_of::<S>());
 
     let offset_start = encoder.position();
     for (key, value) in object.iter() {
         let key_str = key.as_ref();
         // add space for the header index, to be set correctly later
-        encoder.extend(&0u32.to_le_bytes());
+        encoder.extend(&S::header_index_le_bytes(0));
         // push to the super header, with the position at this stage
-        super_header.push(SuperHeaderItem::new(
-            key_str,
-            (encoder.position() - offset_start) as u32,
-        ));
+        super_header.push(S::new(key_str, encoder.position() - offset_start));
         // now we've recorded the position, write the key and value to the encoder
         encoder.extend(key_str.as_bytes());
         encoder.encode_value(value)?;
     }
-    super_header.sort_by(|a, b| a.cmp_raw(b.key_length, b.key_hash));
+    super_header.sort_by(S::sort_order);
 
     // iterate over the super header and set the header index for each item in the body
     for (header_index, h) in super_header.iter().enumerate() {
+        let header_index_bytes = S::header_index_le_bytes(header_index);
         encoder.set_range(
-            offset_start + h.offset as usize - 4,
-            &(header_index as u32).to_le_bytes(),
+            offset_start + h.offset() - header_index_bytes.len(),
+            &header_index_bytes,
         );
     }
     encoder.set_range(super_header_start, bytemuck::cast_slice(&super_header));
@@ -262,18 +360,23 @@ mod test {
 
         let obj = Object::decode_header(&mut d, 2.into()).unwrap();
 
+        let obj = match obj.0 {
+            ObjectChoice::U16(o) => o,
+            _ => panic!("expected U16"),
+        };
+
         assert_eq!(
             obj.super_header,
             vec![
-                SuperHeaderItem {
+                SuperHeaderItem16 {
                     key_length: 1,
-                    key_hash: 177670,
-                    offset: 4
+                    key_hash: 46598,
+                    offset: 2
                 },
-                SuperHeaderItem {
+                SuperHeaderItem16 {
                     key_length: 2,
-                    key_hash: 5863241,
-                    offset: 10
+                    key_hash: 30537,
+                    offset: 6
                 }
             ]
         );
@@ -284,14 +387,19 @@ mod test {
 
         let obj = Object::decode_header(&mut d, 1.into()).unwrap();
 
+        let obj = match obj.0 {
+            ObjectChoice::U16(o) => o,
+            _ => panic!("expected U16"),
+        };
+
         dbg!(obj.super_header);
         assert_eq!(
             obj.super_header,
-            vec![SuperHeaderItem {
+            vec![SuperHeaderItem16 {
                 key_length: 3,
-                key_hash: 193488174,
+                key_hash: 25902,
                 // note the offset here is relative to the start of the object
-                offset: 4,
+                offset: 2,
             },]
         );
     }
