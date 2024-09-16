@@ -265,7 +265,8 @@ fn batson_file() {
     let mut file = File::open(file_path).unwrap();
     let mut contents = Vec::new();
     file.read_to_end(&mut contents).unwrap();
-    dbg!(contents.len());
 
     assert_eq!(contents, bytes);
+    // dbg!(contents.len());
+    // dbg!(json.replace(" ", "").replace("\n", "").len());
 }
