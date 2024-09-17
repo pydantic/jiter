@@ -114,19 +114,19 @@ jobs:
 
     - run: rustup component add llvm-tools-preview
 
-    - run: cargo test -F python
+    - run: cargo test --all-features
       env:
         RUST_BACKTRACE: 1
-        RUSTFLAGS: '-C instrument-coverage'
 
-    - run: coverage-prepare --ignore-filename-regex '/tests/' lcov $(find ../../target/debug/deps -regex '.*/main[^.]*')
-      working-directory: crates/jiter
+    - run: cargo test --all-features
 
-    - run: cargo test --doc
+    - uses: taiki-e/install-action@cargo-llvm-cov
+    - run: cargo llvm-cov --all-features --codecov --output-path codecov.json
 
     - uses: codecov/codecov-action@v4
       with:
         env_vars: RUNS_ON,RUST_VERSION
+        files: codecov.json
         token: ${{ secrets.CODECOV_TOKEN }}
 
   test-python:
