@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io::Read;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use jiter::{JsonValue, LazyIndexMap};
@@ -213,11 +214,11 @@ macro_rules! json_round_trip_tests {
 }
 
 json_round_trip_tests!(
-    array_empty => r"[]";
-    array_bool => r"[true,false]";
-    array_bool_int => r"[true,123]";
-    array_u8 => r"[1,2,44,255]";
-    array_i64 => r"[-1,2,44,255,1234]";
+    array_empty => "[]";
+    array_bool => "[true,false]";
+    array_bool_int => "[true,123]";
+    array_u8 => "[1,2,44,255]";
+    array_i64 => "[-1,2,44,255,1234]";
     array_header => r#"[6,true,false,null,0,[],{},""]"#;
     array_het => r#"[true,123,"foo",null]"#;
     string_empty => r#""""#;
@@ -234,14 +235,19 @@ json_round_trip_tests!(
     object_nested => r#"{"foo":{"bar":true}}"#;
     object_nested_array => r#"{"foo":{"bar":[1,2]}}"#;
     object_nested_array_nested => r#"{"foo":{"bar":[{"baz":true}]}}"#;
-    float_zero => r#"0.0"#;
-    float_neg => r#"-123.45"#;
-    float_pos => r#"123.456789"#;
+    float_zero => "0.0";
+    float_neg => "-123.45";
+    float_pos => "123.456789";
+    float_zero_to_10 => "[0.0,1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0,10.0]";  // header only
+    float_zero_to_12 => "[0.0,1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0,10.0,11.0,12.0]";  // het array
+    int_zero_to_10 => "[0,1,2,3,4,5,6,7,8,9,10]";
+    int_zero_to_10_neg => "[0,1,2,3,4,5,6,7,8,9,10,-1,-2,-3,-4,-5,-6,-7,-8,-9,-10,-11,-12]";
+    array_len_0_to_10 => "[[],[0],[0,1],[0,1,2],[0,1,2,3],[0,1,2,3,4],[0,1,2,3,4,5],[0,1,2,3,4,5,6],[0,1,2,3,4,5,6,7],[0,1,2,3,4,5,6,7,8],[0,1,2,3,4,5,6,7,8,9],[0,1,2,3,4,5,6,7,8,9,10]]";
     // bigger than i64::MAX (9223372036854775807)
-    big_int_pos => r#"92233720368547758070"#;
+    big_int_pos => "92233720368547758070";
     // less than i64::MIN (-9223372036854775808)
-    big_int_neg => r#"-92233720368547758080"#;
-    big_int_array => r#"[92233720368547758070,-92233720368547758080,1,2,3,-42]"#;
+    big_int_neg => "-92233720368547758080";
+    big_int_array => "[92233720368547758070,-92233720368547758080,1,2,3,-42]";
     big_int_object => r#"{"foo":92233720368547758070,"bar":-92233720368547758080}"#;
 );
 
@@ -277,4 +283,34 @@ fn batson_file() {
     assert_eq!(contents, bytes);
     // dbg!(contents.len());
     // dbg!(json.replace(" ", "").replace("\n", "").len());
+}
+
+fn read_file(path: &PathBuf) -> Vec<u8> {
+    let mut file = File::open(path).unwrap();
+    let mut contents = Vec::new();
+    file.read_to_end(&mut contents).unwrap();
+    contents
+}
+
+/// Round trip test all the JSON files in the jiter benches directory
+#[test]
+fn round_trip_json_files() {
+    let dir = std::fs::read_dir("../jiter/benches").unwrap();
+    for file in dir.map(|r| r.unwrap()) {
+        let path = file.path();
+        if !path.extension().map(|e| e == "json").unwrap_or(false) {
+            continue;
+        }
+        println!("Testing: {path:?}");
+
+        let json = read_file(&path);
+        let value_from_json = JsonValue::parse(&json, false).unwrap();
+
+        let bytes = json_to_batson(&json);
+        let value_from_batson = decode_to_json_value(&bytes).unwrap();
+        assert!(
+            compare_json_values(&value_from_json, &value_from_batson),
+            "Failed for {path:?}"
+        );
+    }
 }
