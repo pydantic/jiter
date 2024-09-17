@@ -81,7 +81,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runs-on: [macos-latest, macos-latest]
+        runs-on: [macos-latest, macos-latest-xlarge]
 
     runs-on: ${{ matrix.runs-on }}
 
@@ -184,7 +184,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runs-on: [ubuntu-latest, macos-latest]
+        runs-on: [ubuntu-latest, macos-latest-xlarge]
 
     runs-on: ${{ matrix.runs-on }}
 
