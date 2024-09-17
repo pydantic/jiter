@@ -20,18 +20,10 @@ pub(crate) struct Object<'b>(ObjectChoice<'b>);
 impl<'b> Object<'b> {
     pub fn decode_header(d: &mut Decoder<'b>, length: Length) -> DecodeResult<Self> {
         match length {
-            Length::Empty => Ok(Self(ObjectChoice::U16(ObjectSized { super_header: &[] }))),
+            Length::Empty => Ok(Self(ObjectChoice::U8(ObjectSized { super_header: &[] }))),
             Length::U32 => Ok(Self(ObjectChoice::U32(ObjectSized::new(d, length)?))),
             Length::U16 => Ok(Self(ObjectChoice::U16(ObjectSized::new(d, length)?))),
             _ => Ok(Self(ObjectChoice::U8(ObjectSized::new(d, length)?))),
-        }
-    }
-
-    pub fn len(&self) -> usize {
-        match &self.0 {
-            ObjectChoice::U8(o) => o.len(),
-            ObjectChoice::U16(o) => o.len(),
-            ObjectChoice::U32(o) => o.len(),
         }
     }
 
@@ -43,11 +35,11 @@ impl<'b> Object<'b> {
         }
     }
 
-    pub fn to_json(&self, d: &mut Decoder<'b>) -> DecodeResult<JsonObject<'b>> {
+    pub fn to_value(&self, d: &mut Decoder<'b>) -> DecodeResult<JsonObject<'b>> {
         match &self.0 {
-            ObjectChoice::U8(o) => o.to_json(d),
-            ObjectChoice::U16(o) => o.to_json(d),
-            ObjectChoice::U32(o) => o.to_json(d),
+            ObjectChoice::U8(o) => o.to_value(d),
+            ObjectChoice::U16(o) => o.to_value(d),
+            ObjectChoice::U32(o) => o.to_value(d),
         }
     }
 
@@ -107,7 +99,7 @@ impl<'b, S: SuperHeaderItem> ObjectSized<'b, S> {
         Ok(false)
     }
 
-    fn to_json(&self, d: &mut Decoder<'b>) -> DecodeResult<JsonObject<'b>> {
+    fn to_value(&self, d: &mut Decoder<'b>) -> DecodeResult<JsonObject<'b>> {
         self.super_header
             .iter()
             .map(|_| {
@@ -330,7 +322,7 @@ pub(crate) fn minimum_value_size_estimate(value: &JsonValue) -> usize {
         JsonValue::Int(i) if (0..=10).contains(i) => 1,
         // we could try harder here, but this is a good enough for now
         JsonValue::Int(_) => 2,
-        JsonValue::BigInt(_) => todo!("BigInt"),
+        JsonValue::BigInt(int) => 1 + int.to_bytes_le().1.len(),
         JsonValue::Str(s) => 1 + s.len(),
         JsonValue::Array(a) => 1 + a.len(),
         JsonValue::Object(o) => 1 + o.len(),
@@ -383,7 +375,11 @@ mod test {
 
         let obj = Object::decode_header(&mut d, 3.into()).unwrap();
 
-        assert_eq!(obj.len(), 3);
+        let obj_u8 = match obj.0 {
+            ObjectChoice::U8(ref o) => o,
+            _ => panic!("expected U8"),
+        };
+        assert_eq!(obj_u8.len(), 3);
 
         let mut d2 = d.clone();
         assert!(obj.get(&mut d2, "aa").unwrap());
@@ -469,6 +465,10 @@ mod test {
         assert_eq!(header, Header::Object(0.into()));
 
         let obj = Object::decode_header(&mut d, 0.into()).unwrap();
+        let obj = match obj.0 {
+            ObjectChoice::U8(o) => o,
+            _ => panic!("expected U8"),
+        };
         assert_eq!(obj.len(), 0);
     }
 

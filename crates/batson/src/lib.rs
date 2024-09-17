@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 mod array;
 mod decoder;
 mod encoder;

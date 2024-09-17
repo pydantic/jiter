@@ -1,16 +1,19 @@
+use std::sync::Arc;
+
+use jiter::JsonValue;
+use num_bigint::Sign;
+
 use crate::decoder::Decoder;
 use crate::errors::{DecodeErrorType, DecodeResult};
 use crate::json_writer::JsonWriter;
 use crate::ToJsonResult;
-use jiter::JsonValue;
-use std::sync::Arc;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub(crate) enum Header {
     Null,
     Bool(bool),
     Int(NumberHint),
-    IntBig(Length),
+    IntBig(Sign, Length),
     Float(NumberHint),
     Str(Length),
     Object(Length),
@@ -30,7 +33,8 @@ impl Header {
         match cat {
             Category::Primitive => Primitive::from_u8(right, d).map(Primitive::header_value),
             Category::Int => NumberHint::from_u8(right, d).map(Self::Int),
-            Category::BigInt => Length::from_u8(right, d).map(Self::IntBig),
+            Category::BigIntPos => Length::from_u8(right, d).map(|l| Self::IntBig(Sign::Plus, l)),
+            Category::BigIntNeg => Length::from_u8(right, d).map(|l| Self::IntBig(Sign::Minus, l)),
             Category::Float => NumberHint::from_u8(right, d).map(Self::Float),
             Category::Str => Length::from_u8(right, d).map(Self::Str),
             Category::Object => Length::from_u8(right, d).map(Self::Object),
@@ -42,12 +46,12 @@ impl Header {
     }
 
     /// TODO `'static` should be okay as return lifetime, I don't know why it's not
-    pub fn as_value<'b>(self, _: &Decoder<'b>) -> JsonValue<'b> {
+    pub fn header_as_value<'b>(self, _: &Decoder<'b>) -> JsonValue<'b> {
         match self {
             Header::Null => JsonValue::Null,
             Header::Bool(b) => JsonValue::Bool(b),
             Header::Int(n) => JsonValue::Int(n.decode_i64_header()),
-            Header::IntBig(_) => todo!(),
+            Header::IntBig(..) => unreachable!("Big ints are not supported as header only values"),
             Header::Float(n) => JsonValue::Float(n.decode_f64_header()),
             Header::Str(_) => JsonValue::Str("".into()),
             Header::Object(_) => JsonValue::Object(Arc::new(Vec::new())),
@@ -60,7 +64,7 @@ impl Header {
             Header::Null => writer.write_null(),
             Header::Bool(b) => writer.write_value(b)?,
             Header::Int(n) => writer.write_value(n.decode_i64_header())?,
-            Header::IntBig(_) => todo!(),
+            Header::IntBig(..) => return Err("Big ints are not supported as header only values".into()),
             Header::Float(n) => writer.write_value(n.decode_f64_header())?,
             // TODO check the
             Header::Str(len) => {
@@ -110,16 +114,17 @@ macro_rules! impl_from_u8 {
 pub(crate) enum Category {
     Primitive = 0,
     Int = 1,
-    BigInt = 2,
-    Float = 3,
-    Str = 4,
-    Object = 5,
-    HeaderArray = 6,
-    U8Array = 7,
-    I64Array = 8,
-    HetArray = 9,
+    BigIntPos = 2,
+    BigIntNeg = 3,
+    Float = 4,
+    Str = 5,
+    Object = 6,
+    HeaderArray = 7,
+    U8Array = 8,
+    I64Array = 9,
+    HetArray = 10,
 }
-impl_from_u8!(Category, 9);
+impl_from_u8!(Category, 10);
 
 impl Category {
     pub fn encode_with(self, right: u8) -> u8 {
@@ -207,12 +212,11 @@ impl NumberHint {
 
     pub fn decode_f64(self, d: &mut Decoder) -> DecodeResult<f64> {
         match self {
-            // f8 doesn't exist
-            NumberHint::Size8 => Err(d.error(DecodeErrorType::HeaderInvalid {
+            // f8 doesn't exist, and currently we don't use f32 anywhere
+            NumberHint::Size8 | NumberHint::Size32 => Err(d.error(DecodeErrorType::HeaderInvalid {
                 value: self as u8,
                 ty: "f64",
             })),
-            NumberHint::Size32 => d.take_f32().map(f64::from),
             NumberHint::Size64 => d.take_f64(),
             // TODO check this has same performance as inline match
             _ => Ok(self.decode_f64_header()),

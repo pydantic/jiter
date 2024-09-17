@@ -53,7 +53,7 @@ impl<'b> HetArray<'b> {
         }
     }
 
-    pub fn to_json(&self, d: &mut Decoder<'b>) -> DecodeResult<JsonArray<'b>> {
+    pub fn to_value(&self, d: &mut Decoder<'b>) -> DecodeResult<JsonArray<'b>> {
         (0..self.len())
             .map(|_| d.take_value())
             .collect::<DecodeResult<_>>()
@@ -97,7 +97,7 @@ pub(crate) fn header_array_to_json<'b>(d: &mut Decoder<'b>, length: Length) -> D
     let length = length.decode(d)?;
     d.take_slice(length)?
         .iter()
-        .map(|b| Header::decode(*b, d).map(|h| h.as_value(d)))
+        .map(|b| Header::decode(*b, d).map(|h| h.header_as_value(d)))
         .collect::<DecodeResult<_>>()
         .map(Arc::new)
 }
@@ -295,7 +295,7 @@ impl PackedArray {
                         }
                     }
                 }
-                JsonValue::BigInt(b) => todo!("BigInt {b:?}"),
+                JsonValue::BigInt(_) => return None,
                 JsonValue::Float(f) => {
                     u8_only = None;
                     i64_only = None;
@@ -370,7 +370,7 @@ mod test {
         };
 
         assert_eq!(offsets, &[0, 1, 3]);
-        let decode_array = het_array.to_json(&mut decoder).unwrap();
+        let decode_array = het_array.to_value(&mut decoder).unwrap();
         assert_arrays_eq!(decode_array, array);
     }
 
@@ -388,7 +388,7 @@ mod test {
 
         let het_array = HetArray::decode_header(&mut decoder, 0.into()).unwrap();
         assert_eq!(het_array.len(), 0);
-        let decode_array = het_array.to_json(&mut decoder).unwrap();
+        let decode_array = het_array.to_value(&mut decoder).unwrap();
         assert_arrays_eq!(decode_array, array);
     }
 
@@ -497,7 +497,7 @@ mod test {
         let mut d = decoder.clone();
         assert!(!het_array.get(&mut d, 200));
 
-        let decode_array = het_array.to_json(&mut decoder).unwrap();
+        let decode_array = het_array.to_value(&mut decoder).unwrap();
         assert_arrays_eq!(decode_array, array);
     }
 

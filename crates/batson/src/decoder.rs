@@ -1,7 +1,7 @@
+use jiter::JsonValue;
+use num_bigint::{BigInt, Sign};
 use std::fmt;
 use std::mem::{align_of, size_of};
-
-use jiter::JsonValue;
 
 use crate::array::{
     header_array_to_json, header_array_write_to_json, i64_array_slice, i64_array_to_json, u8_array_slice,
@@ -56,16 +56,16 @@ impl<'b> Decoder<'b> {
             Header::Null => Ok(JsonValue::Null),
             Header::Bool(b) => Ok(JsonValue::Bool(b)),
             Header::Int(n) => n.decode_i64(self).map(JsonValue::Int),
-            Header::IntBig(i) => todo!("decoding for bigint {i:?}"),
+            Header::IntBig(s, l) => self.take_big_int(s, l).map(JsonValue::BigInt),
             Header::Float(n) => n.decode_f64(self).map(JsonValue::Float),
-            Header::Str(l) => self.decode_str(l).map(|s| JsonValue::Str(s.into())),
+            Header::Str(l) => self.take_str_len(l).map(|s| JsonValue::Str(s.into())),
             Header::Object(length) => {
                 let obj = Object::decode_header(self, length)?;
-                obj.to_json(self).map(JsonValue::Object)
+                obj.to_value(self).map(JsonValue::Object)
             }
             Header::HetArray(length) => {
                 let het = HetArray::decode_header(self, length)?;
-                het.to_json(self).map(JsonValue::Array)
+                het.to_value(self).map(JsonValue::Array)
             }
             Header::U8Array(length) => u8_array_to_json(self, length).map(JsonValue::Array),
             Header::HeaderArray(length) => header_array_to_json(self, length).map(JsonValue::Array),
@@ -81,13 +81,16 @@ impl<'b> Decoder<'b> {
                 let i = n.decode_i64(self)?;
                 writer.write_value(i)?;
             }
-            Header::IntBig(i) => todo!("decoding for bigint {i:?}"),
+            Header::IntBig(s, l) => {
+                let int = self.take_big_int(s, l)?;
+                writer.write_value(int)?;
+            }
             Header::Float(n) => {
                 let f = n.decode_f64(self)?;
                 writer.write_value(f)?;
             }
             Header::Str(l) => {
-                let s = self.decode_str(l)?;
+                let s = self.take_str_len(l)?;
                 writer.write_value(s)?;
             }
             Header::Object(length) => {
@@ -130,30 +133,21 @@ impl<'b> Decoder<'b> {
         Ok(t)
     }
 
-    pub fn decode_str(&mut self, length: Length) -> DecodeResult<&'b str> {
+    fn take_str_len(&mut self, length: Length) -> DecodeResult<&'b str> {
         let len = length.decode(self)?;
-        if len == 0 {
-            Ok("")
-        } else {
-            self.take_str(len)
-        }
-    }
-
-    pub fn decode_bytes(&mut self, length: Length) -> DecodeResult<&'b [u8]> {
-        let len = length.decode(self)?;
-        if len == 0 {
-            Ok(b"")
-        } else {
-            self.take_slice(len)
-        }
+        self.take_str(len)
     }
 
     pub fn take_str(&mut self, length: usize) -> DecodeResult<&'b str> {
-        let end = self.index + length;
-        let slice = self.bytes.get(self.index..end).ok_or_else(|| self.eof())?;
-        let s = simdutf8::basic::from_utf8(slice).map_err(|e| DecodeError::from_utf8_error(self.index, e))?;
-        self.index = end;
-        Ok(s)
+        if length == 0 {
+            Ok("")
+        } else {
+            let end = self.index + length;
+            let slice = self.bytes.get(self.index..end).ok_or_else(|| self.eof())?;
+            let s = simdutf8::basic::from_utf8(slice).map_err(|e| DecodeError::from_utf8_error(self.index, e))?;
+            self.index = end;
+            Ok(s)
+        }
     }
 
     pub fn take_u8(&mut self) -> DecodeResult<u8> {
@@ -187,9 +181,10 @@ impl<'b> Decoder<'b> {
         Ok(i64::from_le_bytes(slice.try_into().unwrap()))
     }
 
-    pub fn take_f32(&mut self) -> DecodeResult<f32> {
-        let slice = self.take_slice(4)?;
-        Ok(f32::from_le_bytes(slice.try_into().unwrap()))
+    pub fn take_big_int(&mut self, sign: Sign, length: Length) -> DecodeResult<BigInt> {
+        let size = length.decode(self)?;
+        let slice = self.take_slice(size)?;
+        Ok(BigInt::from_bytes_le(sign, slice))
     }
 
     pub fn take_f64(&mut self) -> DecodeResult<f64> {

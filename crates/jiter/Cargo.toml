@@ -12,8 +12,8 @@ homepage = { workspace = true }
 repository = { workspace = true }
 
 [dependencies]
-num-bigint = { version = "0.4.4", optional = true }
-num-traits = "0.2.16"
+num-bigint = { workspace = true, optional = true }
+num-traits = { workspace = true }
 ahash = "0.8.0"
 smallvec = { workspace = true }
 pyo3 = { workspace = true, optional = true }
