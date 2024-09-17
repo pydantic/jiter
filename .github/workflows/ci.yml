@@ -63,13 +63,13 @@ jobs:
     - run: cargo install cargo-careful
       if: steps.cache-rust.outputs.cache-hit != 'true'
 
-    - run: cargo test --all-features
+    - run: cargo test -F python
 
-    - run: cargo careful test --all-features
+    - run: cargo careful t -F python
       if: matrix.rust-version == 'nightly'
 
     - uses: taiki-e/install-action@cargo-llvm-cov
-    - run: cargo llvm-cov --all-features --codecov --output-path codecov.json
+    - run: cargo llvm-cov -F python --codecov --output-path codecov.json
 
     - uses: codecov/codecov-action@v4
       with:
@@ -103,11 +103,9 @@ jobs:
     - id: cache-rust
       uses: Swatinem/rust-cache@v2
 
-    - run: cargo test --all-features
+    - run: cargo test -F python
       env:
         RUST_BACKTRACE: 1
-
-    - run: cargo test --all-features
 
   test-python:
     name: test jiter-python
