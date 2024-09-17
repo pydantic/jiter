@@ -1,6 +1,6 @@
-use std::mem::align_of;
-
 use jiter::{JsonArray, JsonObject, JsonValue};
+use num_bigint::{BigInt, Sign};
+use std::mem::align_of;
 
 use crate::array::encode_array;
 use crate::errors::{EncodeError, EncodeResult};
@@ -35,7 +35,7 @@ impl Encoder {
             JsonValue::Null => self.encode_null(),
             JsonValue::Bool(b) => self.encode_bool(*b),
             JsonValue::Int(int) => self.encode_i64(*int),
-            JsonValue::BigInt(_) => todo!("encoding BigInt"),
+            JsonValue::BigInt(big_int) => self.encode_big_int(big_int)?,
             JsonValue::Float(f) => self.encode_f64(*f),
             JsonValue::Str(s) => self.encode_str(s.as_ref())?,
             JsonValue::Array(array) => self.encode_array(array)?,
@@ -99,15 +99,19 @@ impl Encoder {
         }
     }
 
-    pub fn encode_str(&mut self, s: &str) -> EncodeResult<()> {
-        self.encode_length(Category::Str, s.len())?;
-        self.extend(s.as_bytes());
+    pub fn encode_big_int(&mut self, int: &BigInt) -> EncodeResult<()> {
+        let (sign, bytes) = int.to_bytes_le();
+        match sign {
+            Sign::Minus => self.encode_length(Category::BigIntNeg, bytes.len())?,
+            _ => self.encode_length(Category::BigIntPos, bytes.len())?,
+        }
+        self.extend(&bytes);
         Ok(())
     }
 
-    pub fn encode_bytes(&mut self, b: &[u8]) -> EncodeResult<()> {
-        self.encode_length(Category::U8Array, b.len())?;
-        self.extend(b);
+    pub fn encode_str(&mut self, s: &str) -> EncodeResult<()> {
+        self.encode_length(Category::Str, s.len())?;
+        self.extend(s.as_bytes());
         Ok(())
     }
 

@@ -32,11 +32,13 @@ debug = true
 [workspace.dependencies]
 jiter = { path = "crates/jiter", version = "0.5.0" }
 batson = { path = "crates/batson", version = "0.5.0" }
+bencher = "0.1.5"
+codspeed-bencher-compat = "2.7.1"
+num-bigint = "0.4.4"
+num-traits = "0.2.16"
+paste = "1.0.7"
 pyo3 = { version = "0.22.0" }
 pyo3-build-config = { version = "0.22.0" }
-bencher = "0.1.5"
-paste = "1.0.7"
-codspeed-bencher-compat = "2.7.1"
 smallvec = "2.0.0-alpha.7"
 serde = "1.0.210"
 serde_json = "1.0.128"

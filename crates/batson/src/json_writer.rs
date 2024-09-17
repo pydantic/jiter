@@ -1,3 +1,4 @@
+use num_bigint::BigInt;
 use serde::ser::Serializer as _;
 use serde_json::ser::Serializer;
 
@@ -114,5 +115,12 @@ impl WriteJson for f64 {
     fn write_json(&self, writer: &mut JsonWriter) -> ToJsonResult<()> {
         let mut ser = Serializer::new(&mut writer.vec);
         ser.serialize_f64(*self).map_err(Into::into)
+    }
+}
+
+impl WriteJson for BigInt {
+    fn write_json(&self, writer: &mut JsonWriter) -> ToJsonResult<()> {
+        writer.vec.extend_from_slice(self.to_str_radix(10).as_bytes());
+        Ok(())
     }
 }
