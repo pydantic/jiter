@@ -60,27 +60,21 @@ jobs:
       with:
         prefix-key: "v1-rust"
 
-    - run: cargo install rustfilt coverage-prepare cargo-careful
+    - run: cargo install cargo-careful
       if: steps.cache-rust.outputs.cache-hit != 'true'
 
-    - run: rustup component add llvm-tools-preview
+    - run: cargo test --all-features
 
-    - run: cargo test -F python
-      env:
-        RUST_BACKTRACE: 1
-        RUSTFLAGS: '-C instrument-coverage'
-
-    - run: coverage-prepare --ignore-filename-regex '/tests/' lcov $(find ../../target/debug/deps -regex '.*/main[^.]*')
-      working-directory: crates/jiter
-
-    - run: cargo test --doc
-
-    - run: cargo careful t -F python
+    - run: cargo careful test --all-features
       if: matrix.rust-version == 'nightly'
+
+    - uses: taiki-e/install-action@cargo-llvm-cov
+    - run: cargo llvm-cov --all-features --codecov --output-path codecov.json
 
     - uses: codecov/codecov-action@v4
       with:
         env_vars: RUNS_ON,RUST_VERSION
+        files: codecov.json
         token: ${{ secrets.CODECOV_TOKEN }}
 
   test-macos:
@@ -109,25 +103,11 @@ jobs:
     - id: cache-rust
       uses: Swatinem/rust-cache@v2
 
-    - run: cargo install rustfilt coverage-prepare
-      if: steps.cache-rust.outputs.cache-hit != 'true'
-
-    - run: rustup component add llvm-tools-preview
-
     - run: cargo test --all-features
       env:
         RUST_BACKTRACE: 1
 
     - run: cargo test --all-features
-
-    - uses: taiki-e/install-action@cargo-llvm-cov
-    - run: cargo llvm-cov --all-features --codecov --output-path codecov.json
-
-    - uses: codecov/codecov-action@v4
-      with:
-        env_vars: RUNS_ON,RUST_VERSION
-        files: codecov.json
-        token: ${{ secrets.CODECOV_TOKEN }}
 
   test-python:
     name: test jiter-python
