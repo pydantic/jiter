@@ -15,7 +15,8 @@ keywords = ["JSON", "parsing", "deserialization", "iter"]
 categories = ["parser-implementations", "parsing"]
 homepage = "https://github.com/pydantic/jiter/"
 repository = "https://github.com/pydantic/jiter/"
-rust-version = "1.74.0"
+# MSRV should match pydantic-core
+rust-version = "1.75"
 
 [profile.bench]
 debug = true

@@ -10,7 +10,6 @@ on:
 
 jobs:
   resolve:
-
     runs-on: ubuntu-latest
     outputs:
       MSRV: ${{ steps.resolve-msrv.outputs.MSRV }}
@@ -44,10 +43,10 @@ jobs:
       RUST_VERSION: ${{ matrix.rust-version }}
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: set up python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.12'
 
@@ -60,27 +59,21 @@ jobs:
       with:
         prefix-key: "v1-rust"
 
-    - run: cargo install rustfilt coverage-prepare cargo-careful
+    - run: cargo install cargo-careful
       if: steps.cache-rust.outputs.cache-hit != 'true'
 
-    - run: rustup component add llvm-tools-preview
-
     - run: cargo test -F python
-      env:
-        RUST_BACKTRACE: 1
-        RUSTFLAGS: '-C instrument-coverage'
-
-    - run: coverage-prepare --ignore-filename-regex '/tests/' lcov $(find ../../target/debug/deps -regex '.*/main[^.]*')
-      working-directory: crates/jiter
-
-    - run: cargo test --doc
 
     - run: cargo careful t -F python
       if: matrix.rust-version == 'nightly'
 
+    - uses: taiki-e/install-action@cargo-llvm-cov
+    - run: cargo llvm-cov -F python --codecov --output-path codecov.json
+
     - uses: codecov/codecov-action@v4
       with:
         env_vars: RUNS_ON,RUST_VERSION
+        files: codecov.json
         token: ${{ secrets.CODECOV_TOKEN }}
 
   test-macos:
@@ -88,7 +81,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runs-on: [macos-latest, macos-latest]
+        runs-on: [macos-latest, macos-latest-xlarge]
 
     runs-on: ${{ matrix.runs-on }}
 
@@ -97,10 +90,10 @@ jobs:
       RUST_VERSION: stable
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: set up python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.12'
 
@@ -109,24 +102,17 @@ jobs:
     - id: cache-rust
       uses: Swatinem/rust-cache@v2
 
-    - run: cargo install rustfilt coverage-prepare
-      if: steps.cache-rust.outputs.cache-hit != 'true'
-
-    - run: rustup component add llvm-tools-preview
-
     - run: cargo test -F python
       env:
         RUST_BACKTRACE: 1
-        RUSTFLAGS: '-C instrument-coverage'
 
-    - run: coverage-prepare --ignore-filename-regex '/tests/' lcov $(find ../../target/debug/deps -regex '.*/main[^.]*')
-      working-directory: crates/jiter
-
-    - run: cargo test --doc
+    - uses: taiki-e/install-action@cargo-llvm-cov
+    - run: cargo llvm-cov -F python --codecov --output-path codecov.json
 
     - uses: codecov/codecov-action@v4
       with:
         env_vars: RUNS_ON,RUST_VERSION
+        files: codecov.json
         token: ${{ secrets.CODECOV_TOKEN }}
 
   test-python:
@@ -138,10 +124,10 @@ jobs:
       RUNS_ON: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: set up python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.12'
 
@@ -176,7 +162,7 @@ jobs:
   bench:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - uses: moonrepo/setup-rust@v1
       with:
@@ -198,12 +184,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runs-on: [ubuntu-latest, macos-latest]
+        runs-on: [ubuntu-latest, macos-latest-xlarge]
 
     runs-on: ${{ matrix.runs-on }}
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - uses: moonrepo/setup-rust@v1
       with:
@@ -223,7 +209,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - uses: moonrepo/setup-rust@v1
       with:
@@ -239,7 +225,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - uses: moonrepo/setup-rust@v1
       with:
