@@ -309,6 +309,7 @@ fn take_value_recursive<'j, 's>(
                                 })?;
                             match n {
                                 NumberAny::Int(NumberInt::Int(int)) => JsonValue::Int(int),
+                                #[cfg(feature = "num-bigint")]
                                 NumberAny::Int(NumberInt::BigInt(big_int)) => JsonValue::BigInt(big_int),
                                 NumberAny::Float(float) => JsonValue::Float(float),
                             }
@@ -386,6 +387,7 @@ fn take_value_recursive<'j, 's>(
                                 })?;
                             match n {
                                 NumberAny::Int(NumberInt::Int(int)) => JsonValue::Int(int),
+                                #[cfg(feature = "num-bigint")]
                                 NumberAny::Int(NumberInt::BigInt(big_int)) => JsonValue::BigInt(big_int),
                                 NumberAny::Float(float) => JsonValue::Float(float),
                             }
