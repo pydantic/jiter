@@ -50,6 +50,15 @@ impl<'b> Object<'b> {
             ObjectChoice::U32(o) => o.write_json(d, writer),
         }
     }
+
+    /// Get the length of the data that follows the header
+    pub fn move_to_end(self, d: &mut Decoder<'b>) -> DecodeResult<()> {
+        match self.0 {
+            ObjectChoice::U8(o) => o.move_to_end(d),
+            ObjectChoice::U16(o) => o.move_to_end(d),
+            ObjectChoice::U32(o) => o.move_to_end(d),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -135,6 +144,14 @@ impl<'b, S: SuperHeaderItem> ObjectSized<'b, S> {
             Some(h) => d.take_str(h.key_length()),
             None => Err(d.error(DecodeErrorType::ObjectBodyIndexInvalid)),
         }
+    }
+
+    /// the offset of the end of the last value
+    pub fn move_to_end(self, d: &mut Decoder<'b>) -> DecodeResult<()> {
+        let h = self.super_header.last().unwrap();
+        d.index += h.offset() + h.key_length();
+        let header = d.take_header()?;
+        d.move_to_end(header)
     }
 }
 
