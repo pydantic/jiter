@@ -17,6 +17,12 @@ impl Encoder {
         Self { data: Vec::new() }
     }
 
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            data: Vec::with_capacity(capacity),
+        }
+    }
+
     pub fn align<T>(&mut self) {
         let align = align_of::<T>();
         // same calculation as in `Decoder::align`

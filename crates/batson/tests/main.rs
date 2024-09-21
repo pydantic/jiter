@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use jiter::JsonValue;
 
-use batson::get::{contains, get_bool, get_int, get_length, get_str};
+use batson::get::{contains, get_batson, get_bool, get_int, get_length, get_str};
 use batson::{batson_to_json_string, compare_json_values, decode_to_json_value, encode_from_json};
 
 #[test]
@@ -184,6 +184,73 @@ fn test_get_length() {
     assert_eq!(get_length(&bytes, &[]).unwrap().unwrap(), 1);
     assert_eq!(get_length(&bytes, &["foo".into()]).unwrap().unwrap(), 3);
     assert_eq!(get_length(&bytes, &["foo".into(), 1.into()]).unwrap().unwrap(), 2);
+}
+
+#[test]
+fn test_get_batson() {
+    let bytes = json_to_batson(br#"{"foo": [null, {"a": 1, "b": 22}, 4294967299]}"#);
+
+    assert_eq!(get_batson(&bytes, &[]).unwrap().unwrap(), bytes);
+
+    let null_bytes = get_batson(&bytes, &["foo".into(), 0.into()]).unwrap().unwrap();
+    assert_eq!(null_bytes, [0u8].as_ref());
+    assert_eq!(batson_to_json_string(&null_bytes).unwrap(), "null");
+
+    let foo_bytes = get_batson(&bytes, &["foo".into()]).unwrap().unwrap();
+    assert_eq!(
+        batson_to_json_string(&foo_bytes).unwrap(),
+        r#"[null,{"a":1,"b":22},4294967299]"#
+    );
+
+    let missing = get_batson(&bytes, &["bar".into()]).unwrap();
+    assert!(missing.is_none());
+
+    let missing = get_batson(&bytes, &["foo".into(), "bar".into()]).unwrap();
+    assert!(missing.is_none());
+
+    let obj_bytes = get_batson(&bytes, &["foo".into(), 1.into()]).unwrap().unwrap();
+    assert_eq!(batson_to_json_string(&obj_bytes).unwrap(), r#"{"a":1,"b":22}"#);
+
+    let a_bytes = get_batson(&bytes, &["foo".into(), 1.into(), "a".into()])
+        .unwrap()
+        .unwrap();
+    assert_eq!(batson_to_json_string(&a_bytes).unwrap(), "1");
+
+    let b_bytes = get_batson(&bytes, &["foo".into(), 1.into(), "b".into()])
+        .unwrap()
+        .unwrap();
+    assert_eq!(batson_to_json_string(&b_bytes).unwrap(), "22");
+
+    let int_bytes = get_batson(&bytes, &["foo".into(), 2.into()]).unwrap().unwrap();
+    assert_eq!(batson_to_json_string(&int_bytes).unwrap(), "4294967299");
+}
+
+#[test]
+fn test_get_batson_u8array() {
+    let bytes = json_to_batson(br#"[1, 2, 0, 255, 128]"#);
+
+    assert_eq!(get_batson(&bytes, &[]).unwrap().unwrap(), bytes);
+
+    let zeroth_bytes = get_batson(&bytes, &[0.into()]).unwrap().unwrap();
+    assert_eq!(batson_to_json_string(&zeroth_bytes).unwrap(), "1");
+
+    let first_bytes = get_batson(&bytes, &[1.into()]).unwrap().unwrap();
+    assert_eq!(batson_to_json_string(&first_bytes).unwrap(), "2");
+
+    let second_bytes = get_batson(&bytes, &[2.into()]).unwrap().unwrap();
+    assert_eq!(batson_to_json_string(&second_bytes).unwrap(), "0");
+
+    let third_bytes = get_batson(&bytes, &[3.into()]).unwrap().unwrap();
+    assert_eq!(batson_to_json_string(&third_bytes).unwrap(), "255");
+
+    let fourth_bytes = get_batson(&bytes, &[4.into()]).unwrap().unwrap();
+    assert_eq!(batson_to_json_string(&fourth_bytes).unwrap(), "128");
+
+    let missing = get_batson(&bytes, &[5.into()]).unwrap();
+    assert!(missing.is_none());
+
+    let missing = get_batson(&bytes, &[4.into(), 0.into()]).unwrap();
+    assert!(missing.is_none());
 }
 
 #[test]

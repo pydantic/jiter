@@ -39,6 +39,38 @@ impl<'b> Decoder<'b> {
         Self { bytes, index: 0 }
     }
 
+    pub fn get_range(&self, start: usize, end: usize) -> DecodeResult<&'b [u8]> {
+        self.bytes
+            .get(start..end)
+            .ok_or_else(|| self.error(DecodeErrorType::EOF))
+    }
+
+    /// Get the length of the data that follows a header
+    pub fn move_to_end(&mut self, header: Header) -> DecodeResult<()> {
+        match header {
+            Header::Null | Header::Bool(_) => (),
+            Header::Int(n) | Header::Float(n) => {
+                self.index += n.data_length();
+            }
+            Header::Object(l) => {
+                let obj = Object::decode_header(self, l)?;
+                obj.move_to_end(self)?;
+            }
+            Header::I64Array(l) => {
+                let length = l.decode(self)?;
+                self.index += length * size_of::<i64>();
+            }
+            Header::HetArray(l) => {
+                let het = HetArray::decode_header(self, l)?;
+                het.move_to_end(self)?;
+            }
+            Header::IntBig(_, l) | Header::Str(l) | Header::HeaderArray(l) | Header::U8Array(l) => {
+                self.index += l.decode(self)?;
+            }
+        };
+        Ok(())
+    }
+
     pub fn take_header(&mut self) -> DecodeResult<Header> {
         let byte = self.next().ok_or_else(|| self.eof())?;
         Header::decode(byte, self)

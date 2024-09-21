@@ -73,6 +73,16 @@ impl<'b> HetArray<'b> {
         writer.end_array();
         Ok(())
     }
+
+    pub fn move_to_end(&self, d: &mut Decoder<'b>) -> DecodeResult<()> {
+        d.index += match &self.offsets {
+            HetArrayOffsets::U8(v) => v.last().copied().unwrap() as usize,
+            HetArrayOffsets::U16(v) => v.last().copied().unwrap() as usize,
+            HetArrayOffsets::U32(v) => v.last().copied().unwrap() as usize,
+        };
+        let header = d.take_header()?;
+        d.move_to_end(header)
+    }
 }
 
 fn take_slice_as<'b, T: bytemuck::Pod>(d: &mut Decoder<'b>, length: Length) -> DecodeResult<&'b [T]> {

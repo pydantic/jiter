@@ -1,9 +1,12 @@
 #![allow(clippy::module_name_repetitions)]
+
 use crate::array::{header_array_get, i64_array_get, u8_array_get, HetArray};
 use crate::decoder::Decoder;
+use crate::encoder::Encoder;
 use crate::errors::{DecodeError, DecodeResult};
 use crate::header::Header;
 use crate::object::Object;
+use std::borrow::Cow;
 
 #[derive(Debug)]
 pub enum BatsonPath<'s> {
@@ -33,6 +36,14 @@ pub fn get_str<'b>(bytes: &'b [u8], path: &[BatsonPath]) -> DecodeResult<Option<
 
 pub fn get_int(bytes: &[u8], path: &[BatsonPath]) -> DecodeResult<Option<i64>> {
     get_try_into(bytes, path)
+}
+
+pub fn get_batson<'b>(bytes: &'b [u8], path: &[BatsonPath]) -> DecodeResult<Option<Cow<'b, [u8]>>> {
+    if let Some(v) = GetValue::get(bytes, path)? {
+        v.into_batson().map(Some)
+    } else {
+        Ok(None)
+    }
 }
 
 pub fn contains(bytes: &[u8], path: &[BatsonPath]) -> DecodeResult<bool> {
@@ -135,6 +146,27 @@ impl<'b> GetValue<'b> {
             | Header::I64Array(length)
             | Header::HetArray(length) => length.decode(&mut decoder).map(Some),
             _ => Ok(None),
+        }
+    }
+
+    fn into_batson(self) -> DecodeResult<Cow<'b, [u8]>> {
+        match self {
+            Self::Header(mut decoder, header) => {
+                let start = decoder.index - 1;
+                decoder.move_to_end(header)?;
+                let end = decoder.index;
+                decoder.get_range(start, end).map(Cow::Borrowed)
+            }
+            Self::U8(int) => {
+                let mut encoder = Encoder::with_capacity(2);
+                encoder.encode_i64(int.into());
+                Ok(Cow::Owned(encoder.into()))
+            }
+            Self::I64(int) => {
+                let mut encoder = Encoder::with_capacity(9);
+                encoder.encode_i64(int);
+                Ok(Cow::Owned(encoder.into()))
+            }
         }
     }
 }

@@ -274,6 +274,16 @@ impl NumberHint {
             _ => None,
         }
     }
+
+    /// Get the length of the data that follows the header
+    pub fn data_length(self) -> usize {
+        match self {
+            Self::Size8 => 1,
+            Self::Size32 => 4,
+            Self::Size64 => 8,
+            _ => 0,
+        }
+    }
 }
 
 /// String, object, and array lengths
