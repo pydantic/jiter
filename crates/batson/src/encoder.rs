@@ -58,17 +58,6 @@ impl Encoder {
         self.data.truncate(position);
     }
 
-    pub fn encode_null(&mut self) {
-        let h = Category::Primitive.encode_with(Primitive::Null as u8);
-        self.push(h);
-    }
-
-    pub fn encode_bool(&mut self, bool: bool) {
-        let right: Primitive = bool.into();
-        let h = Category::Primitive.encode_with(right as u8);
-        self.push(h);
-    }
-
     pub fn encode_i64(&mut self, value: i64) {
         if (0..=10).contains(&value) {
             self.push(Category::Int.encode_with(value as u8));
@@ -82,51 +71,6 @@ impl Encoder {
             self.push(Category::Int.encode_with(NumberHint::Size64 as u8));
             self.extend(&value.to_le_bytes());
         }
-    }
-
-    pub fn encode_f64(&mut self, value: f64) {
-        match value {
-            0.0 => self.push(Category::Float.encode_with(NumberHint::Zero as u8)),
-            1.0 => self.push(Category::Float.encode_with(NumberHint::One as u8)),
-            2.0 => self.push(Category::Float.encode_with(NumberHint::Two as u8)),
-            3.0 => self.push(Category::Float.encode_with(NumberHint::Three as u8)),
-            4.0 => self.push(Category::Float.encode_with(NumberHint::Four as u8)),
-            5.0 => self.push(Category::Float.encode_with(NumberHint::Five as u8)),
-            6.0 => self.push(Category::Float.encode_with(NumberHint::Six as u8)),
-            7.0 => self.push(Category::Float.encode_with(NumberHint::Seven as u8)),
-            8.0 => self.push(Category::Float.encode_with(NumberHint::Eight as u8)),
-            9.0 => self.push(Category::Float.encode_with(NumberHint::Nine as u8)),
-            10.0 => self.push(Category::Float.encode_with(NumberHint::Ten as u8)),
-            _ => {
-                // should we do something with f32 here?
-                self.push(Category::Float.encode_with(NumberHint::Size64 as u8));
-                self.extend(&value.to_le_bytes());
-            }
-        }
-    }
-
-    pub fn encode_big_int(&mut self, int: &BigInt) -> EncodeResult<()> {
-        let (sign, bytes) = int.to_bytes_le();
-        match sign {
-            Sign::Minus => self.encode_length(Category::BigIntNeg, bytes.len())?,
-            _ => self.encode_length(Category::BigIntPos, bytes.len())?,
-        }
-        self.extend(&bytes);
-        Ok(())
-    }
-
-    pub fn encode_str(&mut self, s: &str) -> EncodeResult<()> {
-        self.encode_length(Category::Str, s.len())?;
-        self.extend(s.as_bytes());
-        Ok(())
-    }
-
-    pub fn encode_object(&mut self, object: &JsonObject) -> EncodeResult<()> {
-        encode_object(self, object)
-    }
-
-    pub fn encode_array(&mut self, array: &JsonArray) -> EncodeResult<()> {
-        encode_array(self, array)
     }
 
     pub fn extend(&mut self, s: &[u8]) {
@@ -180,7 +124,63 @@ impl Encoder {
         Ok(())
     }
 
-    pub fn push(&mut self, h: u8) {
+    fn encode_null(&mut self) {
+        let h = Category::Primitive.encode_with(Primitive::Null as u8);
+        self.push(h);
+    }
+
+    fn encode_bool(&mut self, bool: bool) {
+        let right: Primitive = bool.into();
+        let h = Category::Primitive.encode_with(right as u8);
+        self.push(h);
+    }
+
+    fn encode_f64(&mut self, value: f64) {
+        match value {
+            0.0 => self.push(Category::Float.encode_with(NumberHint::Zero as u8)),
+            1.0 => self.push(Category::Float.encode_with(NumberHint::One as u8)),
+            2.0 => self.push(Category::Float.encode_with(NumberHint::Two as u8)),
+            3.0 => self.push(Category::Float.encode_with(NumberHint::Three as u8)),
+            4.0 => self.push(Category::Float.encode_with(NumberHint::Four as u8)),
+            5.0 => self.push(Category::Float.encode_with(NumberHint::Five as u8)),
+            6.0 => self.push(Category::Float.encode_with(NumberHint::Six as u8)),
+            7.0 => self.push(Category::Float.encode_with(NumberHint::Seven as u8)),
+            8.0 => self.push(Category::Float.encode_with(NumberHint::Eight as u8)),
+            9.0 => self.push(Category::Float.encode_with(NumberHint::Nine as u8)),
+            10.0 => self.push(Category::Float.encode_with(NumberHint::Ten as u8)),
+            _ => {
+                // should we do something with f32 here?
+                self.push(Category::Float.encode_with(NumberHint::Size64 as u8));
+                self.extend(&value.to_le_bytes());
+            }
+        }
+    }
+
+    fn encode_big_int(&mut self, int: &BigInt) -> EncodeResult<()> {
+        let (sign, bytes) = int.to_bytes_le();
+        match sign {
+            Sign::Minus => self.encode_length(Category::BigIntNeg, bytes.len())?,
+            _ => self.encode_length(Category::BigIntPos, bytes.len())?,
+        }
+        self.extend(&bytes);
+        Ok(())
+    }
+
+    fn encode_str(&mut self, s: &str) -> EncodeResult<()> {
+        self.encode_length(Category::Str, s.len())?;
+        self.extend(s.as_bytes());
+        Ok(())
+    }
+
+    fn encode_object(&mut self, object: &JsonObject) -> EncodeResult<()> {
+        encode_object(self, object)
+    }
+
+    fn encode_array(&mut self, array: &JsonArray) -> EncodeResult<()> {
+        encode_array(self, array)
+    }
+
+    fn push(&mut self, h: u8) {
         self.data.push(h);
     }
 }
