@@ -364,7 +364,7 @@ mod test {
         assert_eq!(min_size, 4);
 
         let mut encoder = Encoder::new();
-        encoder.encode_array(&array).unwrap();
+        encode_array(&mut encoder, &array).unwrap();
         let bytes: Vec<u8> = encoder.into();
 
         let mut decoder = Decoder::new(&bytes);
@@ -388,7 +388,7 @@ mod test {
     fn array_round_trip_empty() {
         let array = Arc::new(vec![]);
         let mut encoder = Encoder::new();
-        encoder.encode_array(&array).unwrap();
+        encode_array(&mut encoder, &array).unwrap();
         let bytes: Vec<u8> = encoder.into();
         assert_eq!(bytes.len(), 1);
 
@@ -412,7 +412,7 @@ mod test {
             JsonValue::Float(4.0),
         ]);
         let mut encoder = Encoder::new();
-        encoder.encode_array(&array).unwrap();
+        encode_array(&mut encoder, &array).unwrap();
         let bytes: Vec<u8> = encoder.into();
         assert_eq!(bytes.len(), 6);
 
@@ -428,7 +428,7 @@ mod test {
     fn u8_array_round_trip() {
         let array = Arc::new(vec![JsonValue::Int(7), JsonValue::Int(4), JsonValue::Int(123)]);
         let mut encoder = Encoder::new();
-        encoder.encode_array(&array).unwrap();
+        encode_array(&mut encoder, &array).unwrap();
         let bytes: Vec<u8> = encoder.into();
         assert_eq!(bytes.len(), 4);
 
@@ -451,7 +451,7 @@ mod test {
             JsonValue::Int(1_234_567_890),
         ]);
         let mut encoder = Encoder::new();
-        encoder.encode_array(&array).unwrap();
+        encode_array(&mut encoder, &array).unwrap();
         let bytes: Vec<u8> = encoder.into();
         assert_eq!(bytes.len(), 6 * 8);
 
@@ -470,7 +470,7 @@ mod test {
         let array = Arc::new(array.into());
 
         let mut encoder = Encoder::new();
-        encoder.encode_array(&array).unwrap();
+        encode_array(&mut encoder, &array).unwrap();
         let bytes: Vec<u8> = encoder.into();
 
         let mut decoder = Decoder::new(&bytes);
@@ -517,7 +517,7 @@ mod test {
         let array = Arc::new(vec![JsonValue::Str(long_string.clone().into()), JsonValue::Int(42)]);
 
         let mut encoder = Encoder::new();
-        encoder.encode_array(&array).unwrap();
+        encode_array(&mut encoder, &array).unwrap();
         let bytes: Vec<u8> = encoder.into();
 
         let mut decoder = Decoder::new(&bytes);
