@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::fmt;
 use std::mem::size_of;
@@ -263,39 +264,43 @@ pub(crate) fn encode_object(encoder: &mut Encoder, object: &JsonObject) -> Encod
         return encoder.encode_length(Category::Object, 0);
     }
 
-    let min_size = minimum_object_size_estimate(object);
+    let items: Vec<ObjectItems> = object.iter_unique().collect();
+
+    let min_size = minimum_object_size_estimate(&items);
     let encoder_position = encoder.position();
     if min_size <= u8::MAX as usize {
-        encoder.encode_length(Category::Object, object.len())?;
-        if encode_object_sized::<SuperHeaderItem8>(encoder, object)? {
+        encoder.encode_length(Category::Object, items.len())?;
+        if encode_object_sized::<SuperHeaderItem8>(encoder, &items)? {
             return Ok(());
         }
         encoder.reset_position(encoder_position);
     }
 
     if min_size <= u16::MAX as usize {
-        encoder.encode_len_u16(Category::Object, u16::try_from(object.len()).unwrap());
-        if encode_object_sized::<SuperHeaderItem16>(encoder, object)? {
+        encoder.encode_len_u16(Category::Object, u16::try_from(items.len()).unwrap());
+        if encode_object_sized::<SuperHeaderItem16>(encoder, &items)? {
             return Ok(());
         }
         encoder.reset_position(encoder_position);
     }
 
-    encoder.encode_len_u32(Category::Object, object.len())?;
-    if encode_object_sized::<SuperHeaderItem32>(encoder, object)? {
+    encoder.encode_len_u32(Category::Object, items.len())?;
+    if encode_object_sized::<SuperHeaderItem32>(encoder, &items)? {
         Ok(())
     } else {
         Err(EncodeError::ObjectTooLarge)
     }
 }
 
-fn encode_object_sized<S: SuperHeaderItem>(encoder: &mut Encoder, object: &JsonObject) -> EncodeResult<bool> {
-    let mut super_header = Vec::with_capacity(object.len());
+type ObjectItems<'a, 'b> = (&'a Cow<'b, str>, &'a JsonValue<'b>);
+
+fn encode_object_sized<S: SuperHeaderItem>(encoder: &mut Encoder, items: &[ObjectItems]) -> EncodeResult<bool> {
+    let mut super_header = Vec::with_capacity(items.len());
     encoder.align::<S>();
-    let super_header_start = encoder.ring_fence(object.len() * size_of::<S>());
+    let super_header_start = encoder.ring_fence(items.len() * size_of::<S>());
 
     let offset_start = encoder.position();
-    for (key, value) in object.iter() {
+    for (key, value) in items {
         let key_str = key.as_ref();
         // add space for the header index, to be set correctly later
         encoder.extend(S::header_index_le_bytes(0).as_ref());
@@ -323,9 +328,9 @@ fn encode_object_sized<S: SuperHeaderItem>(encoder: &mut Encoder, object: &JsonO
 /// Estimate the minimize amount of space needed to encode the object.
 ///
 /// This is NOT recursive, instead it makes very optimistic guesses about how long arrays and objects might be.
-fn minimum_object_size_estimate(object: &JsonObject) -> usize {
+fn minimum_object_size_estimate(items: &[ObjectItems]) -> usize {
     let mut size = 0;
-    for (key, value) in object.iter() {
+    for (key, value) in items {
         size += 1 + key.len(); // one byte header index and key
         size += minimum_value_size_estimate(value);
     }
@@ -477,7 +482,7 @@ mod test {
     fn decode_empty() {
         let v = JsonValue::Object(Arc::new(LazyIndexMap::default()));
         let b = encode_from_json(&v).unwrap();
-        assert_eq!(b.len(), 1);
+        assert_eq!(b.len(), 4);
         let mut d = Decoder::new(&b);
         let header = d.take_header().unwrap();
         assert_eq!(header, Header::Object(0.into()));
@@ -551,7 +556,8 @@ mod test {
         ]));
 
         // less than 255, so encode_from_json will try to encode with SuperHeaderItem8
-        assert_eq!(minimum_object_size_estimate(&v), 106);
+        let items: Vec<_> = v.iter_unique().collect();
+        assert_eq!(minimum_object_size_estimate(&items), 106);
         let b = encode_from_json(&JsonValue::Object(v)).unwrap();
 
         let mut d = Decoder::new(&b);
