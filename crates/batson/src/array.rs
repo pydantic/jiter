@@ -5,7 +5,7 @@ use std::mem::size_of;
 use std::sync::Arc;
 
 use crate::decoder::Decoder;
-use crate::encoder::Encoder;
+use crate::encoder::AbstractEncoder;
 use crate::errors::{DecodeResult, EncodeResult, ToJsonResult};
 use crate::header::{Category, Header, Length, NumberHint, Primitive};
 use crate::json_writer::JsonWriter;
@@ -169,7 +169,7 @@ pub(crate) fn i64_array_slice<'b>(d: &mut Decoder<'b>, length: Length) -> Decode
     d.take_slice_as(length)
 }
 
-pub(crate) fn encode_array(encoder: &mut Encoder, array: &JsonArray) -> EncodeResult<()> {
+pub(crate) fn encode_array(encoder: &mut impl AbstractEncoder, array: &JsonArray) -> EncodeResult<()> {
     if array.is_empty() {
         // shortcut but also no alignment!
         encoder.encode_length(Category::HetArray, 0)
@@ -221,7 +221,10 @@ pub(crate) fn encode_array(encoder: &mut Encoder, array: &JsonArray) -> EncodeRe
     }
 }
 
-fn encode_array_sized<T: TryFrom<usize> + NoUninit>(encoder: &mut Encoder, array: &JsonArray) -> EncodeResult<bool> {
+fn encode_array_sized<T: TryFrom<usize> + NoUninit>(
+    encoder: &mut impl AbstractEncoder,
+    array: &JsonArray,
+) -> EncodeResult<bool> {
     let mut offsets: Vec<T> = Vec::with_capacity(array.len());
     encoder.align::<T>();
     let positions_start = encoder.ring_fence(array.len() * size_of::<T>());

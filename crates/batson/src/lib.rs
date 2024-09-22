@@ -11,18 +11,34 @@ use jiter::JsonValue;
 
 use crate::json_writer::JsonWriter;
 use decoder::Decoder;
-use encoder::Encoder;
+use encoder::{AbstractEncoder, Encoder, ShredEncoder};
 pub use errors::{DecodeErrorType, DecodeResult, EncodeError, EncodeResult, ToJsonError, ToJsonResult};
 
 /// Encode binary data from a JSON value.
 ///
 /// # Errors
 ///
-/// Returns an error if the data is not valid.
+/// Errors if the data is not valid.
 pub fn encode_from_json(value: &JsonValue<'_>) -> EncodeResult<Vec<u8>> {
     let mut encoder = Encoder::new();
     encoder.encode_value(value)?;
     encoder.align::<u32>();
+    Ok(encoder.into())
+}
+
+/// Encode binary data from a JSON value into header and body
+///
+/// # Errors
+///
+/// Returns an error if the data is not valid.
+///
+/// # Returns
+///
+/// Returns a tuple of the header and body bytes.
+pub fn encode_shredded_from_json(value: &JsonValue<'_>) -> EncodeResult<(Vec<u8>, Vec<u8>)> {
+    let mut encoder = ShredEncoder::new();
+    encoder.encode_header_body(value)?;
+    encoder.align_both::<u32>();
     Ok(encoder.into())
 }
 

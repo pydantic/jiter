@@ -7,42 +7,49 @@ use crate::errors::{EncodeError, EncodeResult};
 use crate::header::{Category, Length, NumberHint, Primitive};
 use crate::object::encode_object;
 
-#[derive(Debug)]
-pub(crate) struct Encoder {
-    data: Vec<u8>,
+pub(crate) trait AbstractEncoder {
+    fn encode_length(&mut self, category: Category, length: usize) -> EncodeResult<()>;
+
+    fn encode_len_u16(&mut self, category: Category, length: u16);
+
+    fn encode_len_u32(&mut self, category: Category, length: usize) -> EncodeResult<()>;
+
+    fn encode_value(&mut self, value: &JsonValue<'_>) -> EncodeResult<()>;
+
+    fn align<T>(&mut self);
+
+    fn extend(&mut self, bytes: &[u8]);
+
+    fn position(&self) -> usize;
+
+    fn reset_position(&mut self, position: usize);
+
+    fn ring_fence(&mut self, size: usize) -> usize;
+
+    fn set_range(&mut self, start: usize, s: &[u8]);
 }
 
-impl Encoder {
-    pub fn new() -> Self {
-        Self { data: Vec::new() }
-    }
+#[derive(Debug)]
+pub(crate) struct ShredEncoder {
+    header: Encoder,
+    body: Encoder,
+}
 
-    pub fn with_capacity(capacity: usize) -> Self {
+impl ShredEncoder {
+    pub fn new() -> Self {
         Self {
-            data: Vec::with_capacity(capacity),
+            header: Encoder::new(),
+            body: Encoder::new(),
         }
     }
 
-    pub fn align<T>(&mut self) {
-        let align = align_of::<T>();
-        // same calculation as in `Decoder::align`
-        let new_len = (self.data.len() + align - 1) & !(align - 1);
-        self.data.resize(new_len, 0);
-    }
-
-    pub fn ring_fence(&mut self, size: usize) -> usize {
-        let start = self.data.len();
-        self.data.resize(start + size, 0);
-        start
-    }
-
-    pub fn encode_value(&mut self, value: &JsonValue<'_>) -> EncodeResult<()> {
+    pub fn encode_header_body(&mut self, value: &JsonValue<'_>) -> EncodeResult<()> {
         match value {
-            JsonValue::Null => self.encode_null(),
-            JsonValue::Bool(b) => self.encode_bool(*b),
-            JsonValue::Int(int) => self.encode_i64(*int),
+            JsonValue::Null => self.header.encode_null(),
+            JsonValue::Bool(b) => self.header.encode_bool(*b),
+            JsonValue::Int(int) => self.header.encode_i64(*int),
             JsonValue::BigInt(big_int) => self.encode_big_int(big_int)?,
-            JsonValue::Float(f) => self.encode_f64(*f),
+            JsonValue::Float(f) => self.header.encode_f64(*f),
             JsonValue::Str(s) => self.encode_str(s.as_ref())?,
             JsonValue::Array(array) => self.encode_array(array)?,
             JsonValue::Object(obj) => self.encode_object(obj)?,
@@ -50,38 +57,91 @@ impl Encoder {
         Ok(())
     }
 
-    pub fn position(&self) -> usize {
-        self.data.len()
+    pub fn align_both<T>(&mut self) {
+        self.header.align::<T>();
+        self.body.align::<T>();
     }
 
-    pub fn reset_position(&mut self, position: usize) {
-        self.data.truncate(position);
-    }
-
-    pub fn encode_i64(&mut self, value: i64) {
-        if (0..=10).contains(&value) {
-            self.push(Category::Int.encode_with(value as u8));
-        } else if let Ok(size_8) = i8::try_from(value) {
-            self.push(Category::Int.encode_with(NumberHint::Size8 as u8));
-            self.extend(&size_8.to_le_bytes());
-        } else if let Ok(size_32) = i32::try_from(value) {
-            self.push(Category::Int.encode_with(NumberHint::Size32 as u8));
-            self.extend(&size_32.to_le_bytes());
-        } else {
-            self.push(Category::Int.encode_with(NumberHint::Size64 as u8));
-            self.extend(&value.to_le_bytes());
+    fn encode_big_int(&mut self, int: &BigInt) -> EncodeResult<()> {
+        let (sign, bytes) = int.to_bytes_le();
+        match sign {
+            Sign::Minus => self.header.encode_length(Category::BigIntNeg, bytes.len())?,
+            _ => self.header.encode_length(Category::BigIntPos, bytes.len())?,
         }
+        self.body.extend(&bytes);
+        Ok(())
     }
 
-    pub fn extend(&mut self, s: &[u8]) {
-        self.data.extend_from_slice(s);
+    fn encode_str(&mut self, s: &str) -> EncodeResult<()> {
+        self.header.encode_length(Category::Str, s.len())?;
+        self.body.extend(s.as_bytes());
+        Ok(())
     }
 
-    pub fn set_range(&mut self, start: usize, s: &[u8]) {
-        self.data[start..start + s.len()].as_mut().copy_from_slice(s);
+    fn encode_array(&mut self, array: &JsonArray) -> EncodeResult<()> {
+        encode_array(self, array)
     }
 
-    pub fn encode_length(&mut self, cat: Category, len: usize) -> EncodeResult<()> {
+    fn encode_object(&mut self, object: &JsonObject) -> EncodeResult<()> {
+        encode_object(self, object)
+    }
+}
+
+impl AbstractEncoder for ShredEncoder {
+    fn encode_length(&mut self, category: Category, length: usize) -> EncodeResult<()> {
+        self.header.encode_length(category, length)
+    }
+
+    fn encode_len_u16(&mut self, category: Category, length: u16) {
+        self.header.encode_len_u16(category, length);
+    }
+
+    fn encode_len_u32(&mut self, category: Category, length: usize) -> EncodeResult<()> {
+        self.header.encode_len_u32(category, length)
+    }
+
+    fn encode_value(&mut self, value: &JsonValue<'_>) -> EncodeResult<()> {
+        self.body.encode_value(value)
+    }
+
+    fn align<T>(&mut self) {
+        self.body.align::<T>();
+    }
+
+    fn extend(&mut self, bytes: &[u8]) {
+        self.body.extend(bytes);
+    }
+
+    fn position(&self) -> usize {
+        self.body.position()
+    }
+
+    fn reset_position(&mut self, position: usize) {
+        self.body.reset_position(position);
+    }
+
+    fn ring_fence(&mut self, size: usize) -> usize {
+        self.body.ring_fence(size)
+    }
+
+    fn set_range(&mut self, start: usize, s: &[u8]) {
+        self.body.set_range(start, s);
+    }
+}
+
+impl From<ShredEncoder> for (Vec<u8>, Vec<u8>) {
+    fn from(encoder: ShredEncoder) -> Self {
+        (encoder.header.data, encoder.body.data)
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct Encoder {
+    data: Vec<u8>,
+}
+
+impl AbstractEncoder for Encoder {
+    fn encode_length(&mut self, cat: Category, len: usize) -> EncodeResult<()> {
         match len {
             0 => self.push(cat.encode_with(Length::Empty as u8)),
             1 => self.push(cat.encode_with(Length::One as u8)),
@@ -108,12 +168,12 @@ impl Encoder {
         Ok(())
     }
 
-    pub fn encode_len_u16(&mut self, cat: Category, int: u16) {
+    fn encode_len_u16(&mut self, cat: Category, int: u16) {
         self.push(cat.encode_with(Length::U16 as u8));
         self.extend(&int.to_le_bytes());
     }
 
-    pub fn encode_len_u32(&mut self, cat: Category, len: usize) -> EncodeResult<()> {
+    fn encode_len_u32(&mut self, cat: Category, len: usize) -> EncodeResult<()> {
         let int = u32::try_from(len).map_err(|_| match cat {
             Category::Str => EncodeError::StrTooLong,
             Category::HetArray => EncodeError::ObjectTooLarge,
@@ -122,6 +182,76 @@ impl Encoder {
         self.push(cat.encode_with(Length::U32 as u8));
         self.extend(&int.to_le_bytes());
         Ok(())
+    }
+
+    fn encode_value(&mut self, value: &JsonValue<'_>) -> EncodeResult<()> {
+        match value {
+            JsonValue::Null => self.encode_null(),
+            JsonValue::Bool(b) => self.encode_bool(*b),
+            JsonValue::Int(int) => self.encode_i64(*int),
+            JsonValue::BigInt(big_int) => self.encode_big_int(big_int)?,
+            JsonValue::Float(f) => self.encode_f64(*f),
+            JsonValue::Str(s) => self.encode_str(s.as_ref())?,
+            JsonValue::Array(array) => self.encode_array(array)?,
+            JsonValue::Object(obj) => self.encode_object(obj)?,
+        };
+        Ok(())
+    }
+
+    fn align<T>(&mut self) {
+        let align = align_of::<T>();
+        // same calculation as in `Decoder::align`
+        let new_len = (self.data.len() + align - 1) & !(align - 1);
+        self.data.resize(new_len, 0);
+    }
+
+    fn extend(&mut self, s: &[u8]) {
+        self.data.extend_from_slice(s);
+    }
+
+    fn position(&self) -> usize {
+        self.data.len()
+    }
+
+    fn reset_position(&mut self, position: usize) {
+        self.data.truncate(position);
+    }
+
+    fn ring_fence(&mut self, size: usize) -> usize {
+        let start = self.data.len();
+        self.data.resize(start + size, 0);
+        start
+    }
+
+    fn set_range(&mut self, start: usize, s: &[u8]) {
+        self.data[start..start + s.len()].as_mut().copy_from_slice(s);
+    }
+}
+
+impl Encoder {
+    pub fn new() -> Self {
+        Self { data: Vec::new() }
+    }
+
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            data: Vec::with_capacity(capacity),
+        }
+    }
+
+    pub fn encode_i64(&mut self, value: i64) {
+        if (0..=10).contains(&value) {
+            self.push(Category::Int.encode_with(value as u8));
+        } else if let Ok(size_8) = i8::try_from(value) {
+            self.push(Category::Int.encode_with(NumberHint::Size8 as u8));
+            self.extend(&size_8.to_le_bytes());
+        } else if let Ok(size_32) = i32::try_from(value) {
+            self.push(Category::Int.encode_with(NumberHint::Size32 as u8));
+            self.extend(&size_32.to_le_bytes());
+        } else {
+            self.push(Category::Int.encode_with(NumberHint::Size64 as u8));
+            self.extend(&value.to_le_bytes());
+        }
     }
 
     fn encode_null(&mut self) {
@@ -172,12 +302,12 @@ impl Encoder {
         Ok(())
     }
 
-    fn encode_object(&mut self, object: &JsonObject) -> EncodeResult<()> {
-        encode_object(self, object)
-    }
-
     fn encode_array(&mut self, array: &JsonArray) -> EncodeResult<()> {
         encode_array(self, array)
+    }
+
+    fn encode_object(&mut self, object: &JsonObject) -> EncodeResult<()> {
+        encode_object(self, object)
     }
 
     fn push(&mut self, h: u8) {

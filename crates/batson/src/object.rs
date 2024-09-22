@@ -9,7 +9,7 @@ use bytemuck::{Pod, Zeroable};
 use jiter::{JsonObject, JsonValue, LazyIndexMap};
 
 use crate::decoder::Decoder;
-use crate::encoder::Encoder;
+use crate::encoder::AbstractEncoder;
 use crate::errors::{DecodeErrorType, DecodeResult, EncodeResult};
 use crate::header::{Category, Length};
 use crate::json_writer::JsonWriter;
@@ -258,7 +258,7 @@ fn binary_search<'b, S>(
     }
 }
 
-pub(crate) fn encode_object(encoder: &mut Encoder, object: &JsonObject) -> EncodeResult<()> {
+pub(crate) fn encode_object(encoder: &mut impl AbstractEncoder, object: &JsonObject) -> EncodeResult<()> {
     if object.is_empty() {
         // shortcut but also no alignment!
         return encoder.encode_length(Category::Object, 0);
@@ -294,7 +294,10 @@ pub(crate) fn encode_object(encoder: &mut Encoder, object: &JsonObject) -> Encod
 
 type ObjectItems<'a, 'b> = (&'a Cow<'b, str>, &'a JsonValue<'b>);
 
-fn encode_object_sized<S: SuperHeaderItem>(encoder: &mut Encoder, items: &[ObjectItems]) -> EncodeResult<bool> {
+fn encode_object_sized<S: SuperHeaderItem>(
+    encoder: &mut impl AbstractEncoder,
+    items: &[ObjectItems],
+) -> EncodeResult<bool> {
     let mut super_header = Vec::with_capacity(items.len());
     encoder.align::<S>();
     let super_header_start = encoder.ring_fence(items.len() * size_of::<S>());
