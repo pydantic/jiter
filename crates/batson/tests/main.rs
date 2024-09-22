@@ -98,6 +98,13 @@ fn test_contains() {
 }
 
 #[test]
+fn test_contains_case() {
+    let bytes = json_to_batson(br#"{"host.id":0,"rpc.grpc.status_code":1,"rpc.grpc.status_code":4}"#);
+
+    assert!(contains(&bytes, &["host.id".into()]).unwrap());
+}
+
+#[test]
 fn test_get_str_object() {
     let bytes = json_to_batson(br#"{"foo": "bar", "spam": true}"#);
 
@@ -229,7 +236,8 @@ fn test_get_batson() {
 fn test_get_batson_u8array() {
     let bytes = json_to_batson(br#"[1, 2, 0, 255, 128]"#);
 
-    assert_eq!(get_batson(&bytes, &[]).unwrap().unwrap(), bytes);
+    // not last two bytes because of alignment
+    assert_eq!(get_batson(&bytes, &[]).unwrap().unwrap(), &bytes[..bytes.len() - 2]);
 
     let zeroth_bytes = get_batson(&bytes, &[0.into()]).unwrap().unwrap();
     assert_eq!(batson_to_json_string(&zeroth_bytes).unwrap(), "1");

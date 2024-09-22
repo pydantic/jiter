@@ -22,6 +22,7 @@ pub use errors::{DecodeErrorType, DecodeResult, EncodeError, EncodeResult, ToJso
 pub fn encode_from_json(value: &JsonValue<'_>) -> EncodeResult<Vec<u8>> {
     let mut encoder = Encoder::new();
     encoder.encode_value(value)?;
+    encoder.align::<u32>();
     Ok(encoder.into())
 }
 
