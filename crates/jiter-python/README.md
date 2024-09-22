@@ -55,3 +55,57 @@ def cache_usage() -> int:
         Size of the string cache in bytes.
     """
 ```
+## Examples
+
+The main function provided by jiter is `from_json()`, which accepts a bytes object containing JSON and returns a Python dictionary, list or other value.
+
+```python
+import jiter
+
+json_data = b'{"name": "John", "age": 30}'
+parsed_data = jiter.from_json(json_data)
+print(parsed_data)  # Output: {'name': 'John', 'age': 30}
+```
+### Handling Partial JSON
+
+Incomplete JSON objects can be parsed using the `partial_mode=` parameter.
+
+```python
+import jiter
+
+partial_json = b'{"name": "John", "age": 30, "city": "New Yor'
+
+# Raise error on incomplete JSON
+try:
+    jiter.from_json(partial_json, partial_mode='off')
+except ValueError as e:
+    print(f"Error: {e}")
+
+# Parse incomplete JSON, discarding incomplete last field
+result = jiter.from_json(partial_json, partial_mode='on')
+print(result)  # Output: {'name': 'John', 'age': 30}
+
+# Parse incomplete JSON, including incomplete last field
+result = jiter.from_json(partial_json, partial_mode='trailing-strings')
+print(result)  # Output: {'name': 'John', 'age': 30, 'city': 'New Yor'}
+```
+
+### Catching Duplicate Keys
+
+The `catch_duplicate_keys=True` option can be used to raise a `ValueError` if an object contains duplicate keys.
+
+```python
+import jiter
+
+json_with_dupes = b'{"foo": 1, "foo": 2}'
+
+# Default behavior (last value wins)
+result = jiter.from_json(json_with_dupes)
+print(result)  # Output: {'foo': 2}
+
+# Catch duplicate keys
+try:
+    jiter.from_json(json_with_dupes, catch_duplicate_keys=True)
+except ValueError as e:
+    print(f"Error: {e}")
+```
