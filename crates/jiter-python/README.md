@@ -83,7 +83,7 @@ except ValueError as e:
     print(f"Error: {e}")
 
 # Parse incomplete JSON, discarding incomplete last field
-result = jiter.from_json(partial_json, partial_mode='on')
+result = jiter.from_json(partial_json, partial_mode=True)
 print(result)  # Output: {'name': 'John', 'age': 30}
 
 # Parse incomplete JSON, including incomplete last field
