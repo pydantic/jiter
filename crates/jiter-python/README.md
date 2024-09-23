@@ -66,6 +66,7 @@ json_data = b'{"name": "John", "age": 30}'
 parsed_data = jiter.from_json(json_data)
 print(parsed_data)  # Output: {'name': 'John', 'age': 30}
 ```
+
 ### Handling Partial JSON
 
 Incomplete JSON objects can be parsed using the `partial_mode=` parameter.
