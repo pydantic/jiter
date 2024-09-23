@@ -78,7 +78,7 @@ partial_json = b'{"name": "John", "age": 30, "city": "New Yor'
 
 # Raise error on incomplete JSON
 try:
-    jiter.from_json(partial_json, partial_mode='off')
+    jiter.from_json(partial_json, partial_mode=False)
 except ValueError as e:
     print(f"Error: {e}")
 
