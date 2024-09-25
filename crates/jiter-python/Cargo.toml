@@ -15,7 +15,7 @@ jiter = { path = "../jiter", features = ["python", "num-bigint"] }
 
 [features]
 # must be enabled when building with `cargo build`, maturin enables this automatically
-extension-module = ["pyo3/extension-module"]
+extension-module = ["pyo3/extension-module", "pyo3/generate-import-lib"]
 
 [lib]
 name = "jiter_python"
