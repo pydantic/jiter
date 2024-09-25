@@ -13,10 +13,6 @@ repository = {workspace = true}
 pyo3 = { workspace = true, features = ["num-bigint"] }
 jiter = { path = "../jiter", features = ["python", "num-bigint"] }
 
-[features]
-# must be enabled when building with `cargo build`, maturin enables this automatically
-extension-module = ["pyo3/extension-module", "pyo3/generate-import-lib"]
-
 [lib]
 name = "jiter_python"
 crate-type = ["cdylib", "rlib"]
