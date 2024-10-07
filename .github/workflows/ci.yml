@@ -280,15 +280,15 @@ jobs:
           - os: linux
             manylinux: auto
             target: armv7
-            interpreter: 3.8 3.9 3.10 3.11 3.12
+            interpreter: 3.8 3.9 3.10 3.11 3.12 3.13
           - os: linux
             manylinux: auto
             target: ppc64le
-            interpreter: 3.8 3.9 3.10 3.11 3.12
+            interpreter: 3.8 3.9 3.10 3.11 3.12 3.13
           - os: linux
             manylinux: auto
             target: s390x
-            interpreter: 3.8 3.9 3.10 3.11 3.12
+            interpreter: 3.8 3.9 3.10 3.11 3.12 3.13
 
           # musllinux
           - os: linux
@@ -312,7 +312,7 @@ jobs:
           - os: windows
             target: i686
             python-architecture: x86
-            interpreter: 3.8 3.9 3.10 3.11 3.12
+            interpreter: 3.8 3.9 3.10 3.11 3.12 3.13
           # FIXME had link failures, needs investigation
           # - os: windows
           #   target: aarch64
@@ -338,7 +338,7 @@ jobs:
         with:
           target: ${{ matrix.target }}
           manylinux: ${{ matrix.manylinux }}
-          args: --release --out dist --interpreter ${{ matrix.interpreter || '3.8 3.9 3.10 3.11 3.12' }}
+          args: --release --out dist --interpreter ${{ matrix.interpreter || '3.8 3.9 3.10 3.11 3.12 3.13' }}
           rust-toolchain: stable
           working-directory: crates/jiter-python
 
@@ -361,7 +361,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [linux, windows, macos]
-        interpreter: ['3.8', '3.9', '3.10', '3.11', '3.12']
+        interpreter: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13']
         include:
           # standard runners with override for macos arm
           - os: linux
@@ -386,6 +386,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.interpreter }}
+          allow-prereleases: true
 
       - name: install rust stable
         id: rust-toolchain

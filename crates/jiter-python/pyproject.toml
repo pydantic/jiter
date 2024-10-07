@@ -37,4 +37,4 @@ dynamic = ["version"]
 [tool.maturin]
 module-name = "jiter"
 bindings = "pyo3"
-features = ["pyo3/extension-module"]
+features = ["pyo3/extension-module", "pyo3/generate-import-lib"]
