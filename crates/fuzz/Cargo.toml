@@ -15,7 +15,8 @@ serde = "1.0.190"
 indexmap = "2.0.0"
 num-bigint = "0.4.4"
 num-traits = "0.2.17"
-jiter = {path = "../jiter"}
+jiter = {workspace = true}
+batson = {workspace = true}
 
 [[bin]]
 name = "compare_to_serde"
@@ -26,5 +27,11 @@ doc = false
 [[bin]]
 name = "compare_skip"
 path = "fuzz_targets/compare_skip.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "batson_round_trip"
+path = "fuzz_targets/batson_round_trip.rs"
 test = false
 doc = false
