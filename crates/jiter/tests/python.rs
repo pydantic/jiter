@@ -43,18 +43,16 @@ fn test_cache_into() {
         let c: StringCacheMode = false.to_object(py).extract(py).unwrap();
         assert!(matches!(c, StringCacheMode::None));
 
-        let c: StringCacheMode = PyString::new_bound(py, "all").extract().unwrap();
+        let c: StringCacheMode = PyString::new(py, "all").extract().unwrap();
         assert!(matches!(c, StringCacheMode::All));
 
-        let c: StringCacheMode = PyString::new_bound(py, "keys").extract().unwrap();
+        let c: StringCacheMode = PyString::new(py, "keys").extract().unwrap();
         assert!(matches!(c, StringCacheMode::Keys));
 
-        let c: StringCacheMode = PyString::new_bound(py, "none").extract().unwrap();
+        let c: StringCacheMode = PyString::new(py, "none").extract().unwrap();
         assert!(matches!(c, StringCacheMode::None));
 
-        let e = PyString::new_bound(py, "wrong")
-            .extract::<StringCacheMode>()
-            .unwrap_err();
+        let e = PyString::new(py, "wrong").extract::<StringCacheMode>().unwrap_err();
         assert_eq!(
             e.to_string(),
             "ValueError: Invalid string cache mode, should be `'all'`, '`keys`', `'none`' or a `bool`"

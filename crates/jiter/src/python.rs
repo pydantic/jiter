@@ -145,7 +145,7 @@ impl<'j, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: Ma
                 let peek_first = match self.parser.array_first() {
                     Ok(Some(peek)) => peek,
                     Err(e) if !self._allow_partial_err(&e) => return Err(e),
-                    Ok(None) | Err(_) => return Ok(PyList::empty_bound(py).into_any()),
+                    Ok(None) | Err(_) => return Ok(PyList::empty(py).into_any()),
                 };
 
                 let mut vec: SmallVec<[Bound<'_, PyAny>; 8]> = SmallVec::with_capacity(8);
@@ -155,10 +155,10 @@ impl<'j, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: Ma
                     }
                 }
 
-                Ok(PyList::new_bound(py, vec).into_any())
+                Ok(PyList::new(py, vec).into_any())
             }
             Peek::Object => {
-                let dict = PyDict::new_bound(py);
+                let dict = PyDict::new(py);
                 if let Err(e) = self._parse_object(py, &dict) {
                     if !self._allow_partial_err(&e) {
                         return Err(e);
