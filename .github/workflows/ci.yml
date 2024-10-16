@@ -5,7 +5,7 @@ on:
     branches:
       - main
     tags:
-      - '**'
+      - "**"
   pull_request: {}
 
 jobs:
@@ -19,12 +19,11 @@ jobs:
       - name: set up python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: resolve MSRV
         id: resolve-msrv
-        run:
-          echo MSRV=`python -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["rust-version"])'` >> $GITHUB_OUTPUT
+        run: echo MSRV=`python -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["rust-version"])'` >> $GITHUB_OUTPUT
 
   test-linux:
     needs: [resolve]
@@ -43,38 +42,38 @@ jobs:
       RUST_VERSION: ${{ matrix.rust-version }}
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: set up python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
+      - name: set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-    - uses: dtolnay/rust-toolchain@master
-      with:
-        toolchain: ${{ matrix.rust-version }}
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust-version }}
 
-    - id: cache-rust
-      uses: Swatinem/rust-cache@v2
-      with:
-        prefix-key: "v1-rust"
+      - id: cache-rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: "v1-rust"
 
-    - run: cargo install cargo-careful
-      if: steps.cache-rust.outputs.cache-hit != 'true'
+      - run: cargo install cargo-careful
+        if: steps.cache-rust.outputs.cache-hit != 'true'
 
-    - run: cargo test -F python
+      - run: cargo test -F python
 
-    - run: cargo careful t -F python
-      if: matrix.rust-version == 'nightly'
+      - run: cargo careful t -F python
+        if: matrix.rust-version == 'nightly'
 
-    - uses: taiki-e/install-action@cargo-llvm-cov
-    - run: cargo llvm-cov -F python --codecov --output-path codecov.json
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - run: cargo llvm-cov -F python --codecov --output-path codecov.json
 
-    - uses: codecov/codecov-action@v4
-      with:
-        env_vars: RUNS_ON,RUST_VERSION
-        files: codecov.json
-        token: ${{ secrets.CODECOV_TOKEN }}
+      - uses: codecov/codecov-action@v4
+        with:
+          env_vars: RUNS_ON,RUST_VERSION
+          files: codecov.json
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   test-macos:
     name: test on ${{ matrix.runs-on }}
@@ -90,30 +89,30 @@ jobs:
       RUST_VERSION: stable
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: set up python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
+      - name: set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-    - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
 
-    - id: cache-rust
-      uses: Swatinem/rust-cache@v2
+      - id: cache-rust
+        uses: Swatinem/rust-cache@v2
 
-    - run: cargo test -F python
-      env:
-        RUST_BACKTRACE: 1
+      - run: cargo test -F python
+        env:
+          RUST_BACKTRACE: 1
 
-    - uses: taiki-e/install-action@cargo-llvm-cov
-    - run: cargo llvm-cov -F python --codecov --output-path codecov.json
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - run: cargo llvm-cov -F python --codecov --output-path codecov.json
 
-    - uses: codecov/codecov-action@v4
-      with:
-        env_vars: RUNS_ON,RUST_VERSION
-        files: codecov.json
-        token: ${{ secrets.CODECOV_TOKEN }}
+      - uses: codecov/codecov-action@v4
+        with:
+          env_vars: RUNS_ON,RUST_VERSION
+          files: codecov.json
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   test-python:
     name: test jiter-python
@@ -124,60 +123,60 @@ jobs:
       RUNS_ON: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: set up python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
+      - name: set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-    - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
 
-    - id: cache-rust
-      uses: Swatinem/rust-cache@v2
+      - id: cache-rust
+        uses: Swatinem/rust-cache@v2
 
-    - run: cargo install rustfilt coverage-prepare
-      if: steps.cache-rust.outputs.cache-hit != 'true'
+      - run: cargo install rustfilt coverage-prepare
+        if: steps.cache-rust.outputs.cache-hit != 'true'
 
-    - run: rustup component add llvm-tools-preview
+      - run: rustup component add llvm-tools-preview
 
-    - run: make python-install
+      - run: make python-install
 
-    - run: pip install -e crates/jiter-python
-      env:
-        RUSTFLAGS: '-C instrument-coverage'
+      - run: pip install -e crates/jiter-python
+        env:
+          RUSTFLAGS: "-C instrument-coverage"
 
-    - run: pytest crates/jiter-python/tests
-      env:
-        RUST_BACKTRACE: 1
+      - run: pytest crates/jiter-python/tests
+        env:
+          RUST_BACKTRACE: 1
 
-    - run: python crates/jiter-python/bench.py --fast
+      - run: python crates/jiter-python/bench.py --fast
 
-    - run: coverage-prepare lcov $(python -c 'import jiter.jiter;print(jiter.jiter.__file__)')
+      - run: coverage-prepare lcov $(python -c 'import jiter.jiter;print(jiter.jiter.__file__)')
 
-    - uses: codecov/codecov-action@v4
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
+      - uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   bench:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - uses: moonrepo/setup-rust@v1
-      with:
-        channel: stable
-        cache-target: release
-        bins: cargo-codspeed
+      - uses: moonrepo/setup-rust@v1
+        with:
+          channel: stable
+          cache-target: release
+          bins: cargo-codspeed
 
-    - run: python crates/jiter/benches/generate_big.py
+      - run: python crates/jiter/benches/generate_big.py
 
-    - run: cargo codspeed build -F python -p jiter
+      - run: cargo codspeed build -F python -p jiter
 
-    - uses: CodSpeedHQ/action@v2
-      with:
-        run: cargo codspeed run
-        token: ${{ secrets.CODSPEED_TOKEN }}
+      - uses: CodSpeedHQ/action@v2
+        with:
+          run: cargo codspeed run
+          token: ${{ secrets.CODSPEED_TOKEN }}
 
   fuzz:
     name: fuzz on ${{ matrix.runs-on }}
@@ -189,18 +188,18 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - uses: moonrepo/setup-rust@v1
-      with:
-        channel: nightly
-        cache-target: release
-        bins: cargo-fuzz
+      - uses: moonrepo/setup-rust@v1
+        with:
+          channel: nightly
+          cache-target: release
+          bins: cargo-fuzz
 
-    - run: |
-        # cargo fuzz defaults to musl targets, which is seeming incomatible with sanitizers according to CI failures
-        RUST_TARGET=$(rustc -Vv | grep host | cut -d ' ' -f 2)
-        cargo fuzz run --target=$RUST_TARGET --fuzz-dir crates/fuzz compare_to_serde --release -- -max_total_time=300s
+      - run: |
+          # cargo fuzz defaults to musl targets, which is seeming incomatible with sanitizers according to CI failures
+          RUST_TARGET=$(rustc -Vv | grep host | cut -d ' ' -f 2)
+          cargo fuzz run --target=$RUST_TARGET --fuzz-dir crates/fuzz compare_to_serde --release -- -max_total_time=300s
 
   fuzz-skip:
     name: fuzz skip
@@ -209,37 +208,37 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - uses: moonrepo/setup-rust@v1
-      with:
-        channel: nightly
-        cache-target: release
-        bins: cargo-fuzz
+      - uses: moonrepo/setup-rust@v1
+        with:
+          channel: nightly
+          cache-target: release
+          bins: cargo-fuzz
 
-    - run: |
-        # cargo fuzz defaults to musl targets, which is seeming incomatible with sanitizers according to CI failures
-        RUST_TARGET=$(rustc -Vv | grep host | cut -d ' ' -f 2)
-        cargo fuzz run --target=$RUST_TARGET --fuzz-dir crates/fuzz compare_skip --release -- -max_total_time=300s
+      - run: |
+          # cargo fuzz defaults to musl targets, which is seeming incomatible with sanitizers according to CI failures
+          RUST_TARGET=$(rustc -Vv | grep host | cut -d ' ' -f 2)
+          cargo fuzz run --target=$RUST_TARGET --fuzz-dir crates/fuzz compare_skip --release -- -max_total_time=300s
 
   lint:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - uses: moonrepo/setup-rust@v1
-      with:
-        channel: stable
-        components: rustfmt, clippy
+      - uses: moonrepo/setup-rust@v1
+        with:
+          channel: stable
+          components: rustfmt, clippy
 
-    - uses: pre-commit/action@v3.0.0
-      with:
-        extra_args: --all-files --verbose
-      env:
-        PRE_COMMIT_COLOR: always
-        SKIP: test
+      - uses: pre-commit/action@v3.0.0
+        with:
+          extra_args: --all-files --verbose
+        env:
+          PRE_COMMIT_COLOR: always
+          SKIP: test
 
-    - run: cargo doc -F python
+      - run: cargo doc -F python
 
   build-sdist:
     name: build sdist
@@ -266,7 +265,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [linux]  # windows and macos builds added manually
+        os: [linux] # windows and macos builds added manually
         target: [x86_64, aarch64]
         manylinux: [auto]
         include:
@@ -330,7 +329,7 @@ jobs:
       - name: set up python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
           architecture: ${{ matrix.python-architecture || 'x64' }}
 
       - name: build wheels
@@ -361,7 +360,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [linux, windows, macos]
-        interpreter: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13']
+        interpreter: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
         include:
           # standard runners with override for macos arm
           - os: linux
@@ -374,9 +373,9 @@ jobs:
         exclude:
           # macos arm only supported from 3.10 and up
           - os: macos
-            interpreter: '3.8'
+            interpreter: "3.8"
           - os: macos
-            interpreter: '3.9'
+            interpreter: "3.9"
 
     runs-on: ${{ matrix.runs-on }}
     steps:
@@ -487,7 +486,7 @@ jobs:
       fail-fast: false
       matrix:
         target: [aarch64, armv7, s390x, ppc64le]
-        distro: ['ubuntu22.04']
+        distro: ["ubuntu22.04"]
         include:
           - target: aarch64
             distro: alpine_latest
@@ -545,7 +544,7 @@ jobs:
       - name: set up python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: get dist artifacts
         uses: actions/download-artifact@v4
@@ -579,16 +578,16 @@ jobs:
     environment: release
 
     steps:
-    - uses: actions/checkout@v2
+      - uses: actions/checkout@v2
 
-    - name: install rust stable
-      uses: dtolnay/rust-toolchain@stable
+      - name: install rust stable
+        uses: dtolnay/rust-toolchain@stable
 
-    - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
 
-    - run: cargo publish -p jiter
-      env:
-        CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - run: cargo publish -p jiter
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
   release-python:
     needs: [test-builds-arch, test-builds-os, build-sdist, check]
@@ -604,7 +603,7 @@ jobs:
       - name: set up python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: get dist artifacts
         uses: actions/download-artifact@v4
