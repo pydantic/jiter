@@ -1,0 +1,247 @@
+use jiter::JsonValue;
+use num_bigint::{BigInt, Sign};
+use std::fmt;
+use std::mem::{align_of, size_of};
+
+use crate::array::{
+    header_array_to_json, header_array_write_to_json, i64_array_slice, i64_array_to_json, u8_array_slice,
+    u8_array_to_json, HetArray,
+};
+use crate::errors::{DecodeError, DecodeErrorType, DecodeResult, ToJsonResult};
+use crate::header::{Header, Length};
+use crate::json_writer::JsonWriter;
+use crate::object::Object;
+
+#[cfg(target_endian = "big")]
+compile_error!("big-endian architectures are not yet supported as we use `bytemuck` for zero-copy header decoding.");
+// see `decode_slice_as` for more information
+
+#[derive(Clone)]
+pub(crate) struct Decoder<'b> {
+    bytes: &'b [u8],
+    pub index: usize,
+}
+
+impl fmt::Debug for Decoder<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let upcoming = self.bytes.get(self.index..).unwrap_or_default();
+        f.debug_struct("Decoder")
+            .field("total_length", &self.bytes.len())
+            .field("upcoming_length", &upcoming.len())
+            .field("index", &self.index)
+            .field("upcoming", &upcoming)
+            .finish()
+    }
+}
+
+impl<'b> Decoder<'b> {
+    pub fn new(bytes: &'b [u8]) -> Self {
+        Self { bytes, index: 0 }
+    }
+
+    pub fn get_range(&self, start: usize, end: usize) -> DecodeResult<&'b [u8]> {
+        self.bytes
+            .get(start..end)
+            .ok_or_else(|| self.error(DecodeErrorType::EOF))
+    }
+
+    /// Get the length of the data that follows a header
+    pub fn move_to_end(&mut self, header: Header) -> DecodeResult<()> {
+        match header {
+            Header::Null | Header::Bool(_) => (),
+            Header::Int(n) | Header::Float(n) => {
+                self.index += n.data_length();
+            }
+            Header::Object(l) => {
+                let obj = Object::decode_header(self, l)?;
+                obj.move_to_end(self)?;
+            }
+            Header::I64Array(l) => {
+                let length = l.decode(self)?;
+                self.index += length * size_of::<i64>();
+            }
+            Header::HetArray(l) => {
+                let het = HetArray::decode_header(self, l)?;
+                het.move_to_end(self)?;
+            }
+            Header::IntBig(_, l) | Header::Str(l) | Header::HeaderArray(l) | Header::U8Array(l) => {
+                self.index += l.decode(self)?;
+            }
+        };
+        Ok(())
+    }
+
+    pub fn take_header(&mut self) -> DecodeResult<Header> {
+        let byte = self.next().ok_or_else(|| self.eof())?;
+        Header::decode(byte, self)
+    }
+
+    pub fn align<T>(&mut self) {
+        let align = align_of::<T>();
+        // I've checked and this is equivalent to: `self.index = self.index + align - (self.index % align)`
+        // is it actually faster?
+        self.index = (self.index + align - 1) & !(align - 1);
+    }
+
+    pub fn take_value(&mut self) -> DecodeResult<JsonValue<'b>> {
+        match self.take_header()? {
+            Header::Null => Ok(JsonValue::Null),
+            Header::Bool(b) => Ok(JsonValue::Bool(b)),
+            Header::Int(n) => n.decode_i64(self).map(JsonValue::Int),
+            Header::IntBig(s, l) => self.take_big_int(s, l).map(JsonValue::BigInt),
+            Header::Float(n) => n.decode_f64(self).map(JsonValue::Float),
+            Header::Str(l) => self.take_str_len(l).map(|s| JsonValue::Str(s.into())),
+            Header::Object(length) => {
+                let obj = Object::decode_header(self, length)?;
+                obj.to_value(self).map(JsonValue::Object)
+            }
+            Header::HetArray(length) => {
+                let het = HetArray::decode_header(self, length)?;
+                het.to_value(self).map(JsonValue::Array)
+            }
+            Header::U8Array(length) => u8_array_to_json(self, length).map(JsonValue::Array),
+            Header::HeaderArray(length) => header_array_to_json(self, length).map(JsonValue::Array),
+            Header::I64Array(length) => i64_array_to_json(self, length).map(JsonValue::Array),
+        }
+    }
+
+    pub fn write_json(&mut self, writer: &mut JsonWriter) -> ToJsonResult<()> {
+        match self.take_header()? {
+            Header::Null => writer.write_null(),
+            Header::Bool(b) => writer.write_value(b)?,
+            Header::Int(n) => {
+                let i = n.decode_i64(self)?;
+                writer.write_value(i)?;
+            }
+            Header::IntBig(s, l) => {
+                let int = self.take_big_int(s, l)?;
+                writer.write_value(int)?;
+            }
+            Header::Float(n) => {
+                let f = n.decode_f64(self)?;
+                writer.write_value(f)?;
+            }
+            Header::Str(l) => {
+                let s = self.take_str_len(l)?;
+                writer.write_value(s)?;
+            }
+            Header::Object(length) => {
+                let obj = Object::decode_header(self, length)?;
+                obj.write_json(self, writer)?;
+            }
+            Header::HetArray(length) => {
+                let het = HetArray::decode_header(self, length)?;
+                het.write_json(self, writer)?;
+            }
+            Header::U8Array(length) => {
+                let a = u8_array_slice(self, length)?;
+                writer.write_seq(a.iter())?;
+            }
+            Header::HeaderArray(length) => header_array_write_to_json(self, length, writer)?,
+            Header::I64Array(length) => {
+                let a = i64_array_slice(self, length)?;
+                writer.write_seq(a.iter())?;
+            }
+        };
+        Ok(())
+    }
+
+    pub fn take_slice(&mut self, size: usize) -> DecodeResult<&'b [u8]> {
+        let end = self.index + size;
+        let s = self.bytes.get(self.index..end).ok_or_else(|| self.eof())?;
+        self.index = end;
+        Ok(s)
+    }
+
+    pub fn take_slice_as<T: bytemuck::Pod>(&mut self, length: usize) -> DecodeResult<&'b [T]> {
+        self.align::<T>();
+        let size = length * size_of::<T>();
+        let end = self.index + size;
+        let s = self.bytes.get(self.index..end).ok_or_else(|| self.eof())?;
+
+        let t: &[T] = bytemuck::try_cast_slice(s).map_err(|e| self.error(DecodeErrorType::PodCastError(e)))?;
+
+        self.index = end;
+        Ok(t)
+    }
+
+    fn take_str_len(&mut self, length: Length) -> DecodeResult<&'b str> {
+        let len = length.decode(self)?;
+        self.take_str(len)
+    }
+
+    pub fn take_str(&mut self, length: usize) -> DecodeResult<&'b str> {
+        if length == 0 {
+            Ok("")
+        } else {
+            let end = self.index + length;
+            let slice = self.bytes.get(self.index..end).ok_or_else(|| self.eof())?;
+            let s = simdutf8::basic::from_utf8(slice).map_err(|e| DecodeError::from_utf8_error(self.index, e))?;
+            self.index = end;
+            Ok(s)
+        }
+    }
+
+    pub fn take_u8(&mut self) -> DecodeResult<u8> {
+        self.next().ok_or_else(|| self.eof())
+    }
+
+    pub fn take_u16(&mut self) -> DecodeResult<u16> {
+        let slice = self.take_slice(2)?;
+        Ok(u16::from_le_bytes(slice.try_into().unwrap()))
+    }
+
+    pub fn take_u32(&mut self) -> DecodeResult<u32> {
+        let slice = self.take_slice(4)?;
+        Ok(u32::from_le_bytes(slice.try_into().unwrap()))
+    }
+
+    pub fn take_i8(&mut self) -> DecodeResult<i8> {
+        match self.next() {
+            Some(byte) => Ok(byte as i8),
+            None => Err(self.eof()),
+        }
+    }
+
+    pub fn take_i32(&mut self) -> DecodeResult<i32> {
+        let slice = self.take_slice(4)?;
+        Ok(i32::from_le_bytes(slice.try_into().unwrap()))
+    }
+
+    pub fn take_i64(&mut self) -> DecodeResult<i64> {
+        let slice = self.take_slice(8)?;
+        Ok(i64::from_le_bytes(slice.try_into().unwrap()))
+    }
+
+    pub fn take_big_int(&mut self, sign: Sign, length: Length) -> DecodeResult<BigInt> {
+        let size = length.decode(self)?;
+        let slice = self.take_slice(size)?;
+        Ok(BigInt::from_bytes_le(sign, slice))
+    }
+
+    pub fn take_f64(&mut self) -> DecodeResult<f64> {
+        let slice = self.take_slice(8)?;
+        Ok(f64::from_le_bytes(slice.try_into().unwrap()))
+    }
+
+    pub fn eof(&self) -> DecodeError {
+        self.error(DecodeErrorType::EOF)
+    }
+
+    pub fn error(&self, error_type: DecodeErrorType) -> DecodeError {
+        DecodeError::new(self.index, error_type)
+    }
+}
+
+impl<'b> Iterator for Decoder<'b> {
+    type Item = u8;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(byte) = self.bytes.get(self.index) {
+            self.index += 1;
+            Some(*byte)
+        } else {
+            None
+        }
+    }
+}
