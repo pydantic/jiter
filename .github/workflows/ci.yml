@@ -19,7 +19,7 @@ jobs:
       - name: set up python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.13"
 
       - name: resolve MSRV
         id: resolve-msrv
@@ -47,7 +47,7 @@ jobs:
       - name: set up python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.13"
 
       - uses: dtolnay/rust-toolchain@master
         with:
@@ -94,7 +94,7 @@ jobs:
       - name: set up python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.13"
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -128,7 +128,7 @@ jobs:
       - name: set up python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.13"
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -226,6 +226,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
       - uses: moonrepo/setup-rust@v1
         with:
           channel: stable
@@ -245,6 +250,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
       - uses: PyO3/maturin-action@v1
         with:
           # version pinned until https://github.com/PyO3/maturin/issues/2154 is fixed
@@ -329,7 +338,7 @@ jobs:
       - name: set up python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.13"
           architecture: ${{ matrix.python-architecture || 'x64' }}
 
       - name: build wheels
@@ -544,7 +553,7 @@ jobs:
       - name: set up python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.13"
 
       - name: get dist artifacts
         uses: actions/download-artifact@v4
@@ -603,7 +612,7 @@ jobs:
       - name: set up python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.13"
 
       - name: get dist artifacts
         uses: actions/download-artifact@v4
