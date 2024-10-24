@@ -587,7 +587,7 @@ jobs:
     environment: release
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: install rust stable
         uses: dtolnay/rust-toolchain@stable
