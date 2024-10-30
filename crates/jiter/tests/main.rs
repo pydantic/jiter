@@ -1645,7 +1645,7 @@ fn jiter_partial_string() {
 fn jiter_partial_float_period() {
     let mut jiter = Jiter::new(b"[1.")
         .with_allow_partial_strings()
-        .with_allow_trailing_float_period();
+        .with_allow_partial_float_period();
     assert_eq!(jiter.next_array().unwrap(), Some(Peek::new(b'1')));
     assert_eq!(jiter.next_float().unwrap(), 1.0);
     let e = jiter.array_step().unwrap_err();

@@ -64,9 +64,7 @@ impl LosslessFloat {
 
     fn __float__(&self) -> PyResult<f64> {
         let bytes = &self.0;
-        let mut jiter = Jiter::new(bytes)
-            .with_allow_inf_nan()
-            .with_allow_trailing_float_period();
+        let mut jiter = Jiter::new(bytes).with_allow_inf_nan().with_allow_partial_float_period();
         let f = jiter
             .next_float()
             .map_err(|e| PyValueError::new_err(e.description(&jiter)))?;

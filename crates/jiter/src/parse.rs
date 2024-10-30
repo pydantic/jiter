@@ -213,9 +213,9 @@ impl<'j> Parser<'j> {
         &mut self,
         first: u8,
         allow_inf_nan: bool,
-        allow_trailing_float_period: bool,
+        allow_partial_float_period: bool,
     ) -> JsonResult<D::Output> {
-        let (output, index) = D::decode(self.data, self.index, first, allow_inf_nan, allow_trailing_float_period)?;
+        let (output, index) = D::decode(self.data, self.index, first, allow_inf_nan, allow_partial_float_period)?;
         self.index = index;
         Ok(output)
     }

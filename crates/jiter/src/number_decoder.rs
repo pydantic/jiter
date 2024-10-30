@@ -17,7 +17,7 @@ pub trait AbstractNumberDecoder {
         index: usize,
         first: u8,
         allow_inf_nan: bool,
-        allow_trailing_float_period: bool,
+        allow_partial_float_period: bool,
     ) -> JsonResult<(Self::Output, usize)>;
 }
 
@@ -66,7 +66,7 @@ impl AbstractNumberDecoder for NumberInt {
         index: usize,
         first: u8,
         _allow_inf_nan: bool,
-        _allow_trailing_float_period: bool,
+        _allow_partial_float_period: bool,
     ) -> JsonResult<(Self::Output, usize)> {
         let (int_parse, index) = IntParse::parse(data, index, first)?;
         match int_parse {
@@ -86,7 +86,7 @@ impl AbstractNumberDecoder for NumberFloat {
         mut index: usize,
         first: u8,
         allow_inf_nan: bool,
-        allow_trailing_float_period: bool,
+        allow_partial_float_period: bool,
     ) -> JsonResult<(Self::Output, usize)> {
         let start = index;
 
@@ -105,19 +105,23 @@ impl AbstractNumberDecoder for NumberFloat {
             if INT_CHAR_MAP[*digit as usize] {
                 const JSON: u128 = lexical_format::JSON;
                 let options = ParseFloatOptions::new();
-                let mut slice = &data[start..];
-                let mut offset = 0;
-                if allow_trailing_float_period && slice.last() == Some(&b'.') {
-                    // lexical doesn't allow trailing periods, so we remove it
-                    slice = &slice[..slice.len() - 1];
-                    offset = 1;
+
+                let mut result = f64::from_lexical_partial_with_options::<JSON>(&data[start..], &options);
+
+                if allow_partial_float_period
+                    && matches!(result, Err(lexical_parse_float::Error::EmptyFraction(idx)) if start + idx == data.len())
+                {
+                    let parse_end = data.len() - 1;
+                    result = f64::from_lexical_with_options::<JSON>(&data[start..parse_end], &options)
+                        .map(|value| (value, data.len()));
                 }
-                match f64::from_lexical_partial_with_options::<JSON>(slice, &options) {
-                    Ok((float, index)) => Ok((float, index + start + offset)),
+
+                match result {
+                    Ok((float, index)) => Ok((float, index + start)),
                     Err(_) => {
                         // it's impossible to work out the right error from LexicalError here, so we parse again
                         // with NumberRange and use that error
-                        match NumberRange::decode(data, start, first, allow_inf_nan, allow_trailing_float_period) {
+                        match NumberRange::decode(data, start, first, allow_inf_nan, allow_partial_float_period) {
                             Err(e) => Err(e),
                             // NumberRange should always raise an error if `parse_partial_with_options`
                             // except for Infinity and -Infinity, which are handled above
@@ -441,7 +445,7 @@ impl AbstractNumberDecoder for NumberRange {
         mut index: usize,
         first: u8,
         allow_inf_nan: bool,
-        allow_trailing_float_period: bool,
+        allow_partial_float_period: bool,
     ) -> JsonResult<(Self::Output, usize)> {
         let start = index;
 
@@ -465,8 +469,7 @@ impl AbstractNumberDecoder for NumberRange {
                 return match data.get(index) {
                     Some(b'.') => {
                         index += 1;
-                        let end = consume_decimal(data, index, allow_trailing_float_period)?;
-                        dbg!(&data[start..end]);
+                        let end = consume_decimal(data, index, allow_partial_float_period)?;
                         Ok((Self::float(start..end), end))
                     }
                     Some(b'e' | b'E') => {
@@ -495,8 +498,7 @@ impl AbstractNumberDecoder for NumberRange {
                     continue;
                 } else if matches!(digit, b'.') {
                     index += 1;
-                    let end = consume_decimal(data, index, allow_trailing_float_period)?;
-                    dbg!(&data[start..end]);
+                    let end = consume_decimal(data, index, allow_partial_float_period)?;
                     return Ok((Self::float(start..end), end));
                 } else if matches!(digit, b'e' | b'E') {
                     index += 1;
@@ -521,8 +523,7 @@ impl AbstractNumberDecoder for NumberRange {
                     return match data.get(new_index) {
                         Some(b'.') => {
                             index = new_index + 1;
-                            let end = consume_decimal(data, index, allow_trailing_float_period)?;
-                            dbg!(&data[start..end]);
+                            let end = consume_decimal(data, index, allow_partial_float_period)?;
                             Ok((Self::float(start..end), end))
                         }
                         _ => {
@@ -565,12 +566,12 @@ fn consume_exponential(data: &[u8], mut index: usize) -> JsonResult<usize> {
     Ok(index)
 }
 
-fn consume_decimal(data: &[u8], mut index: usize, allow_trailing_float_period: bool) -> JsonResult<usize> {
+fn consume_decimal(data: &[u8], mut index: usize, allow_partial_float_period: bool) -> JsonResult<usize> {
     match data.get(index) {
         Some(v) if v.is_ascii_digit() => (),
         Some(_) => return json_err!(InvalidNumber, index),
         None => {
-            return if allow_trailing_float_period {
+            return if allow_partial_float_period {
                 Ok(index)
             } else {
                 json_err!(EofWhileParsingValue, index)
