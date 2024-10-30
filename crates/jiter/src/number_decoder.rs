@@ -112,8 +112,8 @@ impl AbstractNumberDecoder for NumberFloat {
                     && matches!(result, Err(lexical_parse_float::Error::EmptyFraction(idx)) if start + idx == data.len())
                 {
                     let parse_end = data.len() - 1;
-                    result = f64::from_lexical_with_options::<JSON>(&data[start..parse_end], &options)
-                        .map(|value| (value, data.len()));
+                    result = f64::from_lexical_partial_with_options::<JSON>(&data[start..parse_end], &options)
+                        .map(|(value, _)| (value, data.len()));
                 }
 
                 match result {
