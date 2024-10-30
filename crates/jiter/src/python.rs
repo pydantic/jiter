@@ -166,7 +166,13 @@ impl<'j, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: Ma
                 }
                 Ok(dict.into_any())
             }
-            _ => ParseNumber::parse_number(py, &mut self.parser, peek, self.allow_inf_nan),
+            _ => ParseNumber::parse_number(
+                py,
+                &mut self.parser,
+                peek,
+                self.allow_inf_nan,
+                self.partial_mode.is_active(),
+            ),
         }
     }
 
@@ -326,6 +332,7 @@ trait MaybeParseNumber {
         parser: &mut Parser,
         peek: Peek,
         allow_inf_nan: bool,
+        allow_trailing_period: bool,
     ) -> JsonResult<Bound<'py, PyAny>>;
 }
 
@@ -337,8 +344,9 @@ impl MaybeParseNumber for ParseNumberLossy {
         parser: &mut Parser,
         peek: Peek,
         allow_inf_nan: bool,
+        allow_trailing_period: bool,
     ) -> JsonResult<Bound<'py, PyAny>> {
-        match parser.consume_number::<NumberAny>(peek.into_inner(), allow_inf_nan) {
+        match parser.consume_number::<NumberAny>(peek.into_inner(), allow_inf_nan, allow_trailing_period) {
             Ok(number) => Ok(number.to_object(py).into_bound(py)),
             Err(e) => {
                 if !peek.is_num() {
@@ -359,12 +367,13 @@ impl MaybeParseNumber for ParseNumberLossless {
         parser: &mut Parser,
         peek: Peek,
         allow_inf_nan: bool,
+        allow_trailing_period: bool,
     ) -> JsonResult<Bound<'py, PyAny>> {
-        match parser.consume_number::<NumberRange>(peek.into_inner(), allow_inf_nan) {
+        match parser.consume_number::<NumberRange>(peek.into_inner(), allow_inf_nan, allow_trailing_period) {
             Ok(number_range) => {
                 let bytes = parser.slice(number_range.range).unwrap();
                 let obj = if number_range.is_int {
-                    NumberAny::decode(bytes, 0, peek.into_inner(), allow_inf_nan)?
+                    NumberAny::decode(bytes, 0, peek.into_inner(), allow_inf_nan, allow_trailing_period)?
                         .0
                         .to_object(py)
                 } else {
@@ -391,12 +400,13 @@ impl MaybeParseNumber for ParseNumberDecimal {
         parser: &mut Parser,
         peek: Peek,
         allow_inf_nan: bool,
+        allow_trailing_period: bool,
     ) -> JsonResult<Bound<'py, PyAny>> {
-        match parser.consume_number::<NumberRange>(peek.into_inner(), allow_inf_nan) {
+        match parser.consume_number::<NumberRange>(peek.into_inner(), allow_inf_nan, allow_trailing_period) {
             Ok(number_range) => {
                 let bytes = parser.slice(number_range.range).unwrap();
                 if number_range.is_int {
-                    let obj = NumberAny::decode(bytes, 0, peek.into_inner(), allow_inf_nan)?
+                    let obj = NumberAny::decode(bytes, 0, peek.into_inner(), allow_inf_nan, allow_trailing_period)?
                         .0
                         .to_object(py);
                     Ok(obj.into_bound(py))

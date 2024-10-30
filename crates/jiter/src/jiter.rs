@@ -15,6 +15,7 @@ pub struct Jiter<'j> {
     tape: Tape,
     allow_inf_nan: bool,
     allow_partial_strings: bool,
+    allow_trailing_float_period: bool,
 }
 
 impl Clone for Jiter<'_> {
@@ -26,6 +27,7 @@ impl Clone for Jiter<'_> {
             tape: Tape::default(),
             allow_inf_nan: self.allow_inf_nan,
             allow_partial_strings: self.allow_partial_strings,
+            allow_trailing_float_period: self.allow_trailing_float_period,
         }
     }
 }
@@ -43,6 +45,7 @@ impl<'j> Jiter<'j> {
             tape: Tape::default(),
             allow_inf_nan: false,
             allow_partial_strings: false,
+            allow_trailing_float_period: false,
         }
     }
 
@@ -53,6 +56,11 @@ impl<'j> Jiter<'j> {
 
     pub fn with_allow_partial_strings(mut self) -> Self {
         self.allow_partial_strings = true;
+        self
+    }
+
+    pub fn with_allow_trailing_float_period(mut self) -> Self {
+        self.allow_trailing_float_period = true;
         self
     }
 
@@ -135,7 +143,7 @@ impl<'j> Jiter<'j> {
     /// Knowing the next value is a number, parse it.
     pub fn known_number(&mut self, peek: Peek) -> JiterResult<NumberAny> {
         self.parser
-            .consume_number::<NumberAny>(peek.into_inner(), self.allow_inf_nan)
+            .consume_number::<NumberAny>(peek.into_inner(), self.allow_inf_nan, self.allow_trailing_float_period)
             .map_err(|e| self.maybe_number_error(e, JsonType::Int, peek))
     }
 
@@ -148,7 +156,7 @@ impl<'j> Jiter<'j> {
     /// Knowing the next value is an integer, parse it.
     pub fn known_int(&mut self, peek: Peek) -> JiterResult<NumberInt> {
         self.parser
-            .consume_number::<NumberInt>(peek.into_inner(), self.allow_inf_nan)
+            .consume_number::<NumberInt>(peek.into_inner(), self.allow_inf_nan, self.allow_trailing_float_period)
             .map_err(|e| {
                 if e.error_type == JsonErrorType::FloatExpectingInt {
                     JiterError::wrong_type(JsonType::Int, JsonType::Float, self.parser.index)
@@ -167,7 +175,7 @@ impl<'j> Jiter<'j> {
     /// Knowing the next value is a float, parse it.
     pub fn known_float(&mut self, peek: Peek) -> JiterResult<f64> {
         self.parser
-            .consume_number::<NumberFloat>(peek.into_inner(), self.allow_inf_nan)
+            .consume_number::<NumberFloat>(peek.into_inner(), self.allow_inf_nan, self.allow_trailing_float_period)
             .map_err(|e| self.maybe_number_error(e, JsonType::Float, peek))
     }
 
@@ -179,10 +187,11 @@ impl<'j> Jiter<'j> {
 
     /// Knowing the next value is a number, parse it and return bytes from the original JSON data.
     fn known_number_bytes(&mut self, peek: Peek) -> JiterResult<&[u8]> {
-        match self
-            .parser
-            .consume_number::<NumberRange>(peek.into_inner(), self.allow_inf_nan)
-        {
+        match self.parser.consume_number::<NumberRange>(
+            peek.into_inner(),
+            self.allow_inf_nan,
+            self.allow_trailing_float_period,
+        ) {
             Ok(numbe_range) => Ok(&self.data[numbe_range.range]),
             Err(e) => Err(self.maybe_number_error(e, JsonType::Float, peek)),
         }
@@ -377,11 +386,12 @@ impl<'j> Jiter<'j> {
 
     fn wrong_num(&self, first: u8, expected: JsonType) -> JiterError {
         let mut parser2 = self.parser.clone();
-        let actual = match parser2.consume_number::<NumberAny>(first, self.allow_inf_nan) {
-            Ok(NumberAny::Int { .. }) => JsonType::Int,
-            Ok(NumberAny::Float { .. }) => JsonType::Float,
-            Err(e) => return e.into(),
-        };
+        let actual =
+            match parser2.consume_number::<NumberAny>(first, self.allow_inf_nan, self.allow_trailing_float_period) {
+                Ok(NumberAny::Int { .. }) => JsonType::Int,
+                Ok(NumberAny::Float { .. }) => JsonType::Float,
+                Err(e) => return e.into(),
+            };
         JiterError::wrong_type(expected, actual, self.parser.index)
     }
 

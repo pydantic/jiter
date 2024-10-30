@@ -65,7 +65,9 @@ def test_extracted_value_error():
 def test_partial_array():
     json = b'["string", true, null, 1, "foo'
 
-    with pytest.raises(ValueError, match='EOF while parsing a string at line 1 column 30'):
+    with pytest.raises(
+        ValueError, match="EOF while parsing a string at line 1 column 30"
+    ):
         jiter.from_json(json, partial_mode=False)
 
     parsed = jiter.from_json(json, partial_mode=True)
@@ -79,12 +81,12 @@ def test_partial_array():
 
 def test_partial_array_trailing_strings():
     json = b'["string", true, null, 1, "foo'
-    parsed = jiter.from_json(json, partial_mode='trailing-strings')
+    parsed = jiter.from_json(json, partial_mode="trailing-strings")
     assert parsed == ["string", True, None, 1, "foo"]
 
     # test that stopping at every points is ok
     for i in range(1, len(json)):
-        parsed = jiter.from_json(json[:i], partial_mode='trailing-strings')
+        parsed = jiter.from_json(json[:i], partial_mode="trailing-strings")
         assert isinstance(parsed, list)
 
 
@@ -97,7 +99,7 @@ def test_partial_array_first():
         jiter.from_json(json)
 
     with pytest.raises(ValueError, match="EOF while parsing a list at line 1 column 1"):
-        jiter.from_json(json, partial_mode='off')
+        jiter.from_json(json, partial_mode="off")
 
 
 def test_partial_object():
@@ -115,7 +117,7 @@ def test_partial_object_string():
     json = b'{"a": 1, "b": 2, "c": "foo'
     parsed = jiter.from_json(json, partial_mode=True)
     assert parsed == {"a": 1, "b": 2}
-    parsed = jiter.from_json(json, partial_mode='on')
+    parsed = jiter.from_json(json, partial_mode="on")
     assert parsed == {"a": 1, "b": 2}
 
     # test that stopping at every points is ok
@@ -130,7 +132,7 @@ def test_partial_object_string():
 
 def test_partial_object_string_trailing_strings():
     json = b'{"a": 1, "b": 2, "c": "foo'
-    parsed = jiter.from_json(json, partial_mode='trailing-strings')
+    parsed = jiter.from_json(json, partial_mode="trailing-strings")
     assert parsed == {"a": 1, "b": 2, "c": "foo"}
 
     # test that stopping at every points is ok
@@ -139,8 +141,19 @@ def test_partial_object_string_trailing_strings():
         assert isinstance(parsed, dict)
 
     json = b'{"title": "Pride and Prejudice", "author": "Jane A'
-    parsed = jiter.from_json(json, partial_mode='trailing-strings')
+    parsed = jiter.from_json(json, partial_mode="trailing-strings")
     assert parsed == {"title": "Pride and Prejudice", "author": "Jane A"}
+
+
+def test_partial_float():
+    json = b'{"a": 1.2, "b": 2.3, "c": 3.'
+    parsed = jiter.from_json(json, partial_mode=True)
+    assert parsed == {"a": 1.2, "b": 2.3, "c": 3.0}
+
+    # test that stopping at every points is ok
+    for i in range(1, len(json)):
+        parsed = jiter.from_json(json[:i], partial_mode=True)
+        assert isinstance(parsed, dict)
 
 
 def test_partial_nested():
@@ -157,14 +170,16 @@ def test_partial_nested():
 def test_partial_error():
     json = b'["string", true, null, 1, "foo'
 
-    with pytest.raises(ValueError, match='EOF while parsing a string at line 1 column 30'):
+    with pytest.raises(
+        ValueError, match="EOF while parsing a string at line 1 column 30"
+    ):
         jiter.from_json(json, partial_mode=False)
 
     assert jiter.from_json(json, partial_mode=True) == ["string", True, None, 1]
 
     msg = "Invalid partial mode, should be `'off'`, `'on'`, `'trailing-strings'` or a `bool`"
     with pytest.raises(ValueError, match=msg):
-        jiter.from_json(json, partial_mode='wrong')
+        jiter.from_json(json, partial_mode="wrong")
     with pytest.raises(TypeError, match=msg):
         jiter.from_json(json, partial_mode=123)
 
@@ -215,94 +230,93 @@ def test_unicode_cache():
 
 
 def test_json_float():
-    f = jiter.LosslessFloat(b'123.45')
-    assert str(f) == '123.45'
-    assert repr(f) == 'LosslessFloat(123.45)'
+    f = jiter.LosslessFloat(b"123.45")
+    assert str(f) == "123.45"
+    assert repr(f) == "LosslessFloat(123.45)"
     assert float(f) == 123.45
-    assert f.as_decimal() == Decimal('123.45')
-    assert bytes(f) == b'123.45'
+    assert f.as_decimal() == Decimal("123.45")
+    assert bytes(f) == b"123.45"
 
 
 def test_json_float_scientific():
-    f = jiter.LosslessFloat(b'123e4')
-    assert str(f) == '123e4'
+    f = jiter.LosslessFloat(b"123e4")
+    assert str(f) == "123e4"
     assert float(f) == 123e4
-    assert f.as_decimal() == Decimal('123e4')
+    assert f.as_decimal() == Decimal("123e4")
 
 
 def test_json_float_invalid():
-    with pytest.raises(ValueError, match='trailing characters at line 1 column 6'):
-        jiter.LosslessFloat(b'123.4x')
+    with pytest.raises(ValueError, match="trailing characters at line 1 column 6"):
+        jiter.LosslessFloat(b"123.4x")
 
 
 def test_lossless_floats():
-    f = jiter.from_json(b'12.3')
+    f = jiter.from_json(b"12.3")
     assert isinstance(f, float)
     assert f == 12.3
 
-    f = jiter.from_json(b'12.3', float_mode='float')
+    f = jiter.from_json(b"12.3", float_mode="float")
     assert isinstance(f, float)
     assert f == 12.3
 
-    f = jiter.from_json(b'12.3', float_mode='lossless-float')
+    f = jiter.from_json(b"12.3", float_mode="lossless-float")
     assert isinstance(f, jiter.LosslessFloat)
-    assert str(f) == '12.3'
+    assert str(f) == "12.3"
     assert float(f) == 12.3
-    assert f.as_decimal() == Decimal('12.3')
+    assert f.as_decimal() == Decimal("12.3")
 
-    f = jiter.from_json(b'123.456789123456789e45', float_mode='lossless-float')
+    f = jiter.from_json(b"123.456789123456789e45", float_mode="lossless-float")
     assert isinstance(f, jiter.LosslessFloat)
     assert 123e45 < float(f) < 124e45
-    assert f.as_decimal() == Decimal('1.23456789123456789E+47')
-    assert bytes(f) == b'123.456789123456789e45'
-    assert str(f) == '123.456789123456789e45'
-    assert repr(f) == 'LosslessFloat(123.456789123456789e45)'
+    assert f.as_decimal() == Decimal("1.23456789123456789E+47")
+    assert bytes(f) == b"123.456789123456789e45"
+    assert str(f) == "123.456789123456789e45"
+    assert repr(f) == "LosslessFloat(123.456789123456789e45)"
 
-    f = jiter.from_json(b'123', float_mode='lossless-float')
+    f = jiter.from_json(b"123", float_mode="lossless-float")
     assert isinstance(f, int)
     assert f == 123
 
-    with pytest.raises(ValueError, match='expected value at line 1 column 1'):
-        jiter.from_json(b'wrong', float_mode='lossless-float')
+    with pytest.raises(ValueError, match="expected value at line 1 column 1"):
+        jiter.from_json(b"wrong", float_mode="lossless-float")
 
-    with pytest.raises(ValueError, match='trailing characters at line 1 column 2'):
-        jiter.from_json(b'1wrong', float_mode='lossless-float')
-
+    with pytest.raises(ValueError, match="trailing characters at line 1 column 2"):
+        jiter.from_json(b"1wrong", float_mode="lossless-float")
 
 
 def test_decimal_floats():
-    f = jiter.from_json(b'12.3')
+    f = jiter.from_json(b"12.3")
     assert isinstance(f, float)
     assert f == 12.3
 
-    f = jiter.from_json(b'12.3', float_mode='decimal')
+    f = jiter.from_json(b"12.3", float_mode="decimal")
     assert isinstance(f, Decimal)
-    assert f == Decimal('12.3')
+    assert f == Decimal("12.3")
 
-    f = jiter.from_json(b'123.456789123456789e45', float_mode='decimal')
+    f = jiter.from_json(b"123.456789123456789e45", float_mode="decimal")
     assert isinstance(f, Decimal)
-    assert f == Decimal('1.23456789123456789E+47')
+    assert f == Decimal("1.23456789123456789E+47")
 
-    f = jiter.from_json(b'123', float_mode='decimal')
+    f = jiter.from_json(b"123", float_mode="decimal")
     assert isinstance(f, int)
     assert f == 123
 
-    with pytest.raises(ValueError, match='expected value at line 1 column 1'):
-        jiter.from_json(b'wrong', float_mode='decimal')
+    with pytest.raises(ValueError, match="expected value at line 1 column 1"):
+        jiter.from_json(b"wrong", float_mode="decimal")
 
-    with pytest.raises(ValueError, match='trailing characters at line 1 column 2'):
-        jiter.from_json(b'1wrong', float_mode='decimal')
+    with pytest.raises(ValueError, match="trailing characters at line 1 column 2"):
+        jiter.from_json(b"1wrong", float_mode="decimal")
 
 
 def test_unicode_roundtrip():
-    original = ['中文']
+    original = ["中文"]
     json_data = json.dumps(original).encode()
     assert jiter.from_json(json_data) == original
     assert json.loads(json_data) == original
 
 
 def test_unicode_roundtrip_ensure_ascii():
-    original = {'name': '中文'}
+    original = {"name": "中文"}
     json_data = json.dumps(original, ensure_ascii=False).encode()
     assert jiter.from_json(json_data, cache_mode=False) == original
     assert json.loads(json_data) == original
@@ -311,8 +325,12 @@ def test_unicode_roundtrip_ensure_ascii():
 def test_catch_duplicate_keys():
     assert jiter.from_json(b'{"foo": 1, "foo": 2}') == {"foo": 2}
 
-    with pytest.raises(ValueError, match='Detected duplicate key "foo" at line 1 column 18'):
+    with pytest.raises(
+        ValueError, match='Detected duplicate key "foo" at line 1 column 18'
+    ):
         jiter.from_json(b'{"foo": 1, "foo": 2}', catch_duplicate_keys=True)
 
-    with pytest.raises(ValueError, match='Detected duplicate key "foo" at line 1 column 28'):
+    with pytest.raises(
+        ValueError, match='Detected duplicate key "foo" at line 1 column 28'
+    ):
         jiter.from_json(b'{"foo": 1, "bar": 2, "foo": 2}', catch_duplicate_keys=True)

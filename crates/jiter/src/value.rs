@@ -201,7 +201,7 @@ fn take_value<'j, 's>(
             }
         }
         _ => {
-            let n = parser.consume_number::<NumberAny>(peek.into_inner(), allow_inf_nan);
+            let n = parser.consume_number::<NumberAny>(peek.into_inner(), allow_inf_nan, false);
             match n {
                 Ok(NumberAny::Int(NumberInt::Int(int))) => Ok(JsonValue::Int(int)),
                 #[cfg(feature = "num-bigint")]
@@ -299,7 +299,7 @@ fn take_value_recursive<'j, 's>(
                         }
                         _ => {
                             let n = parser
-                                .consume_number::<NumberAny>(peek.into_inner(), allow_inf_nan)
+                                .consume_number::<NumberAny>(peek.into_inner(), allow_inf_nan, false)
                                 .map_err(|e| {
                                     if !peek.is_num() {
                                         json_error!(ExpectedSomeValue, parser.index)
@@ -377,7 +377,7 @@ fn take_value_recursive<'j, 's>(
                         }
                         _ => {
                             let n = parser
-                                .consume_number::<NumberAny>(peek.into_inner(), allow_inf_nan)
+                                .consume_number::<NumberAny>(peek.into_inner(), allow_inf_nan, false)
                                 .map_err(|e| {
                                     if !peek.is_num() {
                                         json_error!(ExpectedSomeValue, parser.index)
@@ -472,7 +472,7 @@ pub(crate) fn take_value_skip(
             }
         }
         _ => parser
-            .consume_number::<NumberRange>(peek.into_inner(), allow_inf_nan)
+            .consume_number::<NumberRange>(peek.into_inner(), allow_inf_nan, false)
             .map(drop)
             .map_err(|e| {
                 if !peek.is_num() {
@@ -538,7 +538,7 @@ fn take_value_skip_recursive(
             }
             _ => {
                 parser
-                    .consume_number::<NumberRange>(peek.into_inner(), allow_inf_nan)
+                    .consume_number::<NumberRange>(peek.into_inner(), allow_inf_nan, false)
                     .map_err(|e| {
                         if !peek.is_num() {
                             json_error!(ExpectedSomeValue, parser.index)
