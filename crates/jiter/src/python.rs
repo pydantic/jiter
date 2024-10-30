@@ -215,15 +215,7 @@ impl<'j, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: Ma
 
     fn _allow_partial_err(&self, e: &JsonError) -> bool {
         if self.partial_mode.is_active() {
-            matches!(
-                e.error_type,
-                JsonErrorType::EofWhileParsingList
-                    | JsonErrorType::EofWhileParsingObject
-                    | JsonErrorType::EofWhileParsingString
-                    | JsonErrorType::EofWhileParsingValue
-                    | JsonErrorType::ExpectedListCommaOrEnd
-                    | JsonErrorType::ExpectedObjectCommaOrEnd
-            )
+            e.allowed_if_partial()
         } else {
             false
         }

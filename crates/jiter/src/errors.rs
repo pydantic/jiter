@@ -135,6 +135,18 @@ impl JsonError {
         let position = self.get_position(json_data);
         format!("{} at {}", self.error_type, position)
     }
+
+    pub(crate) fn allowed_if_partial(&self) -> bool {
+        matches!(
+            self.error_type,
+            JsonErrorType::EofWhileParsingList
+                | JsonErrorType::EofWhileParsingObject
+                | JsonErrorType::EofWhileParsingString
+                | JsonErrorType::EofWhileParsingValue
+                | JsonErrorType::ExpectedListCommaOrEnd
+                | JsonErrorType::ExpectedObjectCommaOrEnd
+        )
+    }
 }
 
 impl std::fmt::Display for JsonError {

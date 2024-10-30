@@ -1286,7 +1286,7 @@ fn jiter_invalid_numbers_expected_some_value() {
 
 fn value_owned() -> JsonValue<'static> {
     let s = r#"  { "int": 1, "const": true, "float": 1.2, "array": [1, false, null]}"#.to_string();
-    JsonValue::parse_owned(s.as_bytes(), false).unwrap()
+    JsonValue::parse_owned(s.as_bytes(), false, false).unwrap()
 }
 
 #[test]
@@ -1652,4 +1652,80 @@ fn test_unicode_roundtrip() {
     };
     assert_eq!(cow, "中文");
     assert!(matches!(cow, Cow::Owned(_)));
+}
+
+#[test]
+fn test_value_partial_array() {
+    let json_bytes = br#"["string", true, null, 1, "foo"#;
+    let value = JsonValue::parse_with_config(json_bytes, false, true).unwrap();
+    assert_eq!(
+        value,
+        JsonValue::Array(Arc::new(smallvec![
+            JsonValue::Str("string".into()),
+            JsonValue::Bool(true),
+            JsonValue::Null,
+            JsonValue::Int(1),
+            JsonValue::Str("foo".into()),
+        ]))
+    );
+    // test all position in the string
+    for i in 1..json_bytes.len() {
+        let partial_json = &json_bytes[..i];
+        let value = JsonValue::parse_with_config(partial_json, false, true).unwrap();
+        assert!(matches!(value, JsonValue::Array(_)));
+    }
+}
+
+#[test]
+fn test_value_partial_object() {
+    let json_bytes = br#"{"a": "value", "b": true, "c": false, "d": null, "e": 1, "f": 2.22, "g": ["#;
+    let value = JsonValue::parse_with_config(json_bytes, false, true).unwrap();
+    let obj = match value {
+        JsonValue::Object(obj) => obj,
+        _ => panic!("expected object"),
+    };
+    assert_eq!(obj.len(), 7);
+    let pairs = obj.iter().collect::<Vec<_>>();
+    assert_eq!(pairs[0].clone(), (Cow::Borrowed("a"), JsonValue::Str("value".into())));
+    assert_eq!(pairs[1].clone(), (Cow::Borrowed("b"), JsonValue::Bool(true)));
+    assert_eq!(pairs[2].clone(), (Cow::Borrowed("c"), JsonValue::Bool(false)));
+    assert_eq!(pairs[3].clone(), (Cow::Borrowed("d"), JsonValue::Null));
+    assert_eq!(pairs[4].clone(), (Cow::Borrowed("e"), JsonValue::Int(1)));
+    assert_eq!(pairs[5].clone(), (Cow::Borrowed("f"), JsonValue::Float(2.22)));
+    assert_eq!(
+        pairs[6].clone(),
+        (Cow::Borrowed("g"), JsonValue::Array(Arc::new(smallvec![])))
+    );
+    // test all position in the string
+    for i in 1..json_bytes.len() {
+        let partial_json = &json_bytes[..i];
+        let value = JsonValue::parse_with_config(partial_json, false, true).unwrap();
+        assert!(matches!(value, JsonValue::Object(_)));
+    }
+}
+
+#[test]
+fn test_partial_pass1() {
+    let json = read_file("./benches/pass1.json");
+    let json_bytes = json.as_bytes();
+
+    // test all position in the string
+    for i in 1..json_bytes.len() {
+        let partial_json = &json_bytes[..i];
+        let value = JsonValue::parse_with_config(partial_json, false, true).unwrap();
+        assert!(matches!(value, JsonValue::Array(_)));
+    }
+}
+
+#[test]
+fn test_partial_medium_response() {
+    let json = read_file("./benches/medium_response.json");
+    let json_bytes = json.as_bytes();
+
+    // test all position in the string
+    for i in 1..json_bytes.len() {
+        let partial_json = &json_bytes[..i];
+        let value = JsonValue::parse_with_config(partial_json, false, true).unwrap();
+        assert!(matches!(value, JsonValue::Object(_)));
+    }
 }
