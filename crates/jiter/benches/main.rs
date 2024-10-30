@@ -258,7 +258,7 @@ fn string_array_jiter_value_owned(bench: &mut Bencher) {
     let json = read_file("./benches/string_array.json");
     let json_data = json.as_bytes();
     bench.iter(|| {
-        let v = JsonValue::parse_owned(black_box(json_data), false).unwrap();
+        let v = JsonValue::parse_owned(black_box(json_data), false, false).unwrap();
         black_box(v)
     })
 }
@@ -267,7 +267,7 @@ fn medium_response_jiter_value_owned(bench: &mut Bencher) {
     let json = read_file("./benches/medium_response.json");
     let json_data = json.as_bytes();
     bench.iter(|| {
-        let v = JsonValue::parse_owned(black_box(json_data), false).unwrap();
+        let v = JsonValue::parse_owned(black_box(json_data), false, false).unwrap();
         black_box(v)
     })
 }
