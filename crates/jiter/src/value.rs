@@ -56,12 +56,25 @@ impl<'j> JsonValue<'j> {
     /// Parse a JSON enum from a byte slice, returning a borrowed version of the enum - e.g. strings can be
     /// references into the original byte slice.
     pub fn parse(data: &'j [u8], allow_inf_nan: bool) -> Result<Self, JsonError> {
+        Self::parse_with_config(data, allow_inf_nan, false)
+    }
+
+    pub fn parse_with_config(data: &'j [u8], allow_inf_nan: bool, allow_partial: bool) -> Result<Self, JsonError> {
         let mut parser = Parser::new(data);
 
         let mut tape = Tape::default();
         let peek = parser.peek()?;
-        let v = take_value_borrowed(peek, &mut parser, &mut tape, DEFAULT_RECURSION_LIMIT, allow_inf_nan)?;
-        parser.finish()?;
+        let v = take_value_borrowed(
+            peek,
+            &mut parser,
+            &mut tape,
+            DEFAULT_RECURSION_LIMIT,
+            allow_inf_nan,
+            allow_partial,
+        )?;
+        if !allow_partial {
+            parser.finish()?;
+        }
         Ok(v)
     }
 
@@ -92,12 +105,19 @@ fn value_static(v: JsonValue<'_>) -> JsonValue<'static> {
 
 impl JsonValue<'static> {
     /// Parse a JSON enum from a byte slice, returning an owned version of the enum.
-    pub fn parse_owned(data: &[u8], allow_inf_nan: bool) -> Result<Self, JsonError> {
+    pub fn parse_owned(data: &[u8], allow_inf_nan: bool, allow_partial: bool) -> Result<Self, JsonError> {
         let mut parser = Parser::new(data);
 
         let mut tape = Tape::default();
         let peek = parser.peek()?;
-        let v = take_value_owned(peek, &mut parser, &mut tape, DEFAULT_RECURSION_LIMIT, allow_inf_nan)?;
+        let v = take_value_owned(
+            peek,
+            &mut parser,
+            &mut tape,
+            DEFAULT_RECURSION_LIMIT,
+            allow_inf_nan,
+            allow_partial,
+        )?;
         parser.finish()?;
         Ok(v)
     }
@@ -109,6 +129,7 @@ pub(crate) fn take_value_borrowed<'j>(
     tape: &mut Tape,
     recursion_limit: u8,
     allow_inf_nan: bool,
+    allow_partial: bool,
 ) -> JsonResult<JsonValue<'j>> {
     take_value(
         peek,
@@ -116,6 +137,7 @@ pub(crate) fn take_value_borrowed<'j>(
         tape,
         recursion_limit,
         allow_inf_nan,
+        allow_partial,
         &|s: StringOutput<'_, 'j>| s.into(),
     )
 }
@@ -126,6 +148,7 @@ pub(crate) fn take_value_owned<'j>(
     tape: &mut Tape,
     recursion_limit: u8,
     allow_inf_nan: bool,
+    allow_partial: bool,
 ) -> JsonResult<JsonValue<'static>> {
     take_value(
         peek,
@@ -133,6 +156,7 @@ pub(crate) fn take_value_owned<'j>(
         tape,
         recursion_limit,
         allow_inf_nan,
+        allow_partial,
         &|s: StringOutput<'_, 'j>| Into::<String>::into(s).into(),
     )
 }
@@ -143,6 +167,7 @@ fn take_value<'j, 's>(
     tape: &mut Tape,
     recursion_limit: u8,
     allow_inf_nan: bool,
+    allow_partial: bool,
     create_cow: &impl Fn(StringOutput<'_, 'j>) -> Cow<'s, str>,
 ) -> JsonResult<JsonValue<'s>> {
     match peek {
@@ -159,33 +184,39 @@ fn take_value<'j, 's>(
             Ok(JsonValue::Null)
         }
         Peek::String => {
-            let s: StringOutput<'_, 'j> = parser.consume_string::<StringDecoder>(tape, false)?;
+            let s: StringOutput<'_, 'j> = parser.consume_string::<StringDecoder>(tape, allow_partial)?;
             Ok(JsonValue::Str(create_cow(s)))
         }
         Peek::Array => {
-            // we could do something clever about guessing the size of the array
             let array = Arc::new(SmallVec::new());
-            if let Some(peek_first) = parser.array_first()? {
-                take_value_recursive(
-                    peek_first,
-                    RecursedValue::Array(array),
-                    parser,
-                    tape,
-                    recursion_limit,
-                    allow_inf_nan,
-                    create_cow,
-                )
-            } else {
-                Ok(JsonValue::Array(array))
-            }
+            let peek_first = match parser.array_first() {
+                Ok(Some(peek)) => peek,
+                Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                Ok(None) | Err(_) => return Ok(JsonValue::Array(array)),
+            };
+            take_value_recursive(
+                peek_first,
+                RecursedValue::Array(array),
+                parser,
+                tape,
+                recursion_limit,
+                allow_inf_nan,
+                allow_partial,
+                create_cow,
+            )
         }
         Peek::Object => {
             // same for objects
             let object = Arc::new(LazyIndexMap::new());
-            if let Some(first_key) = parser.object_first::<StringDecoder>(tape)? {
-                let first_key = create_cow(first_key);
-                take_value_recursive(
-                    parser.peek()?,
+            let first_key = match parser.object_first::<StringDecoder>(tape) {
+                Ok(Some(first_key)) => first_key,
+                Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                _ => return Ok(JsonValue::Object(object)),
+            };
+            let first_key = create_cow(first_key);
+            match parser.peek() {
+                Ok(peek) => take_value_recursive(
+                    peek,
                     RecursedValue::Object {
                         partial: object,
                         next_key: first_key,
@@ -194,10 +225,11 @@ fn take_value<'j, 's>(
                     tape,
                     recursion_limit,
                     allow_inf_nan,
+                    allow_partial,
                     create_cow,
-                )
-            } else {
-                Ok(JsonValue::Object(object))
+                ),
+                Err(e) if !(allow_partial && e.allowed_if_partial()) => Err(e),
+                _ => Ok(JsonValue::Object(object)),
             }
         }
         _ => {
@@ -229,6 +261,7 @@ enum RecursedValue<'s> {
 
 #[inline(never)] // this is an iterative algo called only from take_value, no point in inlining
 #[allow(clippy::too_many_lines)] // FIXME?
+#[allow(clippy::too_many_arguments)]
 fn take_value_recursive<'j, 's>(
     mut peek: Peek,
     mut current_recursion: RecursedValue<'s>,
@@ -236,6 +269,7 @@ fn take_value_recursive<'j, 's>(
     tape: &mut Tape,
     recursion_limit: u8,
     allow_inf_nan: bool,
+    allow_partial: bool,
     create_cow: &impl Fn(StringOutput<'_, 'j>) -> Cow<'s, str>,
 ) -> JsonResult<JsonValue<'s>> {
     let recursion_limit: usize = recursion_limit.into();
@@ -257,157 +291,200 @@ fn take_value_recursive<'j, 's>(
             RecursedValue::Array(array) => {
                 let array = Arc::get_mut(array).expect("sole writer");
                 loop {
-                    let value = match peek {
-                        Peek::True => {
-                            parser.consume_true()?;
-                            JsonValue::Bool(true)
-                        }
-                        Peek::False => {
-                            parser.consume_false()?;
-                            JsonValue::Bool(false)
-                        }
-                        Peek::Null => {
-                            parser.consume_null()?;
-                            JsonValue::Null
-                        }
-                        Peek::String => {
-                            let s = parser.consume_string::<StringDecoder>(tape, false)?;
-                            JsonValue::Str(create_cow(s))
-                        }
+                    let result = match peek {
+                        Peek::True => parser.consume_true().map(|()| JsonValue::Bool(true)),
+                        Peek::False => parser.consume_false().map(|()| JsonValue::Bool(false)),
+                        Peek::Null => parser.consume_null().map(|()| JsonValue::Null),
+                        Peek::String => parser
+                            .consume_string::<StringDecoder>(tape, allow_partial)
+                            .map(|s| JsonValue::Str(create_cow(s))),
                         Peek::Array => {
                             let array = Arc::new(SmallVec::new());
-                            if let Some(next_peek) = parser.array_first()? {
-                                push_recursion!(next_peek, RecursedValue::Array(array));
-                                // immediately jump to process the first value in the array
-                                continue 'recursion;
-                            }
-                            JsonValue::Array(array)
+                            match parser.array_first() {
+                                Ok(Some(first_peek)) => {
+                                    push_recursion!(first_peek, RecursedValue::Array(array));
+                                    // immediately jump to process the first value in the array
+                                    continue 'recursion;
+                                }
+                                Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                                _ => (),
+                            };
+                            Ok(JsonValue::Array(array))
                         }
                         Peek::Object => {
                             let object = Arc::new(LazyIndexMap::new());
-                            if let Some(next_key) = parser.object_first::<StringDecoder>(tape)? {
-                                push_recursion!(
-                                    parser.peek()?,
-                                    RecursedValue::Object {
-                                        partial: object,
-                                        next_key: create_cow(next_key)
+                            match parser.object_first::<StringDecoder>(tape) {
+                                Ok(Some(first_key)) => match parser.peek() {
+                                    Ok(peek) => {
+                                        push_recursion!(
+                                            peek,
+                                            RecursedValue::Object {
+                                                partial: object,
+                                                next_key: create_cow(first_key)
+                                            }
+                                        );
+                                        continue 'recursion;
                                     }
-                                );
-                                continue 'recursion;
-                            }
-                            JsonValue::Object(object)
+                                    Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                                    _ => (),
+                                },
+                                Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                                _ => (),
+                            };
+                            Ok(JsonValue::Object(object))
                         }
-                        _ => {
-                            let n = parser
-                                .consume_number::<NumberAny>(peek.into_inner(), allow_inf_nan)
-                                .map_err(|e| {
-                                    if !peek.is_num() {
-                                        json_error!(ExpectedSomeValue, parser.index)
-                                    } else {
-                                        e
-                                    }
-                                })?;
-                            match n {
+                        _ => parser
+                            .consume_number::<NumberAny>(peek.into_inner(), allow_inf_nan)
+                            .map_err(|e| {
+                                if !peek.is_num() {
+                                    json_error!(ExpectedSomeValue, parser.index)
+                                } else {
+                                    e
+                                }
+                            })
+                            .map(|n| match n {
                                 NumberAny::Int(NumberInt::Int(int)) => JsonValue::Int(int),
                                 #[cfg(feature = "num-bigint")]
                                 NumberAny::Int(NumberInt::BigInt(big_int)) => JsonValue::BigInt(big_int),
                                 NumberAny::Float(float) => JsonValue::Float(float),
-                            }
+                            }),
+                    };
+
+                    let array = match result {
+                        Ok(value) => {
+                            // now try to advance position in the current array
+                            match parser.array_step() {
+                                Ok(Some(next_peek)) => {
+                                    array.push(value);
+                                    peek = next_peek;
+                                    // array continuing
+                                    continue;
+                                }
+                                Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                                _ => (),
+                            };
+
+                            let RecursedValue::Array(mut array) = current_recursion else {
+                                unreachable!("known to be in array recursion");
+                            };
+
+                            Arc::get_mut(&mut array).expect("sole writer to value").push(value);
+                            array
+                        }
+                        Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                        _ => {
+                            let RecursedValue::Array(array) = current_recursion else {
+                                unreachable!("known to be in array recursion");
+                            };
+                            array
                         }
                     };
 
-                    // now try to advance position in the current array
-                    if let Some(next_peek) = parser.array_step()? {
-                        array.push(value);
-                        peek = next_peek;
-                        // array continuing
-                        continue;
-                    }
-
-                    let RecursedValue::Array(mut array) = current_recursion else {
-                        unreachable!("known to be in array recursion");
-                    };
-
-                    Arc::get_mut(&mut array).expect("sole writer to value").push(value);
                     break JsonValue::Array(array);
                 }
             }
             RecursedValue::Object { partial, next_key } => {
                 let partial = Arc::get_mut(partial).expect("sole writer");
                 loop {
-                    let value = match peek {
-                        Peek::True => {
-                            parser.consume_true()?;
-                            JsonValue::Bool(true)
-                        }
-                        Peek::False => {
-                            parser.consume_false()?;
-                            JsonValue::Bool(false)
-                        }
-                        Peek::Null => {
-                            parser.consume_null()?;
-                            JsonValue::Null
-                        }
-                        Peek::String => {
-                            let s = parser.consume_string::<StringDecoder>(tape, false)?;
-                            JsonValue::Str(create_cow(s))
-                        }
+                    let result = match peek {
+                        Peek::True => parser.consume_true().map(|()| JsonValue::Bool(true)),
+                        Peek::False => parser.consume_false().map(|()| JsonValue::Bool(false)),
+                        Peek::Null => parser.consume_null().map(|()| JsonValue::Null),
+                        Peek::String => parser
+                            .consume_string::<StringDecoder>(tape, allow_partial)
+                            .map(|s| JsonValue::Str(create_cow(s))),
                         Peek::Array => {
                             let array = Arc::new(SmallVec::new());
-                            if let Some(next_peek) = parser.array_first()? {
-                                push_recursion!(next_peek, RecursedValue::Array(array));
-                                // immediately jump to process the first value in the array
-                                continue 'recursion;
-                            }
-                            JsonValue::Array(array)
+                            match parser.array_first() {
+                                Ok(Some(first_peek)) => {
+                                    push_recursion!(first_peek, RecursedValue::Array(array));
+                                    // immediately jump to process the first value in the array
+                                    continue 'recursion;
+                                }
+                                Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                                _ => (),
+                            };
+                            Ok(JsonValue::Array(array))
                         }
                         Peek::Object => {
                             let object = Arc::new(LazyIndexMap::new());
-                            if let Some(yet_another_key) = parser.object_first::<StringDecoder>(tape)? {
-                                push_recursion!(
-                                    parser.peek()?,
-                                    RecursedValue::Object {
-                                        partial: object,
-                                        next_key: create_cow(yet_another_key)
+                            match parser.object_first::<StringDecoder>(tape) {
+                                Ok(Some(first_key)) => match parser.peek() {
+                                    Ok(peek) => {
+                                        push_recursion!(
+                                            peek,
+                                            RecursedValue::Object {
+                                                partial: object,
+                                                next_key: create_cow(first_key)
+                                            }
+                                        );
+                                        continue 'recursion;
                                     }
-                                );
-                                continue 'recursion;
-                            }
-                            JsonValue::Object(object)
+                                    Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                                    _ => (),
+                                },
+                                Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                                _ => (),
+                            };
+                            Ok(JsonValue::Object(object))
                         }
-                        _ => {
-                            let n = parser
-                                .consume_number::<NumberAny>(peek.into_inner(), allow_inf_nan)
-                                .map_err(|e| {
-                                    if !peek.is_num() {
-                                        json_error!(ExpectedSomeValue, parser.index)
-                                    } else {
-                                        e
-                                    }
-                                })?;
-                            match n {
+                        _ => parser
+                            .consume_number::<NumberAny>(peek.into_inner(), allow_inf_nan)
+                            .map_err(|e| {
+                                if !peek.is_num() {
+                                    json_error!(ExpectedSomeValue, parser.index)
+                                } else {
+                                    e
+                                }
+                            })
+                            .map(|n| match n {
                                 NumberAny::Int(NumberInt::Int(int)) => JsonValue::Int(int),
                                 #[cfg(feature = "num-bigint")]
                                 NumberAny::Int(NumberInt::BigInt(big_int)) => JsonValue::BigInt(big_int),
                                 NumberAny::Float(float) => JsonValue::Float(float),
+                            }),
+                    };
+
+                    let object = match result {
+                        Ok(value) => {
+                            // now try to advance position in the current object
+                            match parser.object_step::<StringDecoder>(tape) {
+                                Ok(Some(yet_another_key)) => {
+                                    match parser.peek() {
+                                        Ok(next_peek) => {
+                                            // object continuing
+                                            partial.insert(
+                                                std::mem::replace(next_key, create_cow(yet_another_key)),
+                                                value,
+                                            );
+                                            peek = next_peek;
+                                            continue;
+                                        }
+                                        Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                                        _ => (),
+                                    };
+                                }
+                                Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                                _ => (),
                             }
+
+                            let RecursedValue::Object { mut partial, next_key } = current_recursion else {
+                                unreachable!("known to be in object recursion");
+                            };
+
+                            Arc::get_mut(&mut partial).expect("sole writer").insert(next_key, value);
+                            partial
+                        }
+                        Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                        _ => {
+                            let RecursedValue::Object { partial, .. } = current_recursion else {
+                                unreachable!("known to be in object recursion");
+                            };
+                            partial
                         }
                     };
 
-                    // now try to advance position in the current object
-                    if let Some(yet_another_key) = parser.object_step::<StringDecoder>(tape)?.map(create_cow) {
-                        // object continuing
-                        partial.insert(std::mem::replace(next_key, yet_another_key), value);
-                        peek = parser.peek()?;
-                        continue;
-                    }
-
-                    let RecursedValue::Object { mut partial, next_key } = current_recursion else {
-                        unreachable!("known to be in object recursion");
-                    };
-
-                    Arc::get_mut(&mut partial).expect("sole writer").insert(next_key, value);
-                    break JsonValue::Object(partial);
+                    break JsonValue::Object(object);
                 }
             }
         };
@@ -424,18 +501,35 @@ fn take_value_recursive<'j, 's>(
             value = match current_recursion {
                 RecursedValue::Array(mut array) => {
                     Arc::get_mut(&mut array).expect("sole writer").push(value);
-                    if let Some(next_peek) = parser.array_step()? {
-                        current_recursion = RecursedValue::Array(array);
-                        break next_peek;
+                    match parser.array_step() {
+                        Ok(Some(next_peek)) => {
+                            current_recursion = RecursedValue::Array(array);
+                            break next_peek;
+                        }
+                        Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                        _ => (),
                     }
                     JsonValue::Array(array)
                 }
                 RecursedValue::Object { mut partial, next_key } => {
                     Arc::get_mut(&mut partial).expect("sole writer").insert(next_key, value);
-                    if let Some(next_key) = parser.object_step::<StringDecoder>(tape)?.map(create_cow) {
-                        current_recursion = RecursedValue::Object { partial, next_key };
-                        break parser.peek()?;
+
+                    match parser.object_step::<StringDecoder>(tape) {
+                        Ok(Some(next_key)) => match parser.peek() {
+                            Ok(next_peek) => {
+                                current_recursion = RecursedValue::Object {
+                                    partial,
+                                    next_key: create_cow(next_key),
+                                };
+                                break next_peek;
+                            }
+                            Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                            _ => (),
+                        },
+                        Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                        _ => (),
                     }
+
                     JsonValue::Object(partial)
                 }
             }

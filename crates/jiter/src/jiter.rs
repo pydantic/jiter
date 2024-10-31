@@ -242,6 +242,7 @@ impl<'j> Jiter<'j> {
             &mut self.tape,
             DEFAULT_RECURSION_LIMIT,
             self.allow_inf_nan,
+            false,
         )
         .map_err(Into::into)
     }
@@ -288,6 +289,7 @@ impl<'j> Jiter<'j> {
             &mut self.tape,
             DEFAULT_RECURSION_LIMIT,
             self.allow_inf_nan,
+            false,
         )
         .map_err(Into::into)
     }
