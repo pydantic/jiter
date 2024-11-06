@@ -104,7 +104,7 @@ jobs:
         run: |
           source <(cargo llvm-cov show-env --export-prefix)
           cargo llvm-cov clean --workspace --profraw-only
-          maturin develop --manifest-path crates/jiter-python/Cargo.toml
+          pip install -e crates/jiter-python --config-settings=build-args='--profile dev'
 
       - name: Run tests
         run: |
