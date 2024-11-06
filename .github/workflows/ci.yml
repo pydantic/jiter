@@ -57,7 +57,6 @@ jobs:
         with:
           toolchain: ${{ matrix.rust-version }}
 
-      - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-llvm-cov
 
@@ -105,13 +104,13 @@ jobs:
         run: |
           source <(cargo llvm-cov show-env --export-prefix)
           cargo llvm-cov clean --workspace --profraw-only
-          pip install -e crates/jiter-python
+          maturin develop --manifest-path crates/jiter-python/Cargo.toml
 
       - name: Run tests
         run: |
           source <(cargo llvm-cov show-env --export-prefix)
           pytest crates/jiter-python/tests
-          python crates/jiter-python/bench.py --fast
+          python crates/jiter-python/bench.py jiter jiter-cache --fast
         env:
           RUST_BACKTRACE: 1
 
@@ -158,9 +157,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@nightly
-      - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@cargo-fuzz
-
+      - id: cache-rust
+        uses: Swatinem/rust-cache@v2
+      - if: steps.cache-rust.outputs.cache-hit != 'true'
+        run: cargo install cargo-fuzz
       - run: |
           # cargo fuzz defaults to musl targets, which is seeming incomatible with sanitizers according to CI failures
           RUST_TARGET=$(rustc -Vv | grep host | cut -d ' ' -f 2)
@@ -176,8 +176,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@nightly
-      - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@cargo-fuzz
+      - id: cache-rust
+        uses: Swatinem/rust-cache@v2
+      - if: steps.cache-rust.outputs.cache-hit != 'true'
+        run: cargo install cargo-fuzz
 
       - run: |
           # cargo fuzz defaults to musl targets, which is seeming incomatible with sanitizers according to CI failures
