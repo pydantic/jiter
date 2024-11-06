@@ -23,7 +23,7 @@ bitvec = "1.0.1"
 [features]
 default = ["num-bigint"]
 python = ["dep:pyo3", "dep:pyo3-build-config"]
-num-bigint = ["dep:num-bigint", "pyo3/num-bigint"]
+num-bigint = ["dep:num-bigint", "pyo3?/num-bigint"]
 
 [dev-dependencies]
 bencher = "0.1.5"
