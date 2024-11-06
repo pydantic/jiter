@@ -148,7 +148,7 @@ impl<'j, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: Ma
                     Ok(None) | Err(_) => return Ok(PyList::empty_bound(py).into_any()),
                 };
 
-                let mut vec: SmallVec<[Bound<'_, PyAny>; 8]> = SmallVec::with_capacity(8);
+                let mut vec: SmallVec<Bound<'_, PyAny>, 8> = SmallVec::with_capacity(8);
                 if let Err(e) = self._parse_array(py, peek_first, &mut vec) {
                     if !self._allow_partial_err(&e) {
                         return Err(e);
@@ -174,7 +174,7 @@ impl<'j, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: Ma
         &mut self,
         py: Python<'py>,
         peek_first: Peek,
-        vec: &mut SmallVec<[Bound<'py, PyAny>; 8]>,
+        vec: &mut SmallVec<Bound<'py, PyAny>, 8>,
     ) -> JsonResult<()> {
         let v = self._check_take_value(py, peek_first)?;
         vec.push(v);
