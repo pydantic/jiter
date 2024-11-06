@@ -25,20 +25,24 @@ jobs:
         id: resolve-msrv
         run: echo MSRV=`python -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["rust-version"])'` >> $GITHUB_OUTPUT
 
-  test-linux:
+  test:
     needs: [resolve]
-    name: test rust-${{ matrix.rust-version }} on linux
+    name: test rust-${{ matrix.rust-version }} on ${{ matrix.runs-on }}
     strategy:
       fail-fast: false
       matrix:
-        rust-version: [stable, nightly]
+        rust-version: [stable]
+        runs-on: [ubuntu, macos]
         include:
           - rust-version: ${{ needs.resolve.outputs.MSRV }}
+            runs-on: ubuntu
+          - rust-version: nightly
+            runs-on: ubuntu
 
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runs-on }}-latest
 
     env:
-      RUNS_ON: ubuntu-latest
+      RUNS_ON: ${{ matrix.runs-on }}-latest
       RUST_VERSION: ${{ matrix.rust-version }}
 
     steps:
@@ -53,60 +57,19 @@ jobs:
         with:
           toolchain: ${{ matrix.rust-version }}
 
-      - id: cache-rust
-        uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: "v1-rust"
-
-      - run: cargo install cargo-careful
-        if: steps.cache-rust.outputs.cache-hit != 'true'
-
-      - run: cargo test -F python
-
-      - run: cargo careful t -F python
-        if: matrix.rust-version == 'nightly'
-
+      - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: install cargo-careful
+        if: matrix.rust-version == 'nightly'
+        uses: taiki-e/install-action@cargo-careful
+
+      - if: matrix.rust-version == 'nightly'
+        run: cargo careful t -F python
+
       - run: cargo llvm-cov -F python --codecov --output-path codecov.json
-
-      - uses: codecov/codecov-action@v4
-        with:
-          env_vars: RUNS_ON,RUST_VERSION
-          files: codecov.json
-          token: ${{ secrets.CODECOV_TOKEN }}
-
-  test-macos:
-    name: test on ${{ matrix.runs-on }}
-    strategy:
-      fail-fast: false
-      matrix:
-        runs-on: [macos-latest, macos-latest-xlarge]
-
-    runs-on: ${{ matrix.runs-on }}
-
-    env:
-      RUNS_ON: ${{ matrix.runs-on }}
-      RUST_VERSION: stable
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: set up python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - id: cache-rust
-        uses: Swatinem/rust-cache@v2
-
-      - run: cargo test -F python
         env:
           RUST_BACKTRACE: 1
-
-      - uses: taiki-e/install-action@cargo-llvm-cov
-      - run: cargo llvm-cov -F python --codecov --output-path codecov.json
 
       - uses: codecov/codecov-action@v4
         with:
@@ -131,31 +94,34 @@ jobs:
           python-version: "3.13"
 
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-llvm-cov
 
-      - id: cache-rust
-        uses: Swatinem/rust-cache@v2
+      - name: Install python dependencies
+        run: make python-install
 
-      - run: cargo install rustfilt coverage-prepare
-        if: steps.cache-rust.outputs.cache-hit != 'true'
+      - name: Build jiter-python
+        run: |
+          source <(cargo llvm-cov show-env --export-prefix)
+          cargo llvm-cov clean --workspace --profraw-only
+          pip install -e crates/jiter-python --config-settings=build-args='--profile dev'
 
-      - run: rustup component add llvm-tools-preview
-
-      - run: make python-install
-
-      - run: pip install -e crates/jiter-python
-        env:
-          RUSTFLAGS: "-C instrument-coverage"
-
-      - run: pytest crates/jiter-python/tests
+      - name: Run tests
+        run: |
+          source <(cargo llvm-cov show-env --export-prefix)
+          pytest crates/jiter-python/tests
+          python crates/jiter-python/bench.py jiter jiter-cache --fast
         env:
           RUST_BACKTRACE: 1
 
-      - run: python crates/jiter-python/bench.py --fast
-
-      - run: coverage-prepare lcov $(python -c 'import jiter.jiter;print(jiter.jiter.__file__)')
+      - name: Coverage report
+        run: |
+          source <(cargo llvm-cov show-env --export-prefix)
+          cargo llvm-cov report --codecov --output-path codecov.json
 
       - uses: codecov/codecov-action@v4
         with:
+          files: codecov.json
           token: ${{ secrets.CODECOV_TOKEN }}
 
   bench:
@@ -183,19 +149,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runs-on: [ubuntu-latest, macos-latest-xlarge]
+        runs-on: [ubuntu, macos]
 
-    runs-on: ${{ matrix.runs-on }}
+    runs-on: ${{ matrix.runs-on }}-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: moonrepo/setup-rust@v1
-        with:
-          channel: nightly
-          cache-target: release
-          bins: cargo-fuzz
-
+      - uses: dtolnay/rust-toolchain@nightly
+      - id: cache-rust
+        uses: Swatinem/rust-cache@v2
+      - if: steps.cache-rust.outputs.cache-hit != 'true'
+        run: cargo install cargo-fuzz
       - run: |
           # cargo fuzz defaults to musl targets, which is seeming incomatible with sanitizers according to CI failures
           RUST_TARGET=$(rustc -Vv | grep host | cut -d ' ' -f 2)
@@ -210,11 +175,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: moonrepo/setup-rust@v1
-        with:
-          channel: nightly
-          cache-target: release
-          bins: cargo-fuzz
+      - uses: dtolnay/rust-toolchain@nightly
+      - id: cache-rust
+        uses: Swatinem/rust-cache@v2
+      - if: steps.cache-rust.outputs.cache-hit != 'true'
+        run: cargo install cargo-fuzz
 
       - run: |
           # cargo fuzz defaults to musl targets, which is seeming incomatible with sanitizers according to CI failures
@@ -231,10 +196,11 @@ jobs:
         with:
           python-version: "3.13"
 
-      - uses: moonrepo/setup-rust@v1
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          channel: stable
-          components: rustfmt, clippy
+          components: rustfmt,clippy
+
+      - uses: Swatinem/rust-cache@v2
 
       - uses: pre-commit/action@v3.0.0
         with:
@@ -572,7 +538,7 @@ jobs:
   # https://github.com/marketplace/actions/alls-green#why used for branch protection checks
   check:
     if: always()
-    needs: [test-linux, test-macos, test-python, bench, fuzz, fuzz-skip, lint]
+    needs: [test, test-python, bench, fuzz, fuzz-skip, lint]
     runs-on: ubuntu-latest
     steps:
       - name: Decide whether the needed jobs succeeded or failed
