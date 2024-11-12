@@ -15,7 +15,7 @@ use crate::parse::{Parser, Peek};
 use crate::py_lossless_float::{get_decimal_type, FloatMode};
 use crate::py_string_cache::{StringCacheAll, StringCacheKeys, StringCacheMode, StringMaybeCache, StringNoCache};
 use crate::string_decoder::{StringDecoder, Tape};
-use crate::{JsonErrorType, LosslessFloat};
+use crate::{JsonErrorType, LosslessFloat, PartialMode};
 
 #[derive(Default)]
 #[allow(clippy::struct_excessive_bools)]
@@ -234,19 +234,6 @@ impl<'j, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: Ma
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum PartialMode {
-    Off,
-    On,
-    TrailingStrings,
-}
-
-impl Default for PartialMode {
-    fn default() -> Self {
-        Self::Off
-    }
-}
-
 const PARTIAL_ERROR: &str = "Invalid partial mode, should be `'off'`, `'on'`, `'trailing-strings'` or a `bool`";
 
 impl<'py> FromPyObject<'py> for PartialMode {
@@ -263,26 +250,6 @@ impl<'py> FromPyObject<'py> for PartialMode {
         } else {
             Err(PyTypeError::new_err(PARTIAL_ERROR))
         }
-    }
-}
-
-impl From<bool> for PartialMode {
-    fn from(mode: bool) -> Self {
-        if mode {
-            Self::On
-        } else {
-            Self::Off
-        }
-    }
-}
-
-impl PartialMode {
-    fn is_active(self) -> bool {
-        !matches!(self, Self::Off)
-    }
-
-    fn allow_trailing_str(self) -> bool {
-        matches!(self, Self::TrailingStrings)
     }
 }
 

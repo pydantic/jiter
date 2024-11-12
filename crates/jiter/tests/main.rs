@@ -10,7 +10,7 @@ use smallvec::smallvec;
 
 use jiter::{
     Jiter, JiterErrorType, JiterResult, JsonErrorType, JsonType, JsonValue, LazyIndexMap, LinePosition, NumberAny,
-    NumberInt, Peek,
+    NumberInt, PartialMode, Peek,
 };
 
 fn json_vec(jiter: &mut Jiter, peek: Option<Peek>) -> JiterResult<Vec<String>> {
@@ -1286,7 +1286,7 @@ fn jiter_invalid_numbers_expected_some_value() {
 
 fn value_owned() -> JsonValue<'static> {
     let s = r#"  { "int": 1, "const": true, "float": 1.2, "array": [1, false, null]}"#.to_string();
-    JsonValue::parse_owned(s.as_bytes(), false, false).unwrap()
+    JsonValue::parse_owned(s.as_bytes(), false, PartialMode::Off).unwrap()
 }
 
 #[test]
@@ -1655,9 +1655,30 @@ fn test_unicode_roundtrip() {
 }
 
 #[test]
-fn test_value_partial_array() {
+fn test_value_partial_array_on() {
     let json_bytes = br#"["string", true, null, 1, "foo"#;
-    let value = JsonValue::parse_with_config(json_bytes, false, true).unwrap();
+    let value = JsonValue::parse_with_config(json_bytes, false, PartialMode::On).unwrap();
+    assert_eq!(
+        value,
+        JsonValue::Array(Arc::new(smallvec![
+            JsonValue::Str("string".into()),
+            JsonValue::Bool(true),
+            JsonValue::Null,
+            JsonValue::Int(1),
+        ]))
+    );
+    // test all position in the string
+    for i in 1..json_bytes.len() {
+        let partial_json = &json_bytes[..i];
+        let value = JsonValue::parse_with_config(partial_json, false, PartialMode::On).unwrap();
+        assert!(matches!(value, JsonValue::Array(_)));
+    }
+}
+
+#[test]
+fn test_value_partial_array_trailing_strings() {
+    let json_bytes = br#"["string", true, null, 1, "foo"#;
+    let value = JsonValue::parse_with_config(json_bytes, false, PartialMode::TrailingStrings).unwrap();
     assert_eq!(
         value,
         JsonValue::Array(Arc::new(smallvec![
@@ -1671,7 +1692,7 @@ fn test_value_partial_array() {
     // test all position in the string
     for i in 1..json_bytes.len() {
         let partial_json = &json_bytes[..i];
-        let value = JsonValue::parse_with_config(partial_json, false, true).unwrap();
+        let value = JsonValue::parse_with_config(partial_json, false, PartialMode::TrailingStrings).unwrap();
         assert!(matches!(value, JsonValue::Array(_)));
     }
 }
@@ -1679,7 +1700,7 @@ fn test_value_partial_array() {
 #[test]
 fn test_value_partial_object() {
     let json_bytes = br#"{"a": "value", "b": true, "c": false, "d": null, "e": 1, "f": 2.22, "g": ["#;
-    let value = JsonValue::parse_with_config(json_bytes, false, true).unwrap();
+    let value = JsonValue::parse_with_config(json_bytes, false, PartialMode::TrailingStrings).unwrap();
     let obj = match value {
         JsonValue::Object(obj) => obj,
         _ => panic!("expected object"),
@@ -1699,7 +1720,7 @@ fn test_value_partial_object() {
     // test all position in the string
     for i in 1..json_bytes.len() {
         let partial_json = &json_bytes[..i];
-        let value = JsonValue::parse_with_config(partial_json, false, true).unwrap();
+        let value = JsonValue::parse_with_config(partial_json, false, PartialMode::TrailingStrings).unwrap();
         assert!(matches!(value, JsonValue::Object(_)));
     }
 }
@@ -1712,7 +1733,7 @@ fn test_partial_pass1() {
     // test all position in the string
     for i in 1..json_bytes.len() {
         let partial_json = &json_bytes[..i];
-        let value = JsonValue::parse_with_config(partial_json, false, true).unwrap();
+        let value = JsonValue::parse_with_config(partial_json, false, PartialMode::TrailingStrings).unwrap();
         assert!(matches!(value, JsonValue::Array(_)));
     }
 }
@@ -1725,7 +1746,7 @@ fn test_partial_medium_response() {
     // test all position in the string
     for i in 1..json_bytes.len() {
         let partial_json = &json_bytes[..i];
-        let value = JsonValue::parse_with_config(partial_json, false, true).unwrap();
+        let value = JsonValue::parse_with_config(partial_json, false, PartialMode::TrailingStrings).unwrap();
         assert!(matches!(value, JsonValue::Object(_)));
     }
 }

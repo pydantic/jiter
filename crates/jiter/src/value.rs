@@ -10,6 +10,7 @@ use crate::lazy_index_map::LazyIndexMap;
 use crate::number_decoder::{NumberAny, NumberInt, NumberRange};
 use crate::parse::{Parser, Peek};
 use crate::string_decoder::{StringDecoder, StringDecoderRange, StringOutput, Tape};
+use crate::PartialMode;
 
 /// Enum representing a JSON value.
 #[derive(Clone, Debug, PartialEq)]
@@ -56,10 +57,14 @@ impl<'j> JsonValue<'j> {
     /// Parse a JSON enum from a byte slice, returning a borrowed version of the enum - e.g. strings can be
     /// references into the original byte slice.
     pub fn parse(data: &'j [u8], allow_inf_nan: bool) -> Result<Self, JsonError> {
-        Self::parse_with_config(data, allow_inf_nan, false)
+        Self::parse_with_config(data, allow_inf_nan, PartialMode::Off)
     }
 
-    pub fn parse_with_config(data: &'j [u8], allow_inf_nan: bool, allow_partial: bool) -> Result<Self, JsonError> {
+    pub fn parse_with_config(
+        data: &'j [u8],
+        allow_inf_nan: bool,
+        allow_partial: PartialMode,
+    ) -> Result<Self, JsonError> {
         let mut parser = Parser::new(data);
 
         let mut tape = Tape::default();
@@ -72,7 +77,7 @@ impl<'j> JsonValue<'j> {
             allow_inf_nan,
             allow_partial,
         )?;
-        if !allow_partial {
+        if !allow_partial.is_active() {
             parser.finish()?;
         }
         Ok(v)
@@ -105,7 +110,7 @@ fn value_static(v: JsonValue<'_>) -> JsonValue<'static> {
 
 impl JsonValue<'static> {
     /// Parse a JSON enum from a byte slice, returning an owned version of the enum.
-    pub fn parse_owned(data: &[u8], allow_inf_nan: bool, allow_partial: bool) -> Result<Self, JsonError> {
+    pub fn parse_owned(data: &[u8], allow_inf_nan: bool, allow_partial: PartialMode) -> Result<Self, JsonError> {
         let mut parser = Parser::new(data);
 
         let mut tape = Tape::default();
@@ -129,7 +134,7 @@ pub(crate) fn take_value_borrowed<'j>(
     tape: &mut Tape,
     recursion_limit: u8,
     allow_inf_nan: bool,
-    allow_partial: bool,
+    allow_partial: PartialMode,
 ) -> JsonResult<JsonValue<'j>> {
     take_value(
         peek,
@@ -148,7 +153,7 @@ pub(crate) fn take_value_owned<'j>(
     tape: &mut Tape,
     recursion_limit: u8,
     allow_inf_nan: bool,
-    allow_partial: bool,
+    allow_partial: PartialMode,
 ) -> JsonResult<JsonValue<'static>> {
     take_value(
         peek,
@@ -167,9 +172,10 @@ fn take_value<'j, 's>(
     tape: &mut Tape,
     recursion_limit: u8,
     allow_inf_nan: bool,
-    allow_partial: bool,
+    allow_partial: PartialMode,
     create_cow: &impl Fn(StringOutput<'_, 'j>) -> Cow<'s, str>,
 ) -> JsonResult<JsonValue<'s>> {
+    let partial_active = allow_partial.is_active();
     match peek {
         Peek::True => {
             parser.consume_true()?;
@@ -184,14 +190,15 @@ fn take_value<'j, 's>(
             Ok(JsonValue::Null)
         }
         Peek::String => {
-            let s: StringOutput<'_, 'j> = parser.consume_string::<StringDecoder>(tape, allow_partial)?;
+            let s: StringOutput<'_, 'j> =
+                parser.consume_string::<StringDecoder>(tape, allow_partial.allow_trailing_str())?;
             Ok(JsonValue::Str(create_cow(s)))
         }
         Peek::Array => {
             let array = Arc::new(SmallVec::new());
             let peek_first = match parser.array_first() {
                 Ok(Some(peek)) => peek,
-                Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
                 Ok(None) | Err(_) => return Ok(JsonValue::Array(array)),
             };
             take_value_recursive(
@@ -210,7 +217,7 @@ fn take_value<'j, 's>(
             let object = Arc::new(LazyIndexMap::new());
             let first_key = match parser.object_first::<StringDecoder>(tape) {
                 Ok(Some(first_key)) => first_key,
-                Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
                 _ => return Ok(JsonValue::Object(object)),
             };
             let first_key = create_cow(first_key);
@@ -228,7 +235,7 @@ fn take_value<'j, 's>(
                     allow_partial,
                     create_cow,
                 ),
-                Err(e) if !(allow_partial && e.allowed_if_partial()) => Err(e),
+                Err(e) if !(partial_active && e.allowed_if_partial()) => Err(e),
                 _ => Ok(JsonValue::Object(object)),
             }
         }
@@ -269,12 +276,13 @@ fn take_value_recursive<'j, 's>(
     tape: &mut Tape,
     recursion_limit: u8,
     allow_inf_nan: bool,
-    allow_partial: bool,
+    allow_partial: PartialMode,
     create_cow: &impl Fn(StringOutput<'_, 'j>) -> Cow<'s, str>,
 ) -> JsonResult<JsonValue<'s>> {
     let recursion_limit: usize = recursion_limit.into();
 
     let mut recursion_stack: SmallVec<[RecursedValue; 8]> = SmallVec::new();
+    let partial_active = allow_partial.is_active();
 
     macro_rules! push_recursion {
         ($next_peek:expr, $value:expr) => {
@@ -296,7 +304,7 @@ fn take_value_recursive<'j, 's>(
                         Peek::False => parser.consume_false().map(|()| JsonValue::Bool(false)),
                         Peek::Null => parser.consume_null().map(|()| JsonValue::Null),
                         Peek::String => parser
-                            .consume_string::<StringDecoder>(tape, allow_partial)
+                            .consume_string::<StringDecoder>(tape, allow_partial.allow_trailing_str())
                             .map(|s| JsonValue::Str(create_cow(s))),
                         Peek::Array => {
                             let array = Arc::new(SmallVec::new());
@@ -306,7 +314,7 @@ fn take_value_recursive<'j, 's>(
                                     // immediately jump to process the first value in the array
                                     continue 'recursion;
                                 }
-                                Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                                Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
                                 _ => (),
                             };
                             Ok(JsonValue::Array(array))
@@ -325,10 +333,10 @@ fn take_value_recursive<'j, 's>(
                                         );
                                         continue 'recursion;
                                     }
-                                    Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                                    Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
                                     _ => (),
                                 },
-                                Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                                Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
                                 _ => (),
                             };
                             Ok(JsonValue::Object(object))
@@ -360,7 +368,7 @@ fn take_value_recursive<'j, 's>(
                                     // array continuing
                                     continue;
                                 }
-                                Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                                Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
                                 _ => (),
                             };
 
@@ -371,7 +379,7 @@ fn take_value_recursive<'j, 's>(
                             Arc::get_mut(&mut array).expect("sole writer to value").push(value);
                             array
                         }
-                        Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                        Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
                         _ => {
                             let RecursedValue::Array(array) = current_recursion else {
                                 unreachable!("known to be in array recursion");
@@ -391,7 +399,7 @@ fn take_value_recursive<'j, 's>(
                         Peek::False => parser.consume_false().map(|()| JsonValue::Bool(false)),
                         Peek::Null => parser.consume_null().map(|()| JsonValue::Null),
                         Peek::String => parser
-                            .consume_string::<StringDecoder>(tape, allow_partial)
+                            .consume_string::<StringDecoder>(tape, allow_partial.allow_trailing_str())
                             .map(|s| JsonValue::Str(create_cow(s))),
                         Peek::Array => {
                             let array = Arc::new(SmallVec::new());
@@ -401,7 +409,7 @@ fn take_value_recursive<'j, 's>(
                                     // immediately jump to process the first value in the array
                                     continue 'recursion;
                                 }
-                                Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                                Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
                                 _ => (),
                             };
                             Ok(JsonValue::Array(array))
@@ -420,10 +428,10 @@ fn take_value_recursive<'j, 's>(
                                         );
                                         continue 'recursion;
                                     }
-                                    Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                                    Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
                                     _ => (),
                                 },
-                                Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                                Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
                                 _ => (),
                             };
                             Ok(JsonValue::Object(object))
@@ -460,11 +468,11 @@ fn take_value_recursive<'j, 's>(
                                             peek = next_peek;
                                             continue;
                                         }
-                                        Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                                        Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
                                         _ => (),
                                     };
                                 }
-                                Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                                Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
                                 _ => (),
                             }
 
@@ -475,7 +483,7 @@ fn take_value_recursive<'j, 's>(
                             Arc::get_mut(&mut partial).expect("sole writer").insert(next_key, value);
                             partial
                         }
-                        Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                        Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
                         _ => {
                             let RecursedValue::Object { partial, .. } = current_recursion else {
                                 unreachable!("known to be in object recursion");
@@ -506,7 +514,7 @@ fn take_value_recursive<'j, 's>(
                             current_recursion = RecursedValue::Array(array);
                             break next_peek;
                         }
-                        Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                        Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
                         _ => (),
                     }
                     JsonValue::Array(array)
@@ -523,10 +531,10 @@ fn take_value_recursive<'j, 's>(
                                 };
                                 break next_peek;
                             }
-                            Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                            Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
                             _ => (),
                         },
-                        Err(e) if !(allow_partial && e.allowed_if_partial()) => return Err(e),
+                        Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
                         _ => (),
                     }
 

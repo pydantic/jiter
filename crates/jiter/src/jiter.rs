@@ -3,7 +3,7 @@ use crate::number_decoder::{NumberAny, NumberFloat, NumberInt, NumberRange};
 use crate::parse::{Parser, Peek};
 use crate::string_decoder::{StringDecoder, StringDecoderRange, Tape};
 use crate::value::{take_value_borrowed, take_value_owned, take_value_skip, JsonValue};
-use crate::{JsonError, JsonErrorType};
+use crate::{JsonError, JsonErrorType, PartialMode};
 
 pub type JiterResult<T> = Result<T, JiterError>;
 
@@ -242,7 +242,7 @@ impl<'j> Jiter<'j> {
             &mut self.tape,
             DEFAULT_RECURSION_LIMIT,
             self.allow_inf_nan,
-            false,
+            PartialMode::Off,
         )
         .map_err(Into::into)
     }
@@ -289,7 +289,7 @@ impl<'j> Jiter<'j> {
             &mut self.tape,
             DEFAULT_RECURSION_LIMIT,
             self.allow_inf_nan,
-            false,
+            PartialMode::Off,
         )
         .map_err(Into::into)
     }
