@@ -2,6 +2,8 @@
 use num_bigint::BigInt;
 #[cfg(feature = "num-bigint")]
 use num_traits::cast::ToPrimitive;
+#[cfg(feature = "python")]
+use pyo3::{IntoPyObject, IntoPyObjectRef};
 
 use std::ops::Range;
 
@@ -17,6 +19,7 @@ pub trait AbstractNumberDecoder {
 
 /// A number that can be either an [i64] or a [BigInt](num_bigint::BigInt)
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "python", derive(IntoPyObject, IntoPyObjectRef))]
 pub enum NumberInt {
     Int(i64),
     #[cfg(feature = "num-bigint")]
@@ -113,12 +116,14 @@ impl AbstractNumberDecoder for NumberFloat {
 
 /// A number that can be either a [NumberInt] or an [f64]
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "python", derive(IntoPyObject, IntoPyObjectRef))]
 pub enum NumberAny {
     Int(NumberInt),
     Float(f64),
 }
 
 #[cfg(feature = "python")]
+#[allow(deprecated)] // kept around for downstream sake
 impl pyo3::ToPyObject for NumberAny {
     fn to_object(&self, py: pyo3::Python<'_>) -> pyo3::PyObject {
         match self {

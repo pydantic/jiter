@@ -30,6 +30,7 @@ pub type JsonArray<'s> = Arc<SmallVec<[JsonValue<'s>; 8]>>;
 pub type JsonObject<'s> = Arc<LazyIndexMap<Cow<'s, str>, JsonValue<'s>>>;
 
 #[cfg(feature = "python")]
+#[allow(deprecated)] // keeping around for sake of allowing downstream to migrate
 impl pyo3::ToPyObject for JsonValue<'_> {
     fn to_object(&self, py: pyo3::Python<'_>) -> pyo3::PyObject {
         use pyo3::prelude::*;
@@ -48,6 +49,62 @@ impl pyo3::ToPyObject for JsonValue<'_> {
                     dict.set_item(k, v.to_object(py)).unwrap();
                 }
                 dict.to_object(py)
+            }
+        }
+    }
+}
+
+#[cfg(feature = "python")]
+impl<'py> pyo3::IntoPyObject<'py> for JsonValue<'_> {
+    type Error = pyo3::PyErr;
+    type Target = pyo3::PyAny;
+    type Output = pyo3::Bound<'py, pyo3::PyAny>;
+
+    fn into_pyobject(self, py: pyo3::Python<'py>) -> Result<Self::Output, Self::Error> {
+        use pyo3::prelude::*;
+        match self {
+            Self::Null => Ok(py.None().into_pyobject(py)?),
+            Self::Bool(b) => Ok(b.into_pyobject(py)?.to_owned().into_any()),
+            Self::Int(i) => Ok(i.into_pyobject(py)?.into_any()),
+            #[cfg(feature = "num-bigint")]
+            Self::BigInt(b) => Ok(b.into_pyobject(py)?.into_any()),
+            Self::Float(f) => Ok(f.into_pyobject(py)?.into_any()),
+            Self::Str(s) => Ok(s.into_pyobject(py)?.into_any()),
+            Self::Array(v) => Ok(pyo3::types::PyList::new(py, v.iter())?.into_any()),
+            Self::Object(o) => {
+                let dict = pyo3::types::PyDict::new(py);
+                for (k, v) in o.iter() {
+                    dict.set_item(k, v).unwrap();
+                }
+                Ok(dict.into_any())
+            }
+        }
+    }
+}
+
+#[cfg(feature = "python")]
+impl<'py> pyo3::IntoPyObject<'py> for &'_ JsonValue<'_> {
+    type Error = pyo3::PyErr;
+    type Target = pyo3::PyAny;
+    type Output = pyo3::Bound<'py, pyo3::PyAny>;
+
+    fn into_pyobject(self, py: pyo3::Python<'py>) -> Result<Self::Output, Self::Error> {
+        use pyo3::prelude::*;
+        match self {
+            JsonValue::Null => Ok(py.None().into_pyobject(py)?),
+            JsonValue::Bool(b) => Ok(b.into_pyobject(py)?.to_owned().into_any()),
+            JsonValue::Int(i) => Ok(i.into_pyobject(py)?.into_any()),
+            #[cfg(feature = "num-bigint")]
+            JsonValue::BigInt(b) => Ok(b.into_pyobject(py)?.into_any()),
+            JsonValue::Float(f) => Ok(f.into_pyobject(py)?.into_any()),
+            JsonValue::Str(s) => Ok(s.into_pyobject(py)?.into_any()),
+            JsonValue::Array(v) => Ok(pyo3::types::PyList::new(py, v.iter())?.into_any()),
+            JsonValue::Object(o) => {
+                let dict = pyo3::types::PyDict::new(py);
+                for (k, v) in o.iter() {
+                    dict.set_item(k, v).unwrap();
+                }
+                Ok(dict.into_any())
             }
         }
     }

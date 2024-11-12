@@ -5,7 +5,6 @@ use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::ffi;
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyList, PyString};
-use pyo3::ToPyObject;
 
 use smallvec::SmallVec;
 
@@ -129,11 +128,11 @@ impl<'j, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: Ma
             }
             Peek::True => {
                 self.parser.consume_true()?;
-                Ok(true.to_object(py).into_bound(py))
+                Ok(PyBool::new(py, true).to_owned().into_any())
             }
             Peek::False => {
                 self.parser.consume_false()?;
-                Ok(false.to_object(py).into_bound(py))
+                Ok(PyBool::new(py, false).to_owned().into_any())
             }
             Peek::String => {
                 let s = self
@@ -145,7 +144,7 @@ impl<'j, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: Ma
                 let peek_first = match self.parser.array_first() {
                     Ok(Some(peek)) => peek,
                     Err(e) if !self._allow_partial_err(&e) => return Err(e),
-                    Ok(None) | Err(_) => return Ok(PyList::empty_bound(py).into_any()),
+                    Ok(None) | Err(_) => return Ok(PyList::empty(py).into_any()),
                 };
 
                 let mut vec: SmallVec<[Bound<'_, PyAny>; 8]> = SmallVec::with_capacity(8);
@@ -155,10 +154,10 @@ impl<'j, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: Ma
                     }
                 }
 
-                Ok(PyList::new_bound(py, vec).into_any())
+                Ok(PyList::new(py, vec).expect("python object creation failed").into_any())
             }
             Peek::Object => {
-                let dict = PyDict::new_bound(py);
+                let dict = PyDict::new(py);
                 if let Err(e) = self._parse_object(py, &dict) {
                     if !self._allow_partial_err(&e) {
                         return Err(e);
@@ -298,7 +297,10 @@ impl MaybeParseNumber for ParseNumberLossy {
         allow_inf_nan: bool,
     ) -> JsonResult<Bound<'py, PyAny>> {
         match parser.consume_number::<NumberAny>(peek.into_inner(), allow_inf_nan) {
-            Ok(number) => Ok(number.to_object(py).into_bound(py)),
+            Ok(number) => Ok(number
+                .into_pyobject(py)
+                .expect("numerical conversion failed")
+                .into_any()),
             Err(e) => {
                 if !peek.is_num() {
                     Err(json_error!(ExpectedSomeValue, parser.index))
@@ -325,11 +327,15 @@ impl MaybeParseNumber for ParseNumberLossless {
                 let obj = if number_range.is_int {
                     NumberAny::decode(bytes, 0, peek.into_inner(), allow_inf_nan)?
                         .0
-                        .to_object(py)
+                        .into_pyobject(py)
+                        .expect("numerical conversion failed")
                 } else {
-                    LosslessFloat::new_unchecked(bytes.to_vec()).into_py(py)
+                    LosslessFloat::new_unchecked(bytes.to_vec())
+                        .into_pyobject(py)
+                        .expect("numerical conversion failed")
+                        .into_any()
                 };
-                Ok(obj.into_bound(py))
+                Ok(obj)
             }
             Err(e) => {
                 if !peek.is_num() {
@@ -357,8 +363,9 @@ impl MaybeParseNumber for ParseNumberDecimal {
                 if number_range.is_int {
                     let obj = NumberAny::decode(bytes, 0, peek.into_inner(), allow_inf_nan)?
                         .0
-                        .to_object(py);
-                    Ok(obj.into_bound(py))
+                        .into_pyobject(py)
+                        .expect("numerical conversion failed");
+                    Ok(obj.into_any())
                 } else {
                     let decimal_type = get_decimal_type(py)
                         .map_err(|e| JsonError::new(JsonErrorType::InternalError(e.to_string()), parser.index))?;
