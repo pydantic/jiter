@@ -194,7 +194,7 @@ pub fn pystring_fast_new<'py>(py: Python<'py>, s: &str, ascii_only: bool) -> Bou
     if ascii_only {
         unsafe { pystring_ascii_new(py, s) }
     } else {
-        PyString::new_bound(py, s)
+        PyString::new(py, s)
     }
 }
 
