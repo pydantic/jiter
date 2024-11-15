@@ -154,7 +154,9 @@ impl<'j, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: Ma
                     }
                 }
 
-                Ok(PyList::new(py, vec).expect("python object creation failed").into_any())
+                Ok(PyList::new(py, vec)
+                    .map_err(|e| py_err_to_json_err(e, self.parser.index))?
+                    .into_any())
             }
             Peek::Object => {
                 let dict = PyDict::new(py);
@@ -299,7 +301,7 @@ impl MaybeParseNumber for ParseNumberLossy {
         match parser.consume_number::<NumberAny>(peek.into_inner(), allow_inf_nan) {
             Ok(number) => Ok(number
                 .into_pyobject(py)
-                .expect("numerical conversion failed")
+                .map_err(|e| py_err_to_json_err(e, parser.index))?
                 .into_any()),
             Err(e) => {
                 if !peek.is_num() {
@@ -328,11 +330,11 @@ impl MaybeParseNumber for ParseNumberLossless {
                     NumberAny::decode(bytes, 0, peek.into_inner(), allow_inf_nan)?
                         .0
                         .into_pyobject(py)
-                        .expect("numerical conversion failed")
+                        .map_err(|e| py_err_to_json_err(e, parser.index))?
                 } else {
                     LosslessFloat::new_unchecked(bytes.to_vec())
                         .into_pyobject(py)
-                        .expect("numerical conversion failed")
+                        .map_err(|e| py_err_to_json_err(e, parser.index))?
                         .into_any()
                 };
                 Ok(obj)
@@ -364,17 +366,16 @@ impl MaybeParseNumber for ParseNumberDecimal {
                     let obj = NumberAny::decode(bytes, 0, peek.into_inner(), allow_inf_nan)?
                         .0
                         .into_pyobject(py)
-                        .expect("numerical conversion failed");
+                        .map_err(|e| py_err_to_json_err(e, parser.index))?;
                     Ok(obj.into_any())
                 } else {
-                    let decimal_type = get_decimal_type(py)
-                        .map_err(|e| JsonError::new(JsonErrorType::InternalError(e.to_string()), parser.index))?;
+                    let decimal_type = get_decimal_type(py).map_err(|e| py_err_to_json_err(e, parser.index))?;
                     // SAFETY: NumberRange::decode has already confirmed that bytes are a valid JSON number,
                     // and therefore valid str
                     let float_str = unsafe { std::str::from_utf8_unchecked(bytes) };
                     decimal_type
                         .call1((float_str,))
-                        .map_err(|e| JsonError::new(JsonErrorType::InternalError(e.to_string()), parser.index))
+                        .map_err(|e| py_err_to_json_err(e, parser.index))
                 }
             }
             Err(e) => {
@@ -386,4 +387,8 @@ impl MaybeParseNumber for ParseNumberDecimal {
             }
         }
     }
+}
+
+fn py_err_to_json_err(e: PyErr, index: usize) -> JsonError {
+    JsonError::new(JsonErrorType::InternalError(e.to_string()), index)
 }
