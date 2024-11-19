@@ -15,7 +15,6 @@ pub fn get_jiter_version() -> &'static str {
 }
 
 #[pyo3::pymodule(gil_used = false)]
-// #[pyo3::pymodule]
 #[pyo3(name = "jiter")]
 mod jiter_python {
     use pyo3::prelude::*;
