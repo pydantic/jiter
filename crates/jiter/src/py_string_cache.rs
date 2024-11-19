@@ -1,4 +1,4 @@
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use ahash::random_state::RandomState;
 use pyo3::exceptions::{PyTypeError, PyValueError};
@@ -88,31 +88,30 @@ impl StringMaybeCache for StringNoCache {
 static STRING_CACHE: OnceLock<Mutex<PyStringCache>> = OnceLock::new();
 
 #[inline]
-fn get_string_cache() -> &'static Mutex<PyStringCache> {
-    STRING_CACHE.get_or_init(|| Mutex::new(PyStringCache::default()))
+fn get_string_cache() -> MutexGuard<'static, PyStringCache> {
+    match STRING_CACHE.get_or_init(|| Mutex::new(PyStringCache::default())).lock() {
+        Ok(cache) => cache,
+        Err(poisoned) => {
+            let mut cache = poisoned.into_inner();
+            // worst case if we panic while the cache is held, we just clear and keep going
+            cache.clear();
+            cache
+        }
+    }
 }
 
 pub fn cache_usage() -> usize {
-    get_string_cache()
-        .lock()
-        .expect("no code panics with mutex locked")
-        .usage()
+    get_string_cache().usage()
 }
 
 pub fn cache_clear() {
-    get_string_cache()
-        .lock()
-        .expect("no code panics with mutex locked")
-        .clear();
+    get_string_cache().clear();
 }
 
 pub fn cached_py_string<'py>(py: Python<'py>, s: &str, ascii_only: bool) -> Bound<'py, PyString> {
     // from tests, 0 and 1 character strings are faster not cached
     if (2..64).contains(&s.len()) {
-        get_string_cache()
-            .lock()
-            .expect("no code panics with mutex locked")
-            .get_or_insert(py, s, ascii_only)
+        get_string_cache().get_or_insert(py, s, ascii_only)
     } else {
         pystring_fast_new(py, s, ascii_only)
     }
