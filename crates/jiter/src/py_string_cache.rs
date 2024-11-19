@@ -148,7 +148,11 @@ impl PyStringCache {
 
         let set_entry = |entry: &mut Entry| {
             let py_str = pystring_fast_new(py, s, ascii_only);
-            *entry = Some((hash, py_str.clone().unbind()));
+            if let Some((_, old_py_str)) = entry.replace((hash, py_str.clone().unbind())) {
+                // micro-optimization: bind the old entry before dropping it so that PyO3 can
+                // fast-path the drop (Bound::drop is faster than Py::drop)
+                drop(old_py_str.into_bound(py));
+            }
             py_str
         };
 
