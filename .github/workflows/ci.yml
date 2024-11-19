@@ -369,7 +369,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: set up python
+      - id: setup-python
+        name: set up python
         uses: quansight-labs/setup-python@v5
         with:
           python-version: ${{ matrix.interpreter }}
@@ -390,6 +391,7 @@ jobs:
           args: >
             --release
             --out pgo-wheel
+            --interpreter ${{ steps.setup-python.outputs.python-path }}
           rust-toolchain: stable
           working-directory: crates/jiter-python
         env:
@@ -420,6 +422,7 @@ jobs:
           args: >
             --release
             --out dist
+            --interpreter ${{ steps.setup-python.outputs.python-path }}
           rust-toolchain: stable
           working-directory: crates/jiter-python
         env:
