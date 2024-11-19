@@ -1,9 +1,8 @@
-use std::cell::RefCell;
+use std::sync::{Mutex, OnceLock};
 
 use ahash::random_state::RandomState;
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::sync::{GILOnceCell, GILProtected};
 use pyo3::types::{PyBool, PyString};
 
 #[derive(Debug, Clone, Copy)]
@@ -86,28 +85,34 @@ impl StringMaybeCache for StringNoCache {
     }
 }
 
-static STRING_CACHE: GILOnceCell<GILProtected<RefCell<PyStringCache>>> = GILOnceCell::new();
+static STRING_CACHE: OnceLock<Mutex<PyStringCache>> = OnceLock::new();
 
-macro_rules! get_string_cache {
-    ($py:ident) => {
-        STRING_CACHE
-            .get_or_init($py, || GILProtected::new(RefCell::new(PyStringCache::default())))
-            .get($py)
-    };
+#[inline]
+fn get_string_cache() -> &'static Mutex<PyStringCache> {
+    STRING_CACHE.get_or_init(|| Mutex::new(PyStringCache::default()))
 }
 
-pub fn cache_usage(py: Python) -> usize {
-    get_string_cache!(py).borrow().usage()
+pub fn cache_usage() -> usize {
+    get_string_cache()
+        .lock()
+        .expect("no code panics with mutex locked")
+        .usage()
 }
 
-pub fn cache_clear(py: Python) {
-    get_string_cache!(py).borrow_mut().clear();
+pub fn cache_clear() {
+    get_string_cache()
+        .lock()
+        .expect("no code panics with mutex locked")
+        .clear();
 }
 
 pub fn cached_py_string<'py>(py: Python<'py>, s: &str, ascii_only: bool) -> Bound<'py, PyString> {
     // from tests, 0 and 1 character strings are faster not cached
     if (2..64).contains(&s.len()) {
-        get_string_cache!(py).borrow_mut().get_or_insert(py, s, ascii_only)
+        get_string_cache()
+            .lock()
+            .expect("no code panics with mutex locked")
+            .get_or_insert(py, s, ascii_only)
     } else {
         pystring_fast_new(py, s, ascii_only)
     }

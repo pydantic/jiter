@@ -33,9 +33,13 @@ jobs:
       matrix:
         rust-version: [stable]
         runs-on: [ubuntu, macos]
+        python-version: ["3.13"]
         include:
           - rust-version: ${{ needs.resolve.outputs.MSRV }}
             runs-on: ubuntu
+          - rust-version: stable
+            runs-on: ubuntu
+            python-version: "3.13t"
           - rust-version: nightly
             runs-on: ubuntu
 
@@ -49,9 +53,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: set up python
-        uses: actions/setup-python@v5
+        uses: quansight-labs/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python-version }}
 
       - uses: dtolnay/rust-toolchain@master
         with:
@@ -78,9 +82,14 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
 
   test-python:
-    name: test jiter-python
+    name: test jiter-python ${{ matrix.python-version }}
 
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.13", "3.13t"]
 
     env:
       RUNS_ON: ubuntu-latest
@@ -89,16 +98,16 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: set up python
-        uses: actions/setup-python@v5
+        uses: quansight-labs/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python-version }}
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Install python dependencies
-        run: make python-install
+        run: pip install -r crates/jiter-python/tests/requirements.txt
 
       - name: Build jiter-python
         run: |

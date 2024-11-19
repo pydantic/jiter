@@ -58,13 +58,13 @@ mod jiter_python {
     }
 
     #[pyfunction]
-    pub fn cache_clear(py: Python<'_>) {
-        jiter::cache_clear(py);
+    pub fn cache_clear() {
+        jiter::cache_clear();
     }
 
     #[pyfunction]
-    pub fn cache_usage(py: Python<'_>) -> usize {
-        jiter::cache_usage(py)
+    pub fn cache_usage() -> usize {
+        jiter::cache_usage()
     }
 
     #[pymodule_init]
