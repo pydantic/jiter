@@ -9,7 +9,7 @@ use jiter::{cache_clear, PythonParse, StringCacheMode};
 
 fn python_parse_numeric(bench: &mut Bencher) {
     Python::with_gil(|py| {
-        cache_clear(py);
+        cache_clear();
         bench.iter(|| {
             PythonParse::default()
                 .python_parse(
@@ -23,7 +23,7 @@ fn python_parse_numeric(bench: &mut Bencher) {
 
 fn python_parse_other(bench: &mut Bencher) {
     Python::with_gil(|py| {
-        cache_clear(py);
+        cache_clear();
         bench.iter(|| {
             PythonParse::default()
                 .python_parse(py, br#"["string", true, false, null]"#)
@@ -39,7 +39,7 @@ fn _python_parse_file(path: &str, bench: &mut Bencher, cache_mode: StringCacheMo
     let json_data = contents.as_bytes();
 
     Python::with_gil(|py| {
-        cache_clear(py);
+        cache_clear();
         bench.iter(|| {
             PythonParse {
                 cache_mode,
