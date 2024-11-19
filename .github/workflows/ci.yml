@@ -407,7 +407,7 @@ jobs:
           args: >
             --release
             --out pgo-wheel
-            --interpreter ${{ matrix.os == 'linux' && steps.resolve-interpreter.outputs.python-path || matrix.interpreter }}
+            --interpreter ${{ matrix.os == 'linux' && steps.resolve-interpreter.outputs.python-path || steps.setup-python.outputs.python-path }}
           rust-toolchain: stable
           working-directory: crates/jiter-python
         env:
@@ -438,7 +438,7 @@ jobs:
           args: >
             --release
             --out dist
-            --interpreter ${{ matrix.os == 'linux' && steps.resolve-interpreter.outputs.python-path || matrix.interpreter }}
+            --interpreter ${{ matrix.os == 'linux' && steps.resolve-interpreter.outputs.python-path || steps.setup-python.outputs.python-path }}
           rust-toolchain: stable
           working-directory: crates/jiter-python
         env:
