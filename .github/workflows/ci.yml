@@ -398,7 +398,7 @@ jobs:
             '3.12': 'cp312-cp312',
             '3.13': 'cp313-cp313',
             '3.13t': 'cp313-cp313t',
-          }[${{ matrix.interpreter }}])")/bin/python >> $GITHUB_OUTPUT
+          }['${{ matrix.interpreter }}'])")/bin/python >> $GITHUB_OUTPUT
 
       - name: build initial wheel
         uses: PyO3/maturin-action@v1
