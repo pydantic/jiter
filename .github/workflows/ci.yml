@@ -386,6 +386,9 @@ jobs:
 
       # linux: builds are done inside manylinux docker images, need to help maturin-action
       # find the right path
+      #
+      # TODO, would be nice to remove, see
+      # https://github.com/PyO3/maturin-action/issues/300
       - if: ${{ matrix.os == 'linux' }}
         id: resolve-interpreter
         name: resolve interpreter
