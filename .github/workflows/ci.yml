@@ -384,6 +384,22 @@ jobs:
 
       - run: rustc --version --verbose
 
+      # linux: builds are done inside manylinux docker images, need to help maturin-action
+      # find the right path
+      - if: ${{ matrix.os == 'linux' }}
+        id: resolve-interpreter
+        name: resolve interpreter
+        run: |
+          echo python-path=/opt/python/$(python -c "print({
+            '3.8': 'cp38-cp38',
+            '3.9': 'cp39-cp39',
+            '3.10': 'cp310-cp310',
+            '3.11': 'cp311-cp311',
+            '3.12': 'cp312-cp312',
+            '3.13': 'cp313-cp313',
+            '3.13t': 'cp313-cp313t',
+          }[${{ matrix.interpreter }}])")/bin/python >> $GITHUB_OUTPUT
+
       - name: build initial wheel
         uses: PyO3/maturin-action@v1
         with:
@@ -391,7 +407,7 @@ jobs:
           args: >
             --release
             --out pgo-wheel
-            --interpreter ${{ steps.setup-python.outputs.python-path }}
+            --interpreter ${{ matrix.os == 'linux' && steps.resolve-interpreter.outputs.python-path || matrix.interpreter }}
           rust-toolchain: stable
           working-directory: crates/jiter-python
         env:
@@ -422,7 +438,7 @@ jobs:
           args: >
             --release
             --out dist
-            --interpreter ${{ steps.setup-python.outputs.python-path }}
+            --interpreter ${{ matrix.os == 'linux' && steps.resolve-interpreter.outputs.python-path || matrix.interpreter }}
           rust-toolchain: stable
           working-directory: crates/jiter-python
         env:
