@@ -148,18 +148,22 @@ impl PyStringCache {
 
         let set_entry = |entry: &mut Entry| {
             let py_str = pystring_fast_new(py, s, ascii_only);
-            *entry = Some((hash, py_str.to_owned().unbind()));
+            if let Some((_, old_py_str)) = entry.replace((hash, py_str.clone().unbind())) {
+                // micro-optimization: bind the old entry before dropping it so that PyO3 can
+                // fast-path the drop (Bound::drop is faster than Py::drop)
+                drop(old_py_str.into_bound(py));
+            }
             py_str
         };
 
         // we try up to 5 contiguous slots to find a match or an empty slot
         for index in hash_index..hash_index.wrapping_add(5) {
             if let Some(entry) = self.entries.get_mut(index) {
-                if let Some((entry_hash, ref py_str_ob)) = entry {
+                if let Some((entry_hash, py_str_ob)) = entry {
                     // to avoid a string comparison, we first compare the hashes
                     if *entry_hash == hash {
                         // if the hashes match, we compare the strings to be absolutely sure - as a hashmap would do
-                        if py_str_ob.bind(py).to_str().ok() == Some(s) {
+                        if py_str_ob.bind(py) == s {
                             // the strings matched, return the cached string object
                             return py_str_ob.bind(py).to_owned();
                         }
