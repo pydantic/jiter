@@ -5,6 +5,7 @@ use std::iter;
 use std::str::FromStr;
 use std::sync::Arc;
 
+#[cfg(feature = "num-bigint")]
 use num_bigint::BigInt;
 use smallvec::smallvec;
 
@@ -79,6 +80,7 @@ fn display_number(peek: Peek, jiter: &mut Jiter) -> JiterResult<String> {
         NumberAny::Int(NumberInt::Int(int)) => {
             format!("Int({int}) @ {position}")
         }
+        #[cfg(feature = "num-bigint")]
         NumberAny::Int(NumberInt::BigInt(big_int)) => {
             format!("BigInt({big_int}) @ {position}")
         }
@@ -164,9 +166,6 @@ single_tests! {
     int_zero: ok => "0", "Int(0) @ 1:1";
     int_zero_space: ok => "0 ", "Int(0) @ 1:1";
     int_neg: ok => "-1234", "Int(-1234) @ 1:1";
-    big_int: ok => "92233720368547758070", "BigInt(92233720368547758070) @ 1:1";
-    big_int_neg: ok => "-92233720368547758070", "BigInt(-92233720368547758070) @ 1:1";
-    big_int2: ok => "99999999999999999999999999999999999999999999999999", "BigInt(99999999999999999999999999999999999999999999999999) @ 1:1";
     float_pos: ok => "12.34", "Float(12.34) @ 1:1";
     float_neg: ok => "-12.34", "Float(-12.34) @ 1:1";
     float_exp: ok => "2.2e10", "Float(22000000000) @ 1:1";
@@ -178,7 +177,6 @@ single_tests! {
     float_exp_massive2: ok => "2e2147483648", "Float(inf) @ 1:1";
     float_exp_massive3: ok => "2e2147483646", "Float(inf) @ 1:1";
     float_exp_massive4: ok => "2e2147483646", "Float(inf) @ 1:1";
-    float_exp_massive5: ok => "18446744073709551615000.0", "Float(18446744073709552000000) @ 1:1";
     float_exp_massive6: ok => "0.0E667", "Float(0) @ 1:1";
     float_exp_tiny0: ok => "2e-2147483647", "Float(0) @ 1:1";
     float_exp_tiny1: ok => "2e-2147483648", "Float(0) @ 1:1";
@@ -233,6 +231,14 @@ single_tests! {
     floats_error: err => "06", "InvalidNumber @ 1:2";
     unexpect_value: err => "[\u{16}\u{8}", "ExpectedSomeValue @ 1:2";
     unexpect_value_xx: err => "xx", "ExpectedSomeValue @ 1:1";
+}
+
+#[cfg(feature = "num-bigint")]
+single_tests! {
+    big_int: ok => "92233720368547758070", "BigInt(92233720368547758070) @ 1:1";
+    big_int_neg: ok => "-92233720368547758070", "BigInt(-92233720368547758070) @ 1:1";
+    big_int2: ok => "99999999999999999999999999999999999999999999999999", "BigInt(99999999999999999999999999999999999999999999999999) @ 1:1";
+    float_exp_massive5: ok => "18446744073709551615000.0", "Float(18446744073709552000000) @ 1:1";
 }
 
 #[test]
@@ -1034,6 +1040,7 @@ number_bytes! {
     number_bytes_exp_decimal: b" 123.456e4 " => b"123.456e4";
 }
 
+#[cfg(feature = "num-bigint")]
 #[test]
 fn test_4300_int() {
     let json = (0..4300).map(|_| "9".to_string()).collect::<Vec<_>>().join("");
@@ -1048,6 +1055,7 @@ fn test_4300_int() {
     }
 }
 
+#[cfg(feature = "num-bigint")]
 #[test]
 fn test_big_int_errs() {
     for json in [
@@ -1316,6 +1324,7 @@ fn value_into_static() -> JsonValue<'static> {
     jiter.into_static()
 }
 
+#[cfg(feature = "num-bigint")]
 #[test]
 fn test_into_static() {
     let value = crate::value_into_static();
@@ -1366,6 +1375,7 @@ fn jiter_next_value_owned() {
     assert!(matches!(s, Cow::Owned(_)));
 }
 
+#[cfg(feature = "num-bigint")]
 #[test]
 fn i64_max() {
     let json = "9223372036854775807";
@@ -1378,6 +1388,7 @@ fn i64_max() {
     }
 }
 
+#[cfg(feature = "num-bigint")]
 #[test]
 fn test_all_int_lengths() {
     for int_size in 1..100 {
@@ -1399,12 +1410,16 @@ fn test_number_int_try_from_bytes() {
     let n: NumberInt = b"0".as_ref().try_into().unwrap();
     assert_eq!(n, NumberInt::Int(0));
 
-    let twenty_nines = "9".repeat(29);
-    let n: NumberInt = twenty_nines.as_bytes().try_into().unwrap();
-    match n {
-        NumberInt::BigInt(v) => assert_eq!(v.to_string(), twenty_nines),
-        _ => panic!("expected big int"),
+    #[cfg(feature = "num-bigint")]
+    {
+        let twenty_nines = "9".repeat(29);
+        let n: NumberInt = twenty_nines.as_bytes().try_into().unwrap();
+        match n {
+            NumberInt::BigInt(v) => assert_eq!(v.to_string(), twenty_nines),
+            _ => panic!("expected big int"),
+        }
     }
+
     let e = NumberInt::try_from(b"x23".as_ref()).unwrap_err();
     assert_eq!(e.to_string(), "invalid number at index 0");
 
@@ -1423,9 +1438,12 @@ fn test_number_int_try_from_bytes() {
     let e = NumberInt::try_from(b"0123".as_ref()).unwrap_err();
     assert_eq!(e.to_string(), "invalid number at index 1");
 
-    let too_long = "9".repeat(4309);
-    let e = NumberInt::try_from(too_long.as_bytes()).unwrap_err();
-    assert_eq!(e.to_string(), "number out of range at index 4301");
+    #[cfg(feature = "num-bigint")]
+    {
+        let too_long = "9".repeat(4309);
+        let e = NumberInt::try_from(too_long.as_bytes()).unwrap_err();
+        assert_eq!(e.to_string(), "number out of range at index 4301");
+    }
 }
 
 #[test]
@@ -1623,6 +1641,7 @@ fn jiter_skip_invalid_long_float() {
     );
 }
 
+#[cfg(feature = "num-bigint")]
 #[test]
 fn jiter_value_invalid_long_float() {
     let e = JsonValue::parse(br#"2121515572557277572557277e"#, false).unwrap_err();

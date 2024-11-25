@@ -3,6 +3,7 @@ use pyo3::types::PyString;
 
 use jiter::{pystring_fast_new, JsonValue, PythonParse, StringCacheMode};
 
+#[cfg(feature = "num-bigint")]
 #[test]
 fn test_to_py_object_numeric() {
     let value = JsonValue::parse(
