@@ -346,7 +346,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [linux, windows, macos]
-        interpreter: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "python3.13t"]
+        interpreter: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.13t"]
         include:
           # standard runners with override for macos arm
           - os: linux
@@ -387,7 +387,7 @@ jobs:
       - name: build pgo wheel
         uses: ./.github/actions/build-pgo-wheel
         with:
-          interpreter: ${{ matrix.interpreter }}
+          interpreter: ${{ matrix.interpreter == '3.13t' && 'python3.13t' || matrix.interpreter }}
           rust-toolchain: ${{ steps.rust-toolchain.outputs.name }}
 
       - run: ${{ matrix.ls || 'ls -lh' }} crates/jiter-python/dist/
