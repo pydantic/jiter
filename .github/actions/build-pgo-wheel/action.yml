@@ -30,7 +30,7 @@ runs:
           --interpreter ${{ inputs.interpreter }}
         rust-toolchain: ${{ inputs.rust-toolchain }}
         docker-options: -e CI
-      working-directory: crates/jiter-python
+        working-directory: crates/jiter-python
       env:
         RUSTFLAGS: '-Cprofile-generate=${{ github.workspace }}/profdata'
 
@@ -63,7 +63,7 @@ runs:
           --interpreter ${{ inputs.interpreter }}
         rust-toolchain: ${{inputs.rust-toolchain}}
         docker-options: -e CI
-      working-directory: crates/jiter-python
+        working-directory: crates/jiter-python
       env:
         RUSTFLAGS: '-Cprofile-use=${{ github.workspace }}/merged.profdata'
 
