@@ -1,17 +1,39 @@
+from concurrent.futures import ThreadPoolExecutor
 import json
 from decimal import Decimal
+from pathlib import Path
+from typing import Any
 
 import jiter
 import pytest
 from math import inf
 from dirty_equals import IsFloatNan
 
+JITER_BENCH_DIR = Path(__file__).parent.parent.parent / 'jiter' / 'benches'
+
+JITER_BENCH_DATAS = [
+    (JITER_BENCH_DIR / 'bigints_array.json').read_bytes(),
+    (JITER_BENCH_DIR / 'floats_array.json').read_bytes(),
+    (JITER_BENCH_DIR / 'massive_ints_array.json').read_bytes(),
+    (JITER_BENCH_DIR / 'medium_response.json').read_bytes(),
+    (JITER_BENCH_DIR / 'pass1.json').read_bytes(),
+    (JITER_BENCH_DIR / 'pass2.json').read_bytes(),
+    (JITER_BENCH_DIR / 'sentence.json').read_bytes(),
+    (JITER_BENCH_DIR / 'short_numbers.json').read_bytes(),
+    (JITER_BENCH_DIR / 'string_array_unique.json').read_bytes(),
+    (JITER_BENCH_DIR / 'string_array.json').read_bytes(),
+    (JITER_BENCH_DIR / 'true_array.json').read_bytes(),
+    (JITER_BENCH_DIR / 'true_object.json').read_bytes(),
+    (JITER_BENCH_DIR / 'unicode.json').read_bytes(),
+    (JITER_BENCH_DIR / 'x100.json').read_bytes(),
+]
+
 
 def test_python_parse_numeric():
     parsed = jiter.from_json(
         b'  { "int": 1, "bigint": 123456789012345678901234567890, "float": 1.2}  '
     )
-    assert parsed == {"int": 1, "bigint": 123456789012345678901234567890, "float": 1.2}
+    assert parsed == {'int': 1, 'bigint': 123456789012345678901234567890, 'float': 1.2}
 
 
 def test_python_parse_other_cached():
@@ -20,7 +42,7 @@ def test_python_parse_other_cached():
         allow_inf_nan=True,
         cache_mode=True,
     )
-    assert parsed == ["string", True, False, None, IsFloatNan(), inf, -inf]
+    assert parsed == ['string', True, False, None, IsFloatNan(), inf, -inf]
 
 
 def test_python_parse_other_no_cache():
@@ -28,28 +50,28 @@ def test_python_parse_other_no_cache():
         b'["string", true, false, null]',
         cache_mode=False,
     )
-    assert parsed == ["string", True, False, None]
+    assert parsed == ['string', True, False, None]
 
 
 def test_python_disallow_nan():
-    with pytest.raises(ValueError, match="expected value at line 1 column 2"):
-        jiter.from_json(b"[NaN]", allow_inf_nan=False)
+    with pytest.raises(ValueError, match='expected value at line 1 column 2'):
+        jiter.from_json(b'[NaN]', allow_inf_nan=False)
 
 
 def test_error():
-    with pytest.raises(ValueError, match="EOF while parsing a list at line 1 column 9"):
+    with pytest.raises(ValueError, match='EOF while parsing a list at line 1 column 9'):
         jiter.from_json(b'["string"')
 
 
 def test_recursion_limit():
     with pytest.raises(
-        ValueError, match="recursion limit exceeded at line 1 column 202"
+        ValueError, match='recursion limit exceeded at line 1 column 202'
     ):
-        jiter.from_json(b"[" * 10_000)
+        jiter.from_json(b'[' * 10_000)
 
 
 def test_recursion_limit_incr():
-    json = b"[" + b", ".join(b"[1]" for _ in range(2000)) + b"]"
+    json = b'[' + b', '.join(b'[1]' for _ in range(2000)) + b']'
     v = jiter.from_json(json)
     assert len(v) == 2000
 
@@ -58,18 +80,20 @@ def test_recursion_limit_incr():
 
 
 def test_extracted_value_error():
-    with pytest.raises(ValueError, match="expected value at line 1 column 1"):
-        jiter.from_json(b"xx")
+    with pytest.raises(ValueError, match='expected value at line 1 column 1'):
+        jiter.from_json(b'xx')
 
 
 def test_partial_array():
     json = b'["string", true, null, 1, "foo'
 
-    with pytest.raises(ValueError, match='EOF while parsing a string at line 1 column 30'):
+    with pytest.raises(
+        ValueError, match='EOF while parsing a string at line 1 column 30'
+    ):
         jiter.from_json(json, partial_mode=False)
 
     parsed = jiter.from_json(json, partial_mode=True)
-    assert parsed == ["string", True, None, 1]
+    assert parsed == ['string', True, None, 1]
 
     # test that stopping at every points is ok
     for i in range(1, len(json)):
@@ -80,7 +104,7 @@ def test_partial_array():
 def test_partial_array_trailing_strings():
     json = b'["string", true, null, 1, "foo'
     parsed = jiter.from_json(json, partial_mode='trailing-strings')
-    assert parsed == ["string", True, None, 1, "foo"]
+    assert parsed == ['string', True, None, 1, 'foo']
 
     # test that stopping at every points is ok
     for i in range(1, len(json)):
@@ -89,21 +113,21 @@ def test_partial_array_trailing_strings():
 
 
 def test_partial_array_first():
-    json = b"["
+    json = b'['
     parsed = jiter.from_json(json, partial_mode=True)
     assert parsed == []
 
-    with pytest.raises(ValueError, match="EOF while parsing a list at line 1 column 1"):
+    with pytest.raises(ValueError, match='EOF while parsing a list at line 1 column 1'):
         jiter.from_json(json)
 
-    with pytest.raises(ValueError, match="EOF while parsing a list at line 1 column 1"):
+    with pytest.raises(ValueError, match='EOF while parsing a list at line 1 column 1'):
         jiter.from_json(json, partial_mode='off')
 
 
 def test_partial_object():
     json = b'{"a": 1, "b": 2, "c'
     parsed = jiter.from_json(json, partial_mode=True)
-    assert parsed == {"a": 1, "b": 2}
+    assert parsed == {'a': 1, 'b': 2}
 
     # test that stopping at every points is ok
     for i in range(1, len(json)):
@@ -114,9 +138,9 @@ def test_partial_object():
 def test_partial_object_string():
     json = b'{"a": 1, "b": 2, "c": "foo'
     parsed = jiter.from_json(json, partial_mode=True)
-    assert parsed == {"a": 1, "b": 2}
+    assert parsed == {'a': 1, 'b': 2}
     parsed = jiter.from_json(json, partial_mode='on')
-    assert parsed == {"a": 1, "b": 2}
+    assert parsed == {'a': 1, 'b': 2}
 
     # test that stopping at every points is ok
     for i in range(1, len(json)):
@@ -125,13 +149,13 @@ def test_partial_object_string():
 
     json = b'{"title": "Pride and Prejudice", "author": "Jane A'
     parsed = jiter.from_json(json, partial_mode=True)
-    assert parsed == {"title": "Pride and Prejudice"}
+    assert parsed == {'title': 'Pride and Prejudice'}
 
 
 def test_partial_object_string_trailing_strings():
     json = b'{"a": 1, "b": 2, "c": "foo'
     parsed = jiter.from_json(json, partial_mode='trailing-strings')
-    assert parsed == {"a": 1, "b": 2, "c": "foo"}
+    assert parsed == {'a': 1, 'b': 2, 'c': 'foo'}
 
     # test that stopping at every points is ok
     for i in range(1, len(json)):
@@ -140,13 +164,13 @@ def test_partial_object_string_trailing_strings():
 
     json = b'{"title": "Pride and Prejudice", "author": "Jane A'
     parsed = jiter.from_json(json, partial_mode='trailing-strings')
-    assert parsed == {"title": "Pride and Prejudice", "author": "Jane A"}
+    assert parsed == {'title': 'Pride and Prejudice', 'author': 'Jane A'}
 
 
 def test_partial_nested():
     json = b'{"a": 1, "b": 2, "c": [1, 2, {"d": 1, '
     parsed = jiter.from_json(json, partial_mode=True)
-    assert parsed == {"a": 1, "b": 2, "c": [1, 2, {"d": 1}]}
+    assert parsed == {'a': 1, 'b': 2, 'c': [1, 2, {'d': 1}]}
 
     # test that stopping at every points is ok
     for i in range(1, len(json)):
@@ -157,10 +181,12 @@ def test_partial_nested():
 def test_partial_error():
     json = b'["string", true, null, 1, "foo'
 
-    with pytest.raises(ValueError, match='EOF while parsing a string at line 1 column 30'):
+    with pytest.raises(
+        ValueError, match='EOF while parsing a string at line 1 column 30'
+    ):
         jiter.from_json(json, partial_mode=False)
 
-    assert jiter.from_json(json, partial_mode=True) == ["string", True, None, 1]
+    assert jiter.from_json(json, partial_mode=True) == ['string', True, None, 1]
 
     msg = "Invalid partial mode, should be `'off'`, `'on'`, `'trailing-strings'` or a `bool`"
     with pytest.raises(ValueError, match=msg):
@@ -171,15 +197,15 @@ def test_partial_error():
 
 def test_python_cache_usage_all():
     jiter.cache_clear()
-    parsed = jiter.from_json(b'{"foo": "bar", "spam": 3}', cache_mode="all")
-    assert parsed == {"foo": "bar", "spam": 3}
+    parsed = jiter.from_json(b'{"foo": "bar", "spam": 3}', cache_mode='all')
+    assert parsed == {'foo': 'bar', 'spam': 3}
     assert jiter.cache_usage() == 3
 
 
 def test_python_cache_usage_keys():
     jiter.cache_clear()
-    parsed = jiter.from_json(b'{"foo": "bar", "spam": 3}', cache_mode="keys")
-    assert parsed == {"foo": "bar", "spam": 3}
+    parsed = jiter.from_json(b'{"foo": "bar", "spam": 3}', cache_mode='keys')
+    assert parsed == {'foo': 'bar', 'spam': 3}
     assert jiter.cache_usage() == 2
 
 
@@ -187,9 +213,9 @@ def test_python_cache_usage_none():
     jiter.cache_clear()
     parsed = jiter.from_json(
         b'{"foo": "bar", "spam": 3}',
-        cache_mode="none",
+        cache_mode='none',
     )
-    assert parsed == {"foo": "bar", "spam": 3}
+    assert parsed == {'foo': 'bar', 'spam': 3}
     assert jiter.cache_usage() == 0
 
 
@@ -197,21 +223,21 @@ def test_use_tape():
     json = '  "foo\\nbar"  '.encode()
     jiter.cache_clear()
     parsed = jiter.from_json(json, cache_mode=False)
-    assert parsed == "foo\nbar"
+    assert parsed == 'foo\nbar'
 
 
 def test_unicode():
     json = '{"💩": "£"}'.encode()
     jiter.cache_clear()
     parsed = jiter.from_json(json, cache_mode=False)
-    assert parsed == {"💩": "£"}
+    assert parsed == {'💩': '£'}
 
 
 def test_unicode_cache():
     json = '{"💩": "£"}'.encode()
     jiter.cache_clear()
     parsed = jiter.from_json(json)
-    assert parsed == {"💩": "£"}
+    assert parsed == {'💩': '£'}
 
 
 def test_json_float():
@@ -269,7 +295,6 @@ def test_lossless_floats():
         jiter.from_json(b'1wrong', float_mode='lossless-float')
 
 
-
 def test_decimal_floats():
     f = jiter.from_json(b'12.3')
     assert isinstance(f, float)
@@ -309,10 +334,36 @@ def test_unicode_roundtrip_ensure_ascii():
 
 
 def test_catch_duplicate_keys():
-    assert jiter.from_json(b'{"foo": 1, "foo": 2}') == {"foo": 2}
+    assert jiter.from_json(b'{"foo": 1, "foo": 2}') == {'foo': 2}
 
-    with pytest.raises(ValueError, match='Detected duplicate key "foo" at line 1 column 18'):
+    with pytest.raises(
+        ValueError, match='Detected duplicate key "foo" at line 1 column 18'
+    ):
         jiter.from_json(b'{"foo": 1, "foo": 2}', catch_duplicate_keys=True)
 
-    with pytest.raises(ValueError, match='Detected duplicate key "foo" at line 1 column 28'):
+    with pytest.raises(
+        ValueError, match='Detected duplicate key "foo" at line 1 column 28'
+    ):
         jiter.from_json(b'{"foo": 1, "bar": 2, "foo": 2}', catch_duplicate_keys=True)
+
+
+def test_against_json():
+    for data in JITER_BENCH_DATAS:
+        assert jiter.from_json(data) == json.loads(data)
+
+
+def test_multithreaded_parsing():
+    """Basic sanity check that running a parse in multiple threads is fine."""
+    expected_datas = [json.loads(data) for data in JITER_BENCH_DATAS]
+
+    def assert_jiter_ok(data: bytes, expected: Any) -> bool:
+        return jiter.from_json(data) == expected
+
+    with ThreadPoolExecutor(8) as pool:
+        results = []
+        for _ in range(1000):
+            for data, expected_result in zip(JITER_BENCH_DATAS, expected_datas):
+                results.append(pool.submit(assert_jiter_ok, data, expected_result))
+
+        for result in results:
+            assert result.result()
