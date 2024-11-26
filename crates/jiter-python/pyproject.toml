@@ -1,5 +1,5 @@
 [build-system]
-requires = ["maturin>=1,<2"]
+requires = ["maturin @ git+https://github.com/davidhewitt/maturin.git@windows-abiflags"]
 build-backend = "maturin"
 
 [project]
