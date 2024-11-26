@@ -362,10 +362,6 @@ jobs:
             interpreter: "3.8"
           - os: macos
             interpreter: "3.9"
-          # windows free-threaded build has a problematic wheel name,
-          # needs something like https://github.com/PyO3/maturin/pull/2325 to fix
-          - os: windows
-            interpreter: "3.13t"
 
     runs-on: ${{ matrix.runs-on }}
     steps:
