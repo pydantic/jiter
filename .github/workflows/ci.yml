@@ -380,8 +380,6 @@ jobs:
         with:
           components: llvm-tools
 
-      - run: rustc --version --verbose
-
       # linux: builds are done inside manylinux docker images, need to help maturin-action
       # find the right path
       #
@@ -401,49 +399,11 @@ jobs:
             '3.13t': 'cp313-cp313t',
           }['${{ matrix.interpreter }}'])")/bin/python >> $GITHUB_OUTPUT
 
-      - name: build initial wheel
-        uses: PyO3/maturin-action@v1
+      - name: build pgo wheel
+        uses: ./.github/actions/build-pgo-wheel
         with:
-          manylinux: auto
-          args: >
-            --release
-            --out pgo-wheel
-            --interpreter ${{ matrix.os == 'linux' && steps.resolve-interpreter.outputs.python-path || steps.setup-python.outputs.python-path }}
-          rust-toolchain: stable
-          working-directory: crates/jiter-python
-        env:
-          RUSTFLAGS: "-Cprofile-generate=${{ github.workspace }}/profdata"
-
-      - name: detect rust host
-        run: echo RUST_HOST=$(rustc -Vv | grep host | cut -d ' ' -f 2) >> "$GITHUB_ENV"
-        shell: bash
-
-      - name: generate pgo data
-        run: |
-          cd crates/jiter-python
-          pip install -U pip
-          pip install -r tests/requirements.txt
-          pip install jiter --no-index --no-deps --find-links pgo-wheel --force-reinstall
-          python bench.py jiter jiter-cache
-          rustup run stable bash -c 'echo LLVM_PROFDATA=$RUSTUP_HOME/toolchains/$RUSTUP_TOOLCHAIN/lib/rustlib/${{ env.RUST_HOST }}/bin/llvm-profdata >> "$GITHUB_ENV"'
-
-      - name: merge pgo data
-        run: |
-          cd crates/jiter-python
-          ${{ env.LLVM_PROFDATA }} merge -o ${{ github.workspace }}/merged.profdata ${{ github.workspace }}/profdata
-
-      - name: build pgo-optimized wheel
-        uses: PyO3/maturin-action@v1
-        with:
-          manylinux: auto
-          args: >
-            --release
-            --out dist
-            --interpreter ${{ matrix.os == 'linux' && steps.resolve-interpreter.outputs.python-path || steps.setup-python.outputs.python-path }}
-          rust-toolchain: stable
-          working-directory: crates/jiter-python
-        env:
-          RUSTFLAGS: "-Cprofile-use=${{ github.workspace }}/merged.profdata"
+          interpreter: ${{ matrix.os == 'linux' && steps.resolve-interpreter.outputs.python-path || steps.setup-python.outputs.python-path }}
+          rust-toolchain: ${{ steps.rust-toolchain.outputs.name }}
 
       - run: ${{ matrix.ls || 'ls -lh' }} crates/jiter-python/dist/
 
