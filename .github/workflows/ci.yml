@@ -383,7 +383,7 @@ jobs:
       - name: build pgo wheel
         uses: ./.github/actions/build-pgo-wheel
         with:
-          interpreter: ${{ matrix.interpreter == '3.13t' && 'python3.13t' || matrix.interpreter }}
+          interpreter: ${{ matrix.interpreter }}
           rust-toolchain: ${{ steps.rust-toolchain.outputs.name }}
         env:
           RUST_LOG: maturin=debug
