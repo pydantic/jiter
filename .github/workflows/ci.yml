@@ -331,7 +331,9 @@ jobs:
 
       - run: |
           pip install -U twine
-          twine check --strict crates/jiter-python/dist/*
+          # FIXME: restore `twine` check when metadata version 2.4 (used by `maturin`) supported by `twine`,
+          # see https://github.com/pypa/twine/pull/1180
+          # twine check --strict crates/jiter-python/dist/*
 
       - uses: actions/upload-artifact@v4
         with:
@@ -362,10 +364,6 @@ jobs:
             interpreter: "3.8"
           - os: macos
             interpreter: "3.9"
-          # windows free-threaded build has a problematic wheel name,
-          # needs something like https://github.com/PyO3/maturin/pull/2325 to fix
-          - os: windows
-            interpreter: "3.13t"
 
     runs-on: ${{ matrix.runs-on }}
     steps:
@@ -384,29 +382,10 @@ jobs:
         with:
           components: llvm-tools
 
-      # linux: builds are done inside manylinux docker images, need to help maturin-action
-      # find the right path
-      #
-      # TODO, would be nice to remove, see
-      # https://github.com/PyO3/maturin-action/issues/300
-      - if: ${{ matrix.os == 'linux' }}
-        id: resolve-interpreter
-        name: resolve interpreter
-        run: |
-          echo python-path=/opt/python/$(python -c "print({
-            '3.8': 'cp38-cp38',
-            '3.9': 'cp39-cp39',
-            '3.10': 'cp310-cp310',
-            '3.11': 'cp311-cp311',
-            '3.12': 'cp312-cp312',
-            '3.13': 'cp313-cp313',
-            '3.13t': 'cp313-cp313t',
-          }['${{ matrix.interpreter }}'])")/bin/python >> $GITHUB_OUTPUT
-
       - name: build pgo wheel
         uses: ./.github/actions/build-pgo-wheel
         with:
-          interpreter: ${{ matrix.os == 'linux' && steps.resolve-interpreter.outputs.python-path || steps.setup-python.outputs.python-path }}
+          interpreter: ${{ matrix.interpreter }}
           rust-toolchain: ${{ steps.rust-toolchain.outputs.name }}
 
       - run: ${{ matrix.ls || 'ls -lh' }} crates/jiter-python/dist/
@@ -584,7 +563,9 @@ jobs:
 
       - run: pip install -U twine
       - run: ls -l dist/
-      - run: twine check --strict dist/*
+      # FIXME: restore `twine` check when metadata version 2.4 (used by `maturin`) supported by `twine`
+      # see https://github.com/pypa/twine/pull/1180
+      # - run: twine check --strict dist/*
 
       - name: upload to pypi
         uses: pypa/gh-action-pypi-publish@release/v1
