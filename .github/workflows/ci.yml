@@ -387,8 +387,6 @@ jobs:
         with:
           interpreter: ${{ matrix.interpreter }}
           rust-toolchain: ${{ steps.rust-toolchain.outputs.name }}
-        env:
-          RUST_LOG: maturin=debug
 
       - run: ${{ matrix.ls || 'ls -lh' }} crates/jiter-python/dist/
 
