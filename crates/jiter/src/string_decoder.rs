@@ -43,8 +43,8 @@ impl From<StringOutput<'_, '_>> for String {
     }
 }
 
-impl<'t, 'j> From<StringOutput<'t, 'j>> for Cow<'j, str> {
-    fn from(val: StringOutput<'t, 'j>) -> Self {
+impl<'j> From<StringOutput<'_, 'j>> for Cow<'j, str> {
+    fn from(val: StringOutput<'_, 'j>) -> Self {
         match val {
             StringOutput::Tape(s, _) => s.to_owned().into(),
             StringOutput::Data(s, _) => s.into(),
@@ -52,7 +52,7 @@ impl<'t, 'j> From<StringOutput<'t, 'j>> for Cow<'j, str> {
     }
 }
 
-impl<'t, 'j> StringOutput<'t, 'j> {
+impl<'t> StringOutput<'t, '_> {
     pub fn as_str(&self) -> &'t str {
         match self {
             Self::Tape(s, _) => s,
