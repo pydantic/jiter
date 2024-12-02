@@ -208,8 +208,17 @@ pub fn pystring_fast_new<'py>(py: Python<'py>, s: &str, ascii_only: bool) -> Bou
 
 /// Faster creation of PyString from an ASCII string, inspired by
 /// https://github.com/ijl/orjson/blob/3.10.0/src/str/create.rs#L41
-#[cfg(all(not(PyPy), not(GraalPy)))]
+#[cfg(all(
+    any(
+        all(target_arch = "x86_64", target_os = "linux"),
+        all(target_arch = "aarch64", target_os = "macos"),
+    ),
+    not(any(PyPy, GraalPy))
+))]
 unsafe fn pystring_ascii_new<'py>(py: Python<'py>, s: &str) -> Bound<'py, PyString> {
+    // disabled on everything except tier-1 platforms because of a crash in the built wheels from CI,
+    // see https://github.com/pydantic/jiter/pull/175
+
     let ptr = pyo3::ffi::PyUnicode_New(s.len() as isize, 127);
     // see https://github.com/pydantic/jiter/pull/72#discussion_r1545485907
     debug_assert_eq!(pyo3::ffi::PyUnicode_KIND(ptr), pyo3::ffi::PyUnicode_1BYTE_KIND);
@@ -219,8 +228,14 @@ unsafe fn pystring_ascii_new<'py>(py: Python<'py>, s: &str) -> Bound<'py, PyStri
     Bound::from_owned_ptr(py, ptr).downcast_into_unchecked()
 }
 
-// ffi::PyUnicode_DATA seems to be broken for pypy, hence this, marked as unsafe to avoid warnings
-#[cfg(any(PyPy, GraalPy))]
+// unoptimized version (albeit not that much slower) on other platforms
+#[cfg(not(all(
+    any(
+        all(target_arch = "x86_64", target_os = "linux"),
+        all(target_arch = "aarch64", target_os = "macos"),
+    ),
+    not(any(PyPy, GraalPy)),
+)))]
 unsafe fn pystring_ascii_new<'py>(py: Python<'py>, s: &str) -> Bound<'py, PyString> {
-    PyString::new_bound(py, s)
+    PyString::new(py, s)
 }
