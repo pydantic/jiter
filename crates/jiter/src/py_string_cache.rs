@@ -208,13 +208,7 @@ pub fn pystring_fast_new<'py>(py: Python<'py>, s: &str, ascii_only: bool) -> Bou
 
 /// Faster creation of PyString from an ASCII string, inspired by
 /// https://github.com/ijl/orjson/blob/3.10.0/src/str/create.rs#L41
-#[cfg(all(
-    any(
-        all(target_arch = "x86_64", target_os = "linux"),
-        all(target_arch = "aarch64", target_os = "macos"),
-    ),
-    not(any(PyPy, GraalPy))
-))]
+#[cfg(not(any(PyPy, GraalPy)))]
 unsafe fn pystring_ascii_new<'py>(py: Python<'py>, s: &str) -> Bound<'py, PyString> {
     // disabled on everything except tier-1 platforms because of a crash in the built wheels from CI,
     // see https://github.com/pydantic/jiter/pull/175
@@ -229,13 +223,7 @@ unsafe fn pystring_ascii_new<'py>(py: Python<'py>, s: &str) -> Bound<'py, PyStri
 }
 
 // unoptimized version (albeit not that much slower) on other platforms
-#[cfg(not(all(
-    any(
-        all(target_arch = "x86_64", target_os = "linux"),
-        all(target_arch = "aarch64", target_os = "macos"),
-    ),
-    not(any(PyPy, GraalPy)),
-)))]
+#[cfg(any(PyPy, GraalPy))]
 unsafe fn pystring_ascii_new<'py>(py: Python<'py>, s: &str) -> Bound<'py, PyString> {
     PyString::new(py, s)
 }
