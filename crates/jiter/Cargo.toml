@@ -17,7 +17,7 @@ num-traits = "0.2.16"
 ahash = "0.8.0"
 smallvec = "1.11.0"
 pyo3 = { workspace = true, optional = true }
-lexical-parse-float = { version = "0.8.5", features = ["format"] }
+lexical-parse-float = { version = "1.0.5", features = ["format"] }
 bitvec = "1.0.1"
 
 [features]
