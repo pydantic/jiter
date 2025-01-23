@@ -136,6 +136,7 @@ const ARRAY_REPEAT_VALUE: Entry = None;
 impl Default for PyStringCache {
     fn default() -> Self {
         Self {
+            #[allow(clippy::large_stack_arrays)]
             entries: Box::new([ARRAY_REPEAT_VALUE; CAPACITY]),
             hash_builder: RandomState::default(),
         }
