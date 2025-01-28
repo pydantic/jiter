@@ -150,7 +150,6 @@
 
 mod errors;
 mod jiter;
-mod lazy_index_map;
 mod number_decoder;
 mod parse;
 #[cfg(feature = "python")]
@@ -166,7 +165,6 @@ mod value;
 
 pub use errors::{JiterError, JiterErrorType, JsonError, JsonErrorType, JsonResult, JsonType, LinePosition};
 pub use jiter::{Jiter, JiterResult};
-pub use lazy_index_map::LazyIndexMap;
 pub use number_decoder::{NumberAny, NumberInt};
 pub use parse::Peek;
 pub use value::{JsonArray, JsonObject, JsonValue};
