@@ -426,9 +426,6 @@ jobs:
           version: "3.1.58"
           actions-cache-folder: emsdk-cache
 
-      - name: install uv
-        uses: astral-sh/setup-uv@v5
-
       - name: install deps
         run: pip install -U pip maturin
 
