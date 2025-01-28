@@ -101,7 +101,10 @@ import importlib
 # see https://github.com/pyodide/pyodide/issues/2840
 # import sys; sys.setrecursionlimit(200)
 
-await micropip.install(['file:${wheel_path}'])
+await micropip.install([
+  'dirty_equals',
+  'file:${wheel_path}'
+])
 importlib.invalidate_caches()
 
 print('installed packages:', micropip.list())
