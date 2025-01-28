@@ -395,6 +395,64 @@ jobs:
           name: pypi_files_${{ matrix.os }}_${{ matrix.interpreter }}
           path: crates/jiter-python/dist
 
+  build-wasm-emscripten:
+    # only run on push to main and on release
+    if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || contains(github.event.pull_request.labels.*.name, 'Full Build')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: setup-python
+        name: set up python
+        uses: quansight-labs/setup-python@v5
+        with:
+          python-version: 3.12
+          allow-prereleases: true
+
+      - name: install rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
+          targets: wasm32-unknown-emscripten
+
+      - name: cache rust
+        uses: Swatinem/rust-cache@v2
+
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          # NOTE!: as per https://github.com/pydantic/pydantic-core/pull/149 this version needs to match the version
+          # in node_modules/pyodide/repodata.json, to get the version, run:
+          # `cat node_modules/pyodide/repodata.json | python -m json.tool | rg platform`
+          version: "3.1.58"
+          actions-cache-folder: emsdk-cache
+
+      - name: install deps
+        run: pip install -U pip maturin
+
+      - name: build wheels
+        run: maturin build --release --target wasm32-unknown-emscripten --out dist -i 3.12
+        working-directory: crates/jiter-python
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+      - run: npm install
+        working-directory: crates/jiter-python
+
+      - run: npm run test
+        working-directory: crates/jiter-python
+
+      - run: |
+          ls -lh dist/
+          ls -l dist/
+        working-directory: crates/jiter-python
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wasm_wheels
+          path: crates/jiter-python/dist
+
   inspect-pypi-assets:
     needs: [build, build-sdist, build-pgo]
     runs-on: ubuntu-latest
@@ -524,7 +582,7 @@ jobs:
 
   release:
     needs: [check]
-    if: "success() && startsWith(github.ref, 'refs/tags/')"
+    if: success() && startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     environment: release
 
@@ -541,8 +599,13 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
   release-python:
-    needs: [test-builds-arch, test-builds-os, build-sdist, check]
-    if: "success() && startsWith(github.ref, 'refs/tags/')"
+    needs:
+      - check
+      - test-builds-arch
+      - test-builds-os
+      - build-sdist
+      - build-wasm-emscripten
+    if: success() && startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     environment: release-python
     permissions:
@@ -573,3 +636,16 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/
+
+      - name: get wasm dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: wasm_wheels
+          path: wasm
+
+      - name: upload to github release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            wasm/*.whl
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') }}
