@@ -28,11 +28,11 @@ pub fn values_equal(jiter_value: &JiterValue, serde_value: &SerdeValue) -> bool 
             true
         }
         (JiterValue::Object(o1), SerdeValue::Object(o2)) => {
+            // deduplicate, as `jiter` doesn't do this during parsing
+            let o1: IndexMap<_, _> = o1.iter().map(|(k, v)| (k, v)).collect();
             if o1.len() != o2.len() {
                 return false;
             }
-            // deduplicate, as `jiter` doesn't do this during parsing
-            let o1: IndexMap<_, _> = o1.iter().map(|(k, v)| (k, v)).collect();
             for (k1, v1) in o1 {
                 if let Some(v2) = o2.get::<str>(k1.as_ref()) {
                     if !values_equal(v1, v2) {
