@@ -14,6 +14,8 @@ async function find_wheel(dist_dir) {
 async function main() {
   const root_dir = path.resolve(__dirname, '..');
   const wheel_path = await find_wheel(path.join(root_dir, 'dist'));
+  const stdout = []
+  const stderr = []
   let errcode = 1;
   try {
     const pyodide = await loadPyodide({
@@ -58,6 +60,11 @@ pytest.main()
     console.error(e);
     process.exit(1);
   }
+  let out = stdout.join('')
+  let err = stderr.join('')
+  console.log('stdout:', out)
+  console.log('stderr:', err)
+
   process.exit(errcode);
 }
 
