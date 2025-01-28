@@ -86,7 +86,13 @@ async function main() {
     FS.mkdir('/test_dir');
     FS.mount(FS.filesystems.NODEFS, {root: path.join(root_dir, 'tests')}, '/test_dir');
     FS.chdir('/test_dir');
-    await pyodide.loadPackage(['micropip', 'pytest', 'pygments']);
+
+    // mount jiter crate source for benchmark data
+    FS.mkdir('/jiter');
+    FS.mount(FS.filesystems.NODEFS, {root: path.resolve(root_dir, "..", "jiter")}, '/jiter');
+    FS.chdir('/jiter');
+
+    await pyodide.loadPackage(['micropip', 'pytest']);
     // language=python
     errcode = await pyodide.runPythonAsync(`
 import micropip
@@ -96,16 +102,7 @@ import importlib
 # see https://github.com/pyodide/pyodide/issues/2840
 # import sys; sys.setrecursionlimit(200)
 
-await micropip.install([
-    'dirty-equals',
-    'inline-snapshot',
-    'hypothesis',
-    'pytest-speed',
-    'pytest-mock',
-    'tzdata',
-    'file:${wheel_path}',
-    'typing-extensions',
-])
+await micropip.install(['file:${wheel_path}'])
 importlib.invalidate_caches()
 
 print('installed packages:', micropip.list())
