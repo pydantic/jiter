@@ -60,10 +60,10 @@ pytest.main()
     console.error(e);
     process.exit(1);
   }
-  let out = stdout.join('')
-  let err = stderr.join('')
-  console.log('stdout:', out)
-  console.log('stderr:', err)
+  let out = stdout.join('\n')
+  let err = stderr.join('\n')
+  console.log('stdout:\n', out)
+  console.log('stderr:\n', err)
 
   process.exit(errcode);
 }
