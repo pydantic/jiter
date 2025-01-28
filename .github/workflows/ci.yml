@@ -331,9 +331,7 @@ jobs:
 
       - run: |
           pip install -U twine
-          # FIXME: restore `twine` check when metadata version 2.4 (used by `maturin`) supported by `twine`,
-          # see https://github.com/pypa/twine/pull/1180
-          # twine check --strict crates/jiter-python/dist/*
+          twine check --strict crates/jiter-python/dist/*
 
       - uses: actions/upload-artifact@v4
         with:
@@ -626,11 +624,10 @@ jobs:
           merge-multiple: true
           path: dist
 
-      - run: pip install -U twine
-      - run: ls -l dist/
-      # FIXME: restore `twine` check when metadata version 2.4 (used by `maturin`) supported by `twine`
-      # see https://github.com/pypa/twine/pull/1180
-      # - run: twine check --strict dist/*
+      - run: |
+          pip install -U twine
+          ls -l dist/
+          twine check --strict dist/*
 
       - name: upload to pypi
         uses: pypa/gh-action-pypi-publish@release/v1
