@@ -90,7 +90,6 @@ async function main() {
     // mount jiter crate source for benchmark data
     FS.mkdir('/jiter');
     FS.mount(FS.filesystems.NODEFS, {root: path.resolve(root_dir, "..", "jiter")}, '/jiter');
-    FS.chdir('/jiter');
 
     await pyodide.loadPackage(['micropip', 'pytest']);
     // language=python
