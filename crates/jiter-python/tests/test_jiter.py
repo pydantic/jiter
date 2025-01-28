@@ -2,6 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 from decimal import Decimal
 from pathlib import Path
+import sys
 from typing import Any
 
 import jiter
@@ -352,6 +353,9 @@ def test_against_json():
         assert jiter.from_json(data) == json.loads(data)
 
 
+@pytest.mark.skipif(
+    sys.platform == 'emscripten', reason='threads not supported on pyodide'
+)
 def test_multithreaded_parsing():
     """Basic sanity check that running a parse in multiple threads is fine."""
     expected_datas = [json.loads(data) for data in JITER_BENCH_DATAS]
