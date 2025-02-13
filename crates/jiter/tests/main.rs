@@ -7,10 +7,9 @@ use std::sync::Arc;
 
 #[cfg(feature = "num-bigint")]
 use num_bigint::BigInt;
-use smallvec::smallvec;
 
 use jiter::{
-    Jiter, JiterErrorType, JiterResult, JsonErrorType, JsonType, JsonValue, LazyIndexMap, LinePosition, NumberAny,
+    Jiter, JiterErrorType, JiterResult, JsonErrorType, JsonObject, JsonType, JsonValue, LinePosition, NumberAny,
     NumberInt, PartialMode, Peek,
 };
 
@@ -502,11 +501,11 @@ fn nan_disallowed_wrong_type() {
 fn value_allow_nan_inf() {
     let json = r#"[1, NaN, Infinity, -Infinity]"#;
     let value = JsonValue::parse(json.as_bytes(), true).unwrap();
-    let expected = JsonValue::Array(Arc::new(smallvec![
+    let expected = JsonValue::Array(Arc::new(vec![
         JsonValue::Int(1),
         JsonValue::Float(f64::NAN),
         JsonValue::Float(f64::INFINITY),
-        JsonValue::Float(f64::NEG_INFINITY)
+        JsonValue::Float(f64::NEG_INFINITY),
     ]));
     // compare debug since `f64::NAN != f64::NAN`
     assert_eq!(format!("{:?}", value), format!("{:?}", expected));
@@ -664,17 +663,18 @@ fn json_value_object() {
     let json = r#"{"foo": "bar", "spam": [1, null, true]}"#;
     let v = JsonValue::parse(json.as_bytes(), false).unwrap();
 
-    let mut expected = LazyIndexMap::new();
-    expected.insert("foo".into(), JsonValue::Str("bar".into()));
-    expected.insert(
-        "spam".into(),
-        JsonValue::Array(Arc::new(smallvec![
-            JsonValue::Int(1),
-            JsonValue::Null,
-            JsonValue::Bool(true)
-        ])),
-    );
-    assert_eq!(v, JsonValue::Object(Arc::new(expected)));
+    let expected = JsonValue::Object(Arc::new(vec![
+        ("foo".into(), JsonValue::Str("bar".into())),
+        (
+            "spam".into(),
+            JsonValue::Array(Arc::new(vec![
+                JsonValue::Int(1),
+                JsonValue::Null,
+                JsonValue::Bool(true),
+            ])),
+        ),
+    ]));
+    assert_eq!(v, expected);
 }
 
 #[test]
@@ -682,10 +682,10 @@ fn json_value_string() {
     let json = r#"["foo", "\u00a3", "\""]"#;
     let v = JsonValue::parse(json.as_bytes(), false).unwrap();
 
-    let expected = JsonValue::Array(Arc::new(smallvec![
+    let expected = JsonValue::Array(Arc::new(vec![
         JsonValue::Str("foo".into()),
         JsonValue::Str("£".into()),
-        JsonValue::Str("\"".into())
+        JsonValue::Str("\"".into()),
     ]));
     assert_eq!(v, expected);
 }
@@ -696,7 +696,7 @@ fn parse_array_3() {
     let v = JsonValue::parse(json.as_bytes(), false).unwrap();
     assert_eq!(
         v,
-        JsonValue::Array(Arc::new(smallvec![
+        JsonValue::Array(Arc::new(vec![
             JsonValue::Int(1),
             JsonValue::Null,
             JsonValue::Bool(true)
@@ -708,7 +708,7 @@ fn parse_array_3() {
 fn parse_array_empty() {
     let json = r#"[   ]"#;
     let v = JsonValue::parse(json.as_bytes(), false).unwrap();
-    assert_eq!(v, JsonValue::Array(Arc::new(smallvec![])));
+    assert_eq!(v, JsonValue::Array(Arc::new(vec![])));
 }
 
 #[test]
@@ -725,10 +725,10 @@ fn parse_value_nested() {
     let v = JsonValue::parse(json.as_bytes(), false).unwrap();
     assert_eq!(
         v,
-        JsonValue::Array(Arc::new(smallvec![
+        JsonValue::Array(Arc::new(vec![
             JsonValue::Int(1),
             JsonValue::Int(2),
-            JsonValue::Array(Arc::new(smallvec![JsonValue::Int(3), JsonValue::Int(4)])),
+            JsonValue::Array(Arc::new(vec![JsonValue::Int(3), JsonValue::Int(4)])),
             JsonValue::Int(5),
             JsonValue::Int(6),
         ]),)
@@ -925,36 +925,6 @@ fn test_crazy_massive_int() {
 }
 
 #[test]
-fn unique_iter_object() {
-    let value = JsonValue::parse(br#" {"x": 1, "x": 2} "#, false).unwrap();
-    if let JsonValue::Object(obj) = value {
-        assert_eq!(obj.len(), 1);
-        let mut unique = obj.iter_unique();
-        let first = unique.next().unwrap();
-        assert_eq!(first.0, "x");
-        assert_eq!(first.1, &JsonValue::Int(2));
-        assert!(unique.next().is_none());
-    } else {
-        panic!("expected object");
-    }
-}
-
-#[test]
-fn unique_iter_object_repeat() {
-    let value = JsonValue::parse(br#" {"x": 1, "x": 1} "#, false).unwrap();
-    if let JsonValue::Object(obj) = value {
-        assert_eq!(obj.len(), 1);
-        let mut unique = obj.iter_unique();
-        let first = unique.next().unwrap();
-        assert_eq!(first.0, "x");
-        assert_eq!(first.1, &JsonValue::Int(1));
-        assert!(unique.next().is_none());
-    } else {
-        panic!("expected object");
-    }
-}
-
-#[test]
 fn test_recursion_limit() {
     let json = (0..2000).map(|_| "[").collect::<String>();
     let bytes = json.as_bytes();
@@ -1069,67 +1039,6 @@ fn test_big_int_errs() {
         assert_eq!(e.index, 4301);
         assert_eq!(e.description(json), "number out of range at line 1 column 4302");
     }
-}
-
-#[test]
-fn lazy_index_map_pretty() {
-    let mut map: LazyIndexMap<Cow<'_, str>, JsonValue<'_>> = LazyIndexMap::new();
-    assert!(map.is_empty());
-    map.insert("foo".into(), JsonValue::Str("bar".into()));
-    assert!(!map.is_empty());
-    map.insert("spam".into(), JsonValue::Null);
-    assert_eq!(format!("{map:?}"), r#"{"foo": Str("bar"), "spam": Null}"#);
-    let keys = map.keys().collect::<Vec<_>>();
-    assert_eq!(keys, vec!["foo", "spam"]);
-}
-
-#[test]
-fn lazy_index_map_small_get() {
-    let mut map: LazyIndexMap<Cow<'_, str>, JsonValue<'_>> = LazyIndexMap::new();
-    map.insert("foo".into(), JsonValue::Str("bar".into()));
-    map.insert("spam".into(), JsonValue::Null);
-
-    assert_eq!(map.get("foo"), Some(&JsonValue::Str("bar".into())));
-    assert_eq!(map.get("spam"), Some(&JsonValue::Null));
-    assert_eq!(map.get("spam"), Some(&JsonValue::Null));
-    assert_eq!(map.get("foo"), Some(&JsonValue::Str("bar".into())));
-    assert_eq!(map.get("other"), None);
-}
-
-#[test]
-fn lazy_index_map_big_get() {
-    let mut map: LazyIndexMap<Cow<'_, str>, JsonValue<'_>> = LazyIndexMap::new();
-
-    for i in 0..25 {
-        let key = i.to_string().into();
-        map.insert(key, JsonValue::Int(i));
-    }
-
-    assert_eq!(map.get("0"), Some(&JsonValue::Int(0)));
-    assert_eq!(map.get("10"), Some(&JsonValue::Int(10)));
-    assert_eq!(map.get("22"), Some(&JsonValue::Int(22)));
-    assert_eq!(map.get("other"), None);
-}
-
-#[test]
-fn lazy_index_map_clone() {
-    let mut map: LazyIndexMap<Cow<'_, str>, JsonValue<'_>> = LazyIndexMap::default();
-
-    map.insert("foo".into(), JsonValue::Str("bar".into()));
-    map.insert("spam".into(), JsonValue::Null);
-
-    assert_eq!(map.get("foo"), Some(&JsonValue::Str("bar".into())));
-    assert_eq!(map.get("spam"), Some(&JsonValue::Null));
-    assert_eq!(map.get("spam"), Some(&JsonValue::Null));
-    assert_eq!(map.get("foo"), Some(&JsonValue::Str("bar".into())));
-    assert_eq!(map.get("other"), None);
-
-    let map2 = map.clone();
-    assert_eq!(map2.get("foo"), Some(&JsonValue::Str("bar".into())));
-    assert_eq!(map2.get("spam"), Some(&JsonValue::Null));
-    assert_eq!(map2.get("spam"), Some(&JsonValue::Null));
-    assert_eq!(map2.get("foo"), Some(&JsonValue::Str("bar".into())));
-    assert_eq!(map2.get("other"), None);
 }
 
 #[test]
@@ -1297,6 +1206,10 @@ fn value_owned() -> JsonValue<'static> {
     JsonValue::parse_owned(s.as_bytes(), false, PartialMode::Off).unwrap()
 }
 
+fn get_key<'a, 'j>(o: &'a JsonObject<'j>, key: &str) -> Option<&'a JsonValue<'j>> {
+    o.iter().find_map(|(k, v)| (k == key).then_some(v))
+}
+
 #[test]
 fn test_owned_value() {
     let value = value_owned();
@@ -1304,16 +1217,16 @@ fn test_owned_value() {
         JsonValue::Object(obj) => obj,
         _ => panic!("expected object"),
     };
-    assert_eq!(obj.get("int").unwrap(), &JsonValue::Int(1));
-    assert_eq!(obj.get("const").unwrap(), &JsonValue::Bool(true));
-    assert_eq!(obj.get("float").unwrap(), &JsonValue::Float(1.2));
-    let array = match obj.get("array").unwrap() {
+    assert_eq!(get_key(&obj, "int").unwrap(), &JsonValue::Int(1));
+    assert_eq!(get_key(&obj, "const").unwrap(), &JsonValue::Bool(true));
+    assert_eq!(get_key(&obj, "float").unwrap(), &JsonValue::Float(1.2));
+    let array = match get_key(&obj, "array").unwrap() {
         JsonValue::Array(array) => array,
         _ => panic!("expected array"),
     };
     assert_eq!(
         array,
-        &Arc::new(smallvec![JsonValue::Int(1), JsonValue::Bool(false), JsonValue::Null])
+        &Arc::new(vec![JsonValue::Int(1), JsonValue::Bool(false), JsonValue::Null])
     );
 }
 
@@ -1333,16 +1246,16 @@ fn test_into_static() {
         _ => panic!("expected object"),
     };
     let expected_big_int = BigInt::from_str("92233720368547758070").unwrap();
-    assert_eq!(obj.get("big_int").unwrap(), &JsonValue::BigInt(expected_big_int));
-    assert_eq!(obj.get("const").unwrap(), &JsonValue::Bool(true));
-    assert_eq!(obj.get("float").unwrap(), &JsonValue::Float(1.2));
-    let array = match obj.get("array").unwrap() {
+    assert_eq!(get_key(&obj, "big_int").unwrap(), &JsonValue::BigInt(expected_big_int));
+    assert_eq!(get_key(&obj, "const").unwrap(), &JsonValue::Bool(true));
+    assert_eq!(get_key(&obj, "float").unwrap(), &JsonValue::Float(1.2));
+    let array = match get_key(&obj, "array").unwrap() {
         JsonValue::Array(array) => array,
         _ => panic!("expected array"),
     };
     assert_eq!(
         array,
-        &Arc::new(smallvec![
+        &Arc::new(vec![
             JsonValue::Int(1),
             JsonValue::Bool(false),
             JsonValue::Null,
@@ -1679,7 +1592,7 @@ fn test_value_partial_array_on() {
     let value = JsonValue::parse_with_config(json_bytes, false, PartialMode::On).unwrap();
     assert_eq!(
         value,
-        JsonValue::Array(Arc::new(smallvec![
+        JsonValue::Array(Arc::new(vec![
             JsonValue::Str("string".into()),
             JsonValue::Bool(true),
             JsonValue::Null,
@@ -1700,7 +1613,7 @@ fn test_value_partial_array_trailing_strings() {
     let value = JsonValue::parse_with_config(json_bytes, false, PartialMode::TrailingStrings).unwrap();
     assert_eq!(
         value,
-        JsonValue::Array(Arc::new(smallvec![
+        JsonValue::Array(Arc::new(vec![
             JsonValue::Str("string".into()),
             JsonValue::Bool(true),
             JsonValue::Null,
@@ -1734,7 +1647,7 @@ fn test_value_partial_object() {
     assert_eq!(pairs[5].clone(), (Cow::Borrowed("f"), JsonValue::Float(2.22)));
     assert_eq!(
         pairs[6].clone(),
-        (Cow::Borrowed("g"), JsonValue::Array(Arc::new(smallvec![])))
+        (Cow::Borrowed("g"), JsonValue::Array(Arc::new(vec![])))
     );
     // test all position in the string
     for i in 1..json_bytes.len() {
