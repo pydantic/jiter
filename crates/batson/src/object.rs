@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::fmt;
 use std::mem::size_of;
 use std::num::TryFromIntError;
@@ -264,7 +265,20 @@ pub(crate) fn encode_object(encoder: &mut Encoder, object: &JsonObject) -> Encod
         return encoder.encode_length(Category::Object, 0);
     }
 
-    let items: Vec<ObjectItems> = object.iter_unique().collect();
+    let mut positions: HashMap<&str, usize> = HashMap::with_capacity(object.len());
+    let mut items = Vec::with_capacity(object.len());
+
+    for (key, value) in &**object {
+        match positions.entry(key.as_ref()) {
+            std::collections::hash_map::Entry::Occupied(entry) => {
+                items[*entry.get()] = (key, value);
+            }
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(items.len());
+                items.push((key, value));
+            }
+        }
+    }
 
     let min_size = minimum_object_size_estimate(&items);
     let encoder_position = encoder.position();
@@ -555,7 +569,7 @@ mod test {
         ]);
 
         // less than 255, so encode_from_json will try to encode with SuperHeaderItem8
-        let items: Vec<_> = v.iter_unique().collect();
+        let items: Vec<ObjectItems> = v.iter().map(|(k, v)| (k, v)).collect();
         assert_eq!(minimum_object_size_estimate(&items), 106);
         let b = encode_from_json(&JsonValue::Object(v)).unwrap();
 
