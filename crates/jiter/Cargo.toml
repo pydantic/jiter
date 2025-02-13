@@ -12,10 +12,10 @@ homepage = { workspace = true }
 repository = { workspace = true }
 
 [dependencies]
-num-bigint = { version = "0.4.4", optional = true }
-num-traits = "0.2.16"
+num-bigint = { workspace = true, optional = true }
+num-traits = { workspace = true }
 ahash = "0.8.0"
-smallvec = "1.11.0"
+smallvec = { workspace = true }
 pyo3 = { workspace = true, optional = true }
 lexical-parse-float = { version = "1.0.5", features = ["format"] }
 bitvec = "1.0.1"
@@ -26,16 +26,12 @@ python = ["dep:pyo3", "dep:pyo3-build-config"]
 num-bigint = ["dep:num-bigint", "pyo3?/num-bigint"]
 
 [dev-dependencies]
-bencher = "0.1.5"
-paste = "1.0.7"
-serde_json = { version = "1.0.87", features = [
-    "preserve_order",
-    "arbitrary_precision",
-    "float_roundtrip",
-] }
-serde = "1.0.147"
+bencher = { workspace = true }
+paste = { workspace = true }
+codspeed-bencher-compat = { workspace = true }
+serde_json = { workspace = true, features = ["preserve_order", "arbitrary_precision", "float_roundtrip"]}
+serde = { workspace = true }
 pyo3 = { workspace = true, features = ["auto-initialize"] }
-codspeed-bencher-compat = "2.7.1"
 
 [build-dependencies]
 pyo3-build-config = { workspace = true, optional = true }
