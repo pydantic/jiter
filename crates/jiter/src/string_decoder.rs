@@ -315,7 +315,7 @@ fn parse_escape(data: &[u8], index: usize) -> JsonResult<(char, usize)> {
                 if !(0xDC00..=0xDFFF).contains(&n2) {
                     return json_err!(LoneLeadingSurrogateInHexEscape, index);
                 }
-                let n2 = (((n - 0xD800) as u32) << 10 | (n2 - 0xDC00) as u32) + 0x1_0000;
+                let n2 = ((((n - 0xD800) as u32) << 10) | ((n2 - 0xDC00) as u32)) + 0x1_0000;
 
                 match char::from_u32(n2) {
                     Some(c) => Ok((c, index)),
