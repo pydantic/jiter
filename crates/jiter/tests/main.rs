@@ -1,7 +1,8 @@
+#![allow(clippy::float_cmp)]
+
 use std::borrow::Cow;
 use std::fs::File;
 use std::io::Read;
-use std::iter;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -116,14 +117,13 @@ macro_rules! single_expect_ok_or_error {
                     Err(e) => {
                         let position = jiter.error_position(e.index);
                         // no wrong type errors, so unwrap the json error
-                        let error_type = match e.error_type {
-                            JiterErrorType::JsonError(ref e) => e,
-                            _ => panic!("unexpected error type: {:?}", e.error_type),
+                        let JiterErrorType::JsonError(error_type) = e.error_type else {
+                            panic!("unexpected error type: {:?}", e.error_type);
                         };
                         let actual_error = format!("{:?} @ {}", error_type, position.short());
                         assert_eq!(actual_error, $expected_error);
 
-                        let full_error = format!("{} at {}", e.error_type, position);
+                        let full_error = format!("{} at {}", error_type, position);
                         let serde_err = serde_json::from_str::<serde_json::Value>($json).unwrap_err();
                         assert_eq!(full_error, serde_err.to_string());
                         return
@@ -137,9 +137,8 @@ macro_rules! single_expect_ok_or_error {
                         e.to_string();
                         let position = jiter.error_position(e.index);
                         // no wrong type errors, so unwrap the json error
-                        let error_type = match e.error_type {
-                            JiterErrorType::JsonError(e) => e,
-                            _ => panic!("unexpected error type: {:?}", e.error_type),
+                        let JiterErrorType::JsonError(error_type) = e.error_type else {
+                            panic!("unexpected error type: {:?}", e.error_type);
                         };
                         let actual_error = format!("{:?} @ {}", error_type, position.short());
                         assert_eq!(actual_error, $expected_error);
@@ -309,12 +308,12 @@ macro_rules! string_test_errors {
                     let mut jiter = Jiter::new(data);
                     match jiter.next_str() {
                         Ok(t) => panic!("unexpectedly valid: {:?} -> {:?}", $json, t),
+                        // to check to_string works, and for coverage
                         Err(e) => {
                             // to check to_string works, and for coverage
                             e.to_string();
-                            let error_type = match e.error_type {
-                                JiterErrorType::JsonError(e) => e,
-                                _ => panic!("unexpected error type: {:?}", e.error_type),
+                            let JiterErrorType::JsonError(error_type) = e.error_type else {
+                                panic!("unexpected error type: {:?}", e.error_type);
                             };
                             let position = jiter.error_position(e.index);
                             let actual_error = format!("{:?} @ {} - {}", error_type, e.index, position.short());
@@ -639,9 +638,8 @@ fn simd_string_sizes() {
         json.extend(std::iter::repeat_n(b' ', 40));
 
         let value = JsonValue::parse(&json, false).unwrap();
-        let s = match value {
-            JsonValue::Str(s) => s,
-            _ => panic!("unexpected value {value:?}"),
+        let JsonValue::Str(s) = value else {
+            panic!("unexpected value {value:?}");
         };
         assert_eq!(s.len(), i);
         assert!(s.as_bytes().iter().all(|&b| b == b'a'));
@@ -782,7 +780,7 @@ fn escaped_string() {
         JsonValue::Str(s) => s,
         v => panic!("expected array, not {v:?}"),
     };
-    s;
+    drop(s);
     // assert_eq!(s, r#"&#34; " %22 0x22 034 &#x22;"#);
 }
 
@@ -1032,7 +1030,7 @@ fn test_big_int_errs() {
         &[b'9'; 4302][..],
         &[b'9'; 5900][..],
         // If the check is only done at the end, this will hang
-        &[b'9'; 10usize.pow(7)][..],
+        &vec![b'9'; 10usize.pow(7)],
     ] {
         let e = JsonValue::parse(json, false).unwrap_err();
         assert_eq!(e.error_type, JsonErrorType::NumberOutOfRange);
@@ -1213,16 +1211,14 @@ fn get_key<'a, 'j>(o: &'a JsonObject<'j>, key: &str) -> Option<&'a JsonValue<'j>
 #[test]
 fn test_owned_value() {
     let value = value_owned();
-    let obj = match value {
-        JsonValue::Object(obj) => obj,
-        _ => panic!("expected object"),
+    let JsonValue::Object(obj) = value else {
+        panic!("expected object")
     };
     assert_eq!(get_key(&obj, "int").unwrap(), &JsonValue::Int(1));
     assert_eq!(get_key(&obj, "const").unwrap(), &JsonValue::Bool(true));
     assert_eq!(get_key(&obj, "float").unwrap(), &JsonValue::Float(1.2));
-    let array = match get_key(&obj, "array").unwrap() {
-        JsonValue::Array(array) => array,
-        _ => panic!("expected array"),
+    let JsonValue::Array(array) = get_key(&obj, "array").unwrap() else {
+        panic!("expected array")
     };
     assert_eq!(
         array,
@@ -1241,17 +1237,15 @@ fn value_into_static() -> JsonValue<'static> {
 #[test]
 fn test_into_static() {
     let value = crate::value_into_static();
-    let obj = match value {
-        JsonValue::Object(obj) => obj,
-        _ => panic!("expected object"),
+    let JsonValue::Object(obj) = value else {
+        panic!("expected object")
     };
     let expected_big_int = BigInt::from_str("92233720368547758070").unwrap();
     assert_eq!(get_key(&obj, "big_int").unwrap(), &JsonValue::BigInt(expected_big_int));
     assert_eq!(get_key(&obj, "const").unwrap(), &JsonValue::Bool(true));
     assert_eq!(get_key(&obj, "float").unwrap(), &JsonValue::Float(1.2));
-    let array = match get_key(&obj, "array").unwrap() {
-        JsonValue::Array(array) => array,
-        _ => panic!("expected array"),
+    let JsonValue::Array(array) = get_key(&obj, "array").unwrap() else {
+        panic!("expected array")
     };
     assert_eq!(
         array,
@@ -1268,9 +1262,8 @@ fn test_into_static() {
 fn jiter_next_value_borrowed() {
     let mut jiter = Jiter::new(br#" "v"  "#);
     let v = jiter.next_value().unwrap();
-    let s = match v {
-        JsonValue::Str(s) => s,
-        _ => panic!("expected string"),
+    let JsonValue::Str(s) = v else {
+        panic!("expected string")
     };
     assert_eq!(s, "v");
     assert!(matches!(s, Cow::Borrowed(_)));
@@ -1280,9 +1273,8 @@ fn jiter_next_value_borrowed() {
 fn jiter_next_value_owned() {
     let mut jiter = Jiter::new(br#" "v"  "#);
     let v = jiter.next_value_owned().unwrap();
-    let s = match v {
-        JsonValue::Str(s) => s,
-        _ => panic!("expected string"),
+    let JsonValue::Str(s) = v else {
+        panic!("expected string")
     };
     assert_eq!(s, "v");
     assert!(matches!(s, Cow::Owned(_)));
@@ -1329,7 +1321,7 @@ fn test_number_int_try_from_bytes() {
         let n: NumberInt = twenty_nines.as_bytes().try_into().unwrap();
         match n {
             NumberInt::BigInt(v) => assert_eq!(v.to_string(), twenty_nines),
-            _ => panic!("expected big int"),
+            NumberInt::Int(_) => panic!("expected big int"),
         }
     }
 
@@ -1578,9 +1570,8 @@ fn test_unicode_roundtrip() {
     // '"中文"'
     let json_bytes = b"\"\\u4e2d\\u6587\"";
     let value = JsonValue::parse(json_bytes, false).unwrap();
-    let cow = match value {
-        JsonValue::Str(s) => s,
-        _ => panic!("expected string"),
+    let JsonValue::Str(cow) = value else {
+        panic!("expected string")
     };
     assert_eq!(cow, "中文");
     assert!(matches!(cow, Cow::Owned(_)));
@@ -1633,9 +1624,8 @@ fn test_value_partial_array_trailing_strings() {
 fn test_value_partial_object() {
     let json_bytes = br#"{"a": "value", "b": true, "c": false, "d": null, "e": 1, "f": 2.22, "g": ["#;
     let value = JsonValue::parse_with_config(json_bytes, false, PartialMode::TrailingStrings).unwrap();
-    let obj = match value {
-        JsonValue::Object(obj) => obj,
-        _ => panic!("expected object"),
+    let JsonValue::Object(obj) = value else {
+        panic!("expected object")
     };
     assert_eq!(obj.len(), 7);
     let pairs = obj.iter().collect::<Vec<_>>();

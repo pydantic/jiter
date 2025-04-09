@@ -21,7 +21,7 @@ repos:
     pass_filenames: false
   - id: clippy
     name: Clippy
-    entry: cargo clippy -F python -- -D warnings
+    entry: cargo clippy -F python --workspace --all-targets -- -D warnings
     types: [rust]
     language: system
     pass_filenames: false

@@ -32,7 +32,7 @@ fn python_parse_other(bench: &mut Bencher) {
     });
 }
 
-fn _python_parse_file(path: &str, bench: &mut Bencher, cache_mode: StringCacheMode) {
+fn python_parse_file(path: &str, bench: &mut Bencher, cache_mode: StringCacheMode) {
     let mut file = File::open(path).unwrap();
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
@@ -52,52 +52,52 @@ fn _python_parse_file(path: &str, bench: &mut Bencher, cache_mode: StringCacheMo
 }
 
 fn python_parse_massive_ints_array(bench: &mut Bencher) {
-    _python_parse_file("./benches/massive_ints_array.json", bench, StringCacheMode::All);
+    python_parse_file("./benches/massive_ints_array.json", bench, StringCacheMode::All);
 }
 
 fn python_parse_medium_response_not_cached(bench: &mut Bencher) {
-    _python_parse_file("./benches/medium_response.json", bench, StringCacheMode::None);
+    python_parse_file("./benches/medium_response.json", bench, StringCacheMode::None);
 }
 
 fn python_parse_medium_response(bench: &mut Bencher) {
-    _python_parse_file("./benches/medium_response.json", bench, StringCacheMode::All);
+    python_parse_file("./benches/medium_response.json", bench, StringCacheMode::All);
 }
 
 fn python_parse_true_object_not_cached(bench: &mut Bencher) {
-    _python_parse_file("./benches/true_object.json", bench, StringCacheMode::None);
+    python_parse_file("./benches/true_object.json", bench, StringCacheMode::None);
 }
 
 fn python_parse_string_array_not_cached(bench: &mut Bencher) {
-    _python_parse_file("./benches/string_array.json", bench, StringCacheMode::None);
+    python_parse_file("./benches/string_array.json", bench, StringCacheMode::None);
 }
 
 fn python_parse_string_array(bench: &mut Bencher) {
-    _python_parse_file("./benches/string_array.json", bench, StringCacheMode::All);
+    python_parse_file("./benches/string_array.json", bench, StringCacheMode::All);
 }
 
 fn python_parse_x100_not_cached(bench: &mut Bencher) {
-    _python_parse_file("./benches/x100.json", bench, StringCacheMode::None);
+    python_parse_file("./benches/x100.json", bench, StringCacheMode::None);
 }
 
 fn python_parse_x100(bench: &mut Bencher) {
-    _python_parse_file("./benches/x100.json", bench, StringCacheMode::All);
+    python_parse_file("./benches/x100.json", bench, StringCacheMode::All);
 }
 
 fn python_parse_string_array_unique_not_cached(bench: &mut Bencher) {
-    _python_parse_file("./benches/string_array_unique.json", bench, StringCacheMode::None);
+    python_parse_file("./benches/string_array_unique.json", bench, StringCacheMode::None);
 }
 
 fn python_parse_string_array_unique(bench: &mut Bencher) {
-    _python_parse_file("./benches/string_array_unique.json", bench, StringCacheMode::All);
+    python_parse_file("./benches/string_array_unique.json", bench, StringCacheMode::All);
 }
 
 fn python_parse_true_object(bench: &mut Bencher) {
-    _python_parse_file("./benches/true_object.json", bench, StringCacheMode::All);
+    python_parse_file("./benches/true_object.json", bench, StringCacheMode::All);
 }
 
 /// Note - caching strings should make no difference here
 fn python_parse_true_array(bench: &mut Bencher) {
-    _python_parse_file("./benches/true_array.json", bench, StringCacheMode::All);
+    python_parse_file("./benches/true_array.json", bench, StringCacheMode::All);
 }
 
 benchmark_group!(
