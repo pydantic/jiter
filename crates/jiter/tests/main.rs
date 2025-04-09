@@ -68,7 +68,7 @@ fn json_vec(jiter: &mut Jiter, peek: Option<Peek>) -> JiterResult<Vec<String>> {
             let s = display_number(peek, jiter)?;
             v.push(s);
         }
-    };
+    }
     Ok(v)
 }
 
@@ -201,8 +201,8 @@ single_tests! {
     bad_null1: err => "nulX", "ExpectedSomeIdent @ 1:4";
     bad_null2: err => "nul", "EofWhileParsingValue @ 1:3";
     object_trailing_comma: err => r#"{"foo": "bar",}"#, "TrailingComma @ 1:15";
-    array_trailing_comma: err => r#"[1, 2,]"#, "TrailingComma @ 1:7";
-    array_wrong_char_after_comma: err => r#"[1, 2,;"#, "ExpectedSomeValue @ 1:7";
+    array_trailing_comma: err => r"[1, 2,]", "TrailingComma @ 1:7";
+    array_wrong_char_after_comma: err => r"[1, 2,;", "ExpectedSomeValue @ 1:7";
     array_end_after_comma: err => "[9,", "EofWhileParsingValue @ 1:3";
     object_wrong_char: err => r#"{"foo":42;"#, "ExpectedObjectCommaOrEnd @ 1:10";
     object_wrong_char_after_comma: err => r#"{"foo":42,;"#, "KeyMustBeAString @ 1:11";
@@ -215,8 +215,8 @@ single_tests! {
     object_null: ok => r#"{"foo": null}"#, "{ @ 1:1, Key(foo), null @ 1:9, }";
     object_bool_compact: ok => r#"{"foo":true}"#, "{ @ 1:1, Key(foo), true @ 1:8, }";
     deep_array: ok => r#"[["Not too deep"]]"#, "[ @ 1:1, [ @ 1:2, String(Not too deep) @ 1:3, ], ]";
-    object_key_int: err => r#"{4: 4}"#, "KeyMustBeAString @ 1:2";
-    array_no_close: err => r#"["#, "EofWhileParsingList @ 1:1";
+    object_key_int: err => r"{4: 4}", "KeyMustBeAString @ 1:2";
+    array_no_close: err => r"[", "EofWhileParsingList @ 1:1";
     array_double_close: err => "[1]]", "TrailingCharacters @ 1:4";
     invalid_float_e_end: err => "0E", "EofWhileParsingValue @ 1:2";
     invalid_float_dot_end: err => "0.", "EofWhileParsingValue @ 1:2";
@@ -395,7 +395,7 @@ fn utf8_range() {
 fn utf8_range_long() {
     for c in 0u8..255u8 {
         let mut json = vec![b'"', b':', c];
-        json.extend(iter::repeat(b' ').take(20));
+        json.extend(std::iter::repeat_n(b' ', 20));
         json.push(b'"');
         // dbg!(c, json.iter().map(|b| *b as char).collect::<Vec<_>>());
 
@@ -416,7 +416,7 @@ fn utf8_range_long() {
 
 #[test]
 fn nan_disallowed() {
-    let json = r#"[NaN]"#;
+    let json = r"[NaN]";
     let mut jiter = Jiter::new(json.as_bytes());
     assert_eq!(jiter.next_array().unwrap().unwrap(), Peek::NaN);
     let e = jiter.next_number().unwrap_err();
@@ -430,7 +430,7 @@ fn nan_disallowed() {
 
 #[test]
 fn inf_disallowed() {
-    let json = r#"[Infinity]"#;
+    let json = r"[Infinity]";
     let mut jiter = Jiter::new(json.as_bytes());
     assert_eq!(jiter.next_array().unwrap().unwrap(), Peek::Infinity);
     let e = jiter.next_number().unwrap_err();
@@ -444,7 +444,7 @@ fn inf_disallowed() {
 
 #[test]
 fn inf_neg_disallowed() {
-    let json = r#"[-Infinity]"#;
+    let json = r"[-Infinity]";
     let mut jiter = Jiter::new(json.as_bytes());
     assert_eq!(jiter.next_array().unwrap().unwrap(), Peek::Minus);
     let e = jiter.next_number().unwrap_err();
@@ -455,7 +455,7 @@ fn inf_neg_disallowed() {
 
 #[test]
 fn num_after() {
-    let json = r#"2:"#; // `:` is 58, directly after 9
+    let json = r"2:"; // `:` is 58, directly after 9
     let mut jiter = Jiter::new(json.as_bytes());
     let num = jiter.next_number().unwrap();
     assert_eq!(num, NumberAny::Int(NumberInt::Int(2)));
@@ -470,7 +470,7 @@ fn num_after() {
 
 #[test]
 fn num_before() {
-    let json = r#"2/"#; // `/` is 47, directly before 0
+    let json = r"2/"; // `/` is 47, directly before 0
     let mut jiter = Jiter::new(json.as_bytes());
     let num = jiter.next_number().unwrap();
     assert_eq!(num, NumberAny::Int(NumberInt::Int(2)));
@@ -485,7 +485,7 @@ fn num_before() {
 
 #[test]
 fn nan_disallowed_wrong_type() {
-    let json = r#"[NaN]"#;
+    let json = r"[NaN]";
     let mut jiter = Jiter::new(json.as_bytes());
     assert_eq!(jiter.next_array().unwrap().unwrap(), Peek::NaN);
     let e = jiter.next_str().unwrap_err();
@@ -499,7 +499,7 @@ fn nan_disallowed_wrong_type() {
 
 #[test]
 fn value_allow_nan_inf() {
-    let json = r#"[1, NaN, Infinity, -Infinity]"#;
+    let json = r"[1, NaN, Infinity, -Infinity]";
     let value = JsonValue::parse(json.as_bytes(), true).unwrap();
     let expected = JsonValue::Array(Arc::new(vec![
         JsonValue::Int(1),
@@ -508,12 +508,12 @@ fn value_allow_nan_inf() {
         JsonValue::Float(f64::NEG_INFINITY),
     ]));
     // compare debug since `f64::NAN != f64::NAN`
-    assert_eq!(format!("{:?}", value), format!("{:?}", expected));
+    assert_eq!(format!("{value:?}"), format!("{:?}", expected));
 }
 
 #[test]
 fn value_disallow_nan() {
-    let json = r#"[1, NaN]"#;
+    let json = r"[1, NaN]";
     let err = JsonValue::parse(json.as_bytes(), false).unwrap_err();
     assert_eq!(err.error_type, JsonErrorType::ExpectedSomeValue);
     assert_eq!(err.description(json.as_bytes()), "expected value at line 1 column 5");
@@ -578,7 +578,7 @@ fn parse_zero_float() {
     match v {
         JsonValue::Float(v) => assert!((0.1234 - v).abs() < 1e-6),
         other => panic!("unexpected value: {other:?}"),
-    };
+    }
 }
 
 #[test]
@@ -587,7 +587,7 @@ fn parse_zero_exp_float() {
     match v {
         JsonValue::Float(v) => assert!((120.0 - v).abs() < 1e-3),
         other => panic!("unexpected value: {other:?}"),
-    };
+    }
 }
 
 #[test]
@@ -605,7 +605,7 @@ fn bad_high_order_string() {
     let e = JsonValue::parse(&bytes, false).unwrap_err();
     assert_eq!(e.error_type, JsonErrorType::InvalidUnicodeCodePoint);
     assert_eq!(e.index, 4);
-    assert_eq!(e.description(&bytes), "invalid unicode code point at line 1 column 5")
+    assert_eq!(e.description(&bytes), "invalid unicode code point at line 1 column 5");
 }
 
 #[test]
@@ -617,7 +617,7 @@ fn bad_high_order_string_tail() {
     let e = JsonValue::parse(&bytes, false).unwrap_err();
     assert_eq!(e.error_type, JsonErrorType::InvalidUnicodeCodePoint);
     assert_eq!(e.index, 4);
-    assert_eq!(e.description(&bytes), "invalid unicode code point at line 1 column 5")
+    assert_eq!(e.description(&bytes), "invalid unicode code point at line 1 column 5");
 }
 
 #[test]
@@ -627,16 +627,16 @@ fn invalid_escape_position() {
     let e = JsonValue::parse(bytes, false).unwrap_err();
     assert_eq!(e.error_type, JsonErrorType::InvalidEscape);
     assert_eq!(e.index, 8);
-    assert_eq!(e.description(bytes), "invalid escape at line 1 column 9")
+    assert_eq!(e.description(bytes), "invalid escape at line 1 column 9");
 }
 
 #[test]
 fn simd_string_sizes() {
     for i in 0..100 {
         let mut json = vec![b'"'];
-        json.extend(iter::repeat(b'a').take(i));
+        json.extend(std::iter::repeat_n(b'a', i));
         json.push(b'"');
-        json.extend(iter::repeat(b' ').take(40));
+        json.extend(std::iter::repeat_n(b' ', 40));
 
         let value = JsonValue::parse(&json, false).unwrap();
         let s = match value {
@@ -692,7 +692,7 @@ fn json_value_string() {
 
 #[test]
 fn parse_array_3() {
-    let json = r#"[1   , null, true]"#;
+    let json = r"[1   , null, true]";
     let v = JsonValue::parse(json.as_bytes(), false).unwrap();
     assert_eq!(
         v,
@@ -706,7 +706,7 @@ fn parse_array_3() {
 
 #[test]
 fn parse_array_empty() {
-    let json = r#"[   ]"#;
+    let json = r"[   ]";
     let v = JsonValue::parse(json.as_bytes(), false).unwrap();
     assert_eq!(v, JsonValue::Array(Arc::new(vec![])));
 }
@@ -721,7 +721,7 @@ fn repeat_trailing_array() {
 
 #[test]
 fn parse_value_nested() {
-    let json = r#"[1, 2, [3, 4], 5, 6]"#;
+    let json = r"[1, 2, [3, 4], 5, 6]";
     let v = JsonValue::parse(json.as_bytes(), false).unwrap();
     assert_eq!(
         v,
@@ -732,12 +732,12 @@ fn parse_value_nested() {
             JsonValue::Int(5),
             JsonValue::Int(6),
         ]),)
-    )
+    );
 }
 
 #[test]
 fn test_array_trailing() {
-    let json = br#"[1, 2,]"#;
+    let json = br"[1, 2,]";
     let e = JsonValue::parse(json, false).unwrap_err();
     assert_eq!(e.error_type, JsonErrorType::TrailingComma);
     assert_eq!(e.get_position(json), LinePosition::new(1, 7));
@@ -758,7 +758,7 @@ fn pass1_to_value() {
     let v = JsonValue::parse(json_data, false).unwrap();
     let array = match v {
         JsonValue::Array(array) => array,
-        v => panic!("expected array, not {:?}", v),
+        v => panic!("expected array, not {v:?}"),
     };
     assert_eq!(array.len(), 20);
     assert_eq!(array[0], JsonValue::Str("JSON Test Pattern pass1".into()));
@@ -780,9 +780,9 @@ fn escaped_string() {
     let v = JsonValue::parse(json_data, false).unwrap();
     let s = match v {
         JsonValue::Str(s) => s,
-        v => panic!("expected array, not {:?}", v),
+        v => panic!("expected array, not {v:?}"),
     };
-    dbg!(s);
+    s;
     // assert_eq!(s, r#"&#34; " %22 0x22 034 &#x22;"#);
 }
 
@@ -820,9 +820,9 @@ fn jiter_inf() {
 fn jiter_bool() {
     let mut jiter = Jiter::new(b"[true, false, null]");
     assert_eq!(jiter.next_array().unwrap(), Some(Peek::True));
-    assert_eq!(jiter.next_bool().unwrap(), true);
+    assert!(jiter.next_bool().unwrap());
     assert_eq!(jiter.array_step().unwrap(), Some(Peek::False));
-    assert_eq!(jiter.next_bool().unwrap(), false);
+    assert!(!jiter.next_bool().unwrap());
     assert_eq!(jiter.array_step().unwrap(), Some(Peek::Null));
     jiter.next_null().unwrap();
     assert_eq!(jiter.array_step().unwrap(), None);
@@ -835,14 +835,14 @@ fn jiter_bytes() {
     assert_eq!(jiter.next_object_bytes().unwrap().unwrap(), b"foo");
     assert_eq!(jiter.next_bytes().unwrap(), b"bar");
     assert_eq!(jiter.next_key_bytes().unwrap().unwrap(), b"new-line");
-    assert_eq!(jiter.next_bytes().unwrap(), br#"\\n"#);
+    assert_eq!(jiter.next_bytes().unwrap(), br"\\n");
     assert_eq!(jiter.next_key_bytes().unwrap(), None);
     jiter.finish().unwrap();
 }
 
 #[test]
 fn jiter_number() {
-    let mut jiter = Jiter::new(br#"  [1, 2.2, 3, 4.1, 5.67]"#);
+    let mut jiter = Jiter::new(br"  [1, 2.2, 3, 4.1, 5.67]");
     assert_eq!(jiter.next_array().unwrap().unwrap().into_inner(), b'1');
     assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(1));
     assert_eq!(jiter.array_step().unwrap().unwrap().into_inner(), b'2');
@@ -937,7 +937,7 @@ fn test_recursion_limit() {
 #[test]
 fn test_recursion_limit_incr() {
     let json = (0..2000).map(|_| "[1]".to_string()).collect::<Vec<_>>().join(", ");
-    let json = format!("[{}]", json);
+    let json = format!("[{json}]");
     let bytes = json.as_bytes();
     let value = JsonValue::parse(bytes, false).unwrap();
     match value {
@@ -1013,7 +1013,7 @@ number_bytes! {
 #[cfg(feature = "num-bigint")]
 #[test]
 fn test_4300_int() {
-    let json = (0..4300).map(|_| "9".to_string()).collect::<Vec<_>>().join("");
+    let json = (0..4300).map(|_| "9".to_string()).collect::<String>();
     let bytes = json.as_bytes();
     let value = JsonValue::parse(bytes, false).unwrap();
     let expected_big_int = BigInt::from_str(&json).unwrap();
@@ -1021,7 +1021,7 @@ fn test_4300_int() {
         JsonValue::BigInt(v) => {
             assert_eq!(v, expected_big_int);
         }
-        _ => panic!("expected array, got {:?}", value),
+        _ => panic!("expected array, got {value:?}"),
     }
 }
 
@@ -1074,7 +1074,7 @@ fn readme_jiter() {
 
 #[test]
 fn jiter_clone() {
-    let json = r#"[1, 2]"#;
+    let json = r"[1, 2]";
     let mut jiter1 = Jiter::new(json.as_bytes());
     assert_eq!(jiter1.next_array().unwrap().unwrap().into_inner(), b'1');
     let n = jiter1.next_number().unwrap();
@@ -1483,7 +1483,7 @@ fn jiter_skip_backslash_strings() {
 
 #[test]
 fn jiter_skip_invalid_ident() {
-    let mut jiter = Jiter::new(br#"trUe"#).with_allow_inf_nan();
+    let mut jiter = Jiter::new(br"trUe").with_allow_inf_nan();
     let e = jiter.next_skip().unwrap_err();
     assert_eq!(
         e.error_type,
@@ -1503,14 +1503,14 @@ fn jiter_skip_invalid_string() {
 
 #[test]
 fn jiter_skip_invalid_int() {
-    let mut jiter = Jiter::new(br#"01"#);
+    let mut jiter = Jiter::new(br"01");
     let e = jiter.next_skip().unwrap_err();
     assert_eq!(e.error_type, JiterErrorType::JsonError(JsonErrorType::InvalidNumber));
 }
 
 #[test]
 fn jiter_skip_invalid_object() {
-    let mut jiter = Jiter::new(br#"{{"#);
+    let mut jiter = Jiter::new(br"{{");
     let e = jiter.next_skip().unwrap_err();
     assert_eq!(e.error_type, JiterErrorType::JsonError(JsonErrorType::KeyMustBeAString));
 }
@@ -1546,7 +1546,7 @@ fn jiter_skip_invalid_string_high() {
 
 #[test]
 fn jiter_skip_invalid_long_float() {
-    let mut jiter = Jiter::new(br#"2121515572557277572557277e"#);
+    let mut jiter = Jiter::new(br"2121515572557277572557277e");
     let e = jiter.next_skip().unwrap_err();
     assert_eq!(
         e.error_type,
@@ -1557,7 +1557,7 @@ fn jiter_skip_invalid_long_float() {
 #[cfg(feature = "num-bigint")]
 #[test]
 fn jiter_value_invalid_long_float() {
-    let e = JsonValue::parse(br#"2121515572557277572557277e"#, false).unwrap_err();
+    let e = JsonValue::parse(br"2121515572557277572557277e", false).unwrap_err();
     assert_eq!(e.error_type, JsonErrorType::EofWhileParsingValue);
 }
 

@@ -18,7 +18,7 @@ fn python_parse_numeric(bench: &mut Bencher) {
                 )
                 .unwrap()
         });
-    })
+    });
 }
 
 fn python_parse_other(bench: &mut Bencher) {
@@ -29,7 +29,7 @@ fn python_parse_other(bench: &mut Bencher) {
                 .python_parse(py, br#"["string", true, false, null]"#)
                 .unwrap()
         });
-    })
+    });
 }
 
 fn _python_parse_file(path: &str, bench: &mut Bencher, cache_mode: StringCacheMode) {
@@ -48,7 +48,7 @@ fn _python_parse_file(path: &str, bench: &mut Bencher, cache_mode: StringCacheMo
             .python_parse(py, json_data)
             .unwrap()
         });
-    })
+    });
 }
 
 fn python_parse_massive_ints_array(bench: &mut Bencher) {

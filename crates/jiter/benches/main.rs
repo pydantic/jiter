@@ -20,7 +20,7 @@ fn jiter_value(path: &str, bench: &mut Bencher) {
     bench.iter(|| {
         let v = JsonValue::parse(black_box(json_data), false).unwrap();
         black_box(v)
-    })
+    });
 }
 
 fn jiter_skip(path: &str, bench: &mut Bencher) {
@@ -29,7 +29,7 @@ fn jiter_skip(path: &str, bench: &mut Bencher) {
     bench.iter(|| {
         let mut jiter = Jiter::new(json_data);
         jiter.next_skip().unwrap();
-    })
+    });
 }
 
 fn jiter_iter_big(path: &str, bench: &mut Bencher) {
@@ -52,7 +52,7 @@ fn jiter_iter_big(path: &str, bench: &mut Bencher) {
                 break;
             }
         }
-    })
+    });
 }
 
 fn find_string(jiter: &mut Jiter) -> String {
@@ -77,7 +77,7 @@ fn jiter_iter_pass2(path: &str, bench: &mut Bencher) {
         let string = find_string(&mut jiter);
         jiter.finish().unwrap();
         black_box(string)
-    })
+    });
 }
 
 fn jiter_iter_string_array(path: &str, bench: &mut Bencher) {
@@ -94,7 +94,7 @@ fn jiter_iter_string_array(path: &str, bench: &mut Bencher) {
             black_box(i.len());
         }
         jiter.finish().unwrap();
-    })
+    });
 }
 
 fn jiter_iter_true_array(path: &str, bench: &mut Bencher) {
@@ -109,7 +109,7 @@ fn jiter_iter_true_array(path: &str, bench: &mut Bencher) {
             let i = jiter.known_bool(peek).unwrap();
             black_box(i);
         }
-    })
+    });
 }
 
 fn jiter_iter_true_object(path: &str, bench: &mut Bencher) {
@@ -127,7 +127,7 @@ fn jiter_iter_true_object(path: &str, bench: &mut Bencher) {
                 black_box((key, value));
             }
         }
-    })
+    });
 }
 
 fn jiter_iter_ints_array(path: &str, bench: &mut Bencher) {
@@ -142,7 +142,7 @@ fn jiter_iter_ints_array(path: &str, bench: &mut Bencher) {
             let i = jiter.known_int(peek).unwrap();
             black_box(i);
         }
-    })
+    });
 }
 
 fn jiter_iter_floats_array(path: &str, bench: &mut Bencher) {
@@ -157,7 +157,7 @@ fn jiter_iter_floats_array(path: &str, bench: &mut Bencher) {
             let i = jiter.known_float(peek).unwrap();
             black_box(i);
         }
-    })
+    });
 }
 
 fn jiter_string(path: &str, bench: &mut Bencher) {
@@ -168,7 +168,7 @@ fn jiter_string(path: &str, bench: &mut Bencher) {
         let string = jiter.next_str().unwrap();
         black_box(string);
         jiter.finish().unwrap();
-    })
+    });
 }
 
 fn serde_value(path: &str, bench: &mut Bencher) {
@@ -177,7 +177,7 @@ fn serde_value(path: &str, bench: &mut Bencher) {
     bench.iter(|| {
         let value: Value = serde_json::from_slice(json_data).unwrap();
         black_box(value);
-    })
+    });
 }
 
 fn serde_str(path: &str, bench: &mut Bencher) {
@@ -186,7 +186,7 @@ fn serde_str(path: &str, bench: &mut Bencher) {
     bench.iter(|| {
         let value: String = serde_json::from_slice(json_data).unwrap();
         black_box(value);
-    })
+    });
 }
 
 macro_rules! test_cases {
@@ -260,7 +260,7 @@ fn string_array_jiter_value_owned(bench: &mut Bencher) {
     bench.iter(|| {
         let v = JsonValue::parse_owned(black_box(json_data), false, PartialMode::Off).unwrap();
         black_box(v)
-    })
+    });
 }
 
 fn medium_response_jiter_value_owned(bench: &mut Bencher) {
@@ -269,7 +269,7 @@ fn medium_response_jiter_value_owned(bench: &mut Bencher) {
     bench.iter(|| {
         let v = JsonValue::parse_owned(black_box(json_data), false, PartialMode::Off).unwrap();
         black_box(v)
-    })
+    });
 }
 
 fn x100_serde_iter(bench: &mut Bencher) {
