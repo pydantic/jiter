@@ -308,7 +308,6 @@ macro_rules! string_test_errors {
                     let mut jiter = Jiter::new(data);
                     match jiter.next_str() {
                         Ok(t) => panic!("unexpectedly valid: {:?} -> {:?}", $json, t),
-                        // to check to_string works, and for coverage
                         Err(e) => {
                             // to check to_string works, and for coverage
                             e.to_string();
@@ -394,7 +393,7 @@ fn utf8_range() {
 fn utf8_range_long() {
     for c in 0u8..255u8 {
         let mut json = vec![b'"', b':', c];
-        json.extend(std::iter::repeat_n(b' ', 20));
+        json.extend(std::iter::repeat(b' ').take(20));
         json.push(b'"');
         // dbg!(c, json.iter().map(|b| *b as char).collect::<Vec<_>>());
 
@@ -633,9 +632,9 @@ fn invalid_escape_position() {
 fn simd_string_sizes() {
     for i in 0..100 {
         let mut json = vec![b'"'];
-        json.extend(std::iter::repeat_n(b'a', i));
+        json.extend(std::iter::repeat(b'a').take(i));
         json.push(b'"');
-        json.extend(std::iter::repeat_n(b' ', 40));
+        json.extend(std::iter::repeat(b' ').take(40));
 
         let value = JsonValue::parse(&json, false).unwrap();
         let JsonValue::Str(s) = value else {
