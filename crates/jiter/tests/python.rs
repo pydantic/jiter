@@ -18,7 +18,7 @@ fn test_to_py_object_numeric() {
             string,
             "{'int': 1, 'bigint': 123456789012345678901234567890, 'float': 1.2}"
         );
-    })
+    });
 }
 
 #[test]
@@ -32,7 +32,7 @@ fn test_to_py_object_other() {
         let python_value = value.into_pyobject(py).unwrap();
         let string = python_value.to_string();
         assert_eq!(string, "['string', '£', True, False, None, nan, inf, -inf]");
-    })
+    });
 }
 
 #[test]
@@ -67,7 +67,7 @@ fn test_cache_into() {
             e.to_string(),
             "TypeError: Invalid string cache mode, should be `'all'`, '`keys`', `'none`' or a `bool`"
         );
-    })
+    });
 }
 
 #[test]
@@ -76,7 +76,7 @@ fn test_pystring_fast_new_non_ascii() {
     Python::with_gil(|py| {
         let s = pystring_fast_new(py, json, false);
         assert_eq!(s.to_string(), "£100 💩");
-    })
+    });
 }
 
 #[test]
@@ -85,7 +85,7 @@ fn test_pystring_fast_new_ascii() {
     Python::with_gil(|py| {
         let s = pystring_fast_new(py, json, true);
         assert_eq!(s.to_string(), "100abc");
-    })
+    });
 }
 
 #[test]
@@ -93,5 +93,5 @@ fn test_python_parse_default() {
     Python::with_gil(|py| {
         let v = PythonParse::default().python_parse(py, b"[123]").unwrap();
         assert_eq!(v.to_string(), "[123]");
-    })
+    });
 }

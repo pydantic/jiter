@@ -397,7 +397,7 @@ fn take_value_recursive<'j, 's>(
                                 }
                                 Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
                                 _ => (),
-                            };
+                            }
                             Ok(JsonValue::empty_array())
                         }
                         Peek::Object => {
@@ -412,7 +412,7 @@ fn take_value_recursive<'j, 's>(
                                 },
                                 Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
                                 _ => (),
-                            };
+                            }
                             Ok(JsonValue::empty_object())
                         }
                         _ => parser
@@ -444,7 +444,7 @@ fn take_value_recursive<'j, 's>(
                                 }
                                 Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
                                 _ => (),
-                            };
+                            }
 
                             let RecursedValue::Array(mut array) = current_recursion else {
                                 unreachable!("known to be in array recursion");
@@ -482,7 +482,7 @@ fn take_value_recursive<'j, 's>(
                                 }
                                 Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
                                 _ => (),
-                            };
+                            }
                             Ok(JsonValue::empty_array())
                         }
                         Peek::Object => {
@@ -497,7 +497,7 @@ fn take_value_recursive<'j, 's>(
                                 },
                                 Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
                                 _ => (),
-                            };
+                            }
                             Ok(JsonValue::empty_object())
                         }
                         _ => parser
@@ -534,7 +534,7 @@ fn take_value_recursive<'j, 's>(
                                         }
                                         Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
                                         _ => (),
-                                    };
+                                    }
                                 }
                                 Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
                                 _ => (),
@@ -712,7 +712,7 @@ fn take_value_skip_recursive(
                         }
                     })?;
             }
-        };
+        }
 
         // now try to advance position in the current array or object
         peek = loop {
