@@ -34,31 +34,6 @@ pub type JsonArray<'s> = Arc<Vec<JsonValue<'s>>>;
 pub type JsonObject<'s> = Arc<Vec<(Cow<'s, str>, JsonValue<'s>)>>;
 
 #[cfg(feature = "python")]
-#[allow(deprecated)] // keeping around for sake of allowing downstream to migrate
-impl pyo3::ToPyObject for JsonValue<'_> {
-    fn to_object(&self, py: pyo3::Python<'_>) -> pyo3::PyObject {
-        use pyo3::prelude::*;
-        match self {
-            Self::Null => py.None().to_object(py),
-            Self::Bool(b) => b.to_object(py),
-            Self::Int(i) => i.to_object(py),
-            #[cfg(feature = "num-bigint")]
-            Self::BigInt(b) => b.to_object(py),
-            Self::Float(f) => f.to_object(py),
-            Self::Str(s) => s.to_object(py),
-            Self::Array(v) => pyo3::types::PyList::new_bound(py, v.iter().map(|v| v.to_object(py))).to_object(py),
-            Self::Object(o) => {
-                let dict = pyo3::types::PyDict::new_bound(py);
-                for (k, v) in o.iter() {
-                    dict.set_item(k, v.to_object(py)).unwrap();
-                }
-                dict.to_object(py)
-            }
-        }
-    }
-}
-
-#[cfg(feature = "python")]
 impl<'py> pyo3::IntoPyObject<'py> for JsonValue<'_> {
     type Error = pyo3::PyErr;
     type Target = pyo3::PyAny;
