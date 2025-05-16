@@ -9,7 +9,7 @@ def from_json(
     cache_mode: Literal[True, False, "all", "keys", "none"] = "all",
     partial_mode: Literal[True, False, "off", "on", "trailing-strings"] = False,
     catch_duplicate_keys: bool = False,
-    float_mode: Literal["float", "decimal", "lossless-float"] = False,
+    float_mode: Literal["float", "decimal", "lossless-float"] = "float",
 ) -> Any:
     """
     Parse input bytes into a JSON object.
