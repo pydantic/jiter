@@ -1,5 +1,4 @@
-use codspeed_bencher_compat::{benchmark_group, benchmark_main, Bencher};
-use std::hint::black_box;
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 use std::fs::File;
 use std::io::Read;
@@ -14,44 +13,53 @@ fn read_file(path: &str) -> String {
     contents
 }
 
-fn jiter_value(path: &str, bench: &mut Bencher) {
+fn jiter_value(title: &str, path: &str, c: &mut Criterion) {
     let json = read_file(path);
     let json_data = json.as_bytes();
-    bench.iter(|| {
-        let v = JsonValue::parse(black_box(json_data), false).unwrap();
-        black_box(v)
+
+    c.bench_function(&title, |bench| {
+        bench.iter(|| {
+            let v = JsonValue::parse(black_box(json_data), false).unwrap();
+            black_box(v)
+        });
     });
 }
 
-fn jiter_skip(path: &str, bench: &mut Bencher) {
+fn jiter_skip(title: &str, path: &str, c: &mut Criterion) {
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
-    bench.iter(|| {
-        let mut jiter = Jiter::new(json_data);
-        jiter.next_skip().unwrap();
+
+    c.bench_function(title, |bench| {
+        bench.iter(|| {
+            let mut jiter = Jiter::new(json_data);
+            jiter.next_skip().unwrap();
+        });
     });
 }
 
-fn jiter_iter_big(path: &str, bench: &mut Bencher) {
+fn jiter_iter_big(title: &str, path: &str, c: &mut Criterion) {
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
-    bench.iter(|| {
-        let mut jiter = Jiter::new(json_data);
-        jiter.next_array().unwrap();
 
-        loop {
-            if let Some(peek) = jiter.next_array().unwrap() {
-                let i = jiter.known_float(peek).unwrap();
-                black_box(i);
-                while let Some(peek) = jiter.array_step().unwrap() {
+    c.bench_function(title, |bench| {
+        bench.iter(|| {
+            let mut jiter = Jiter::new(json_data);
+            jiter.next_array().unwrap();
+
+            loop {
+                if let Some(peek) = jiter.next_array().unwrap() {
                     let i = jiter.known_float(peek).unwrap();
                     black_box(i);
+                    while let Some(peek) = jiter.array_step().unwrap() {
+                        let i = jiter.known_float(peek).unwrap();
+                        black_box(i);
+                    }
+                }
+                if jiter.array_step().unwrap().is_none() {
+                    break;
                 }
             }
-            if jiter.array_step().unwrap().is_none() {
-                break;
-            }
-        }
+        });
     });
 }
 
@@ -69,165 +77,196 @@ fn find_string(jiter: &mut Jiter) -> String {
     }
 }
 
-fn jiter_iter_pass2(path: &str, bench: &mut Bencher) {
+fn jiter_iter_pass2(title: &str, path: &str, c: &mut Criterion) {
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
-    bench.iter(|| {
-        let mut jiter = Jiter::new(json_data);
-        let string = find_string(&mut jiter);
-        jiter.finish().unwrap();
-        black_box(string)
+
+    c.bench_function(title, |bench| {
+        bench.iter(|| {
+            let mut jiter = Jiter::new(json_data);
+            let string = find_string(&mut jiter);
+            jiter.finish().unwrap();
+            black_box(string)
+        });
     });
 }
 
-fn jiter_iter_string_array(path: &str, bench: &mut Bencher) {
+fn jiter_iter_string_array(title: &str, path: &str, c: &mut Criterion) {
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
-    bench.iter(|| {
-        let mut jiter = Jiter::new(json_data);
-        jiter.next_array().unwrap();
-        let i = jiter.known_str().unwrap();
-        // record len instead of allocating the string to simulate something like constructing a PyString
-        black_box(i.len());
-        while jiter.array_step().unwrap().is_some() {
+
+    c.bench_function(title, |bench| {
+        bench.iter(|| {
+            let mut jiter = Jiter::new(json_data);
+            jiter.next_array().unwrap();
             let i = jiter.known_str().unwrap();
+            // record len instead of allocating the string to simulate something like constructing a PyString
             black_box(i.len());
-        }
-        jiter.finish().unwrap();
-    });
-}
-
-fn jiter_iter_true_array(path: &str, bench: &mut Bencher) {
-    let json = read_file(path);
-    let json_data = black_box(json.as_bytes());
-    bench.iter(|| {
-        let mut jiter = Jiter::new(json_data);
-        let first_peek = jiter.next_array().unwrap().unwrap();
-        let i = jiter.known_bool(first_peek).unwrap();
-        black_box(i);
-        while let Some(peek) = jiter.array_step().unwrap() {
-            let i = jiter.known_bool(peek).unwrap();
-            black_box(i);
-        }
-    });
-}
-
-fn jiter_iter_true_object(path: &str, bench: &mut Bencher) {
-    let json = read_file(path);
-    let json_data = black_box(json.as_bytes());
-    bench.iter(|| {
-        let mut jiter = Jiter::new(json_data);
-        if let Some(first_key) = jiter.next_object().unwrap() {
-            let first_key = first_key.to_string();
-            let first_value = jiter.next_bool().unwrap();
-            black_box((first_key, first_value));
-            while let Some(key) = jiter.next_key().unwrap() {
-                let key = key.to_string();
-                let value = jiter.next_bool().unwrap();
-                black_box((key, value));
+            while jiter.array_step().unwrap().is_some() {
+                let i = jiter.known_str().unwrap();
+                black_box(i.len());
             }
-        }
+            jiter.finish().unwrap();
+        });
     });
 }
 
-fn jiter_iter_ints_array(path: &str, bench: &mut Bencher) {
+fn jiter_iter_true_array(title: &str, path: &str, c: &mut Criterion) {
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
-    bench.iter(|| {
-        let mut jiter = Jiter::new(json_data);
-        let first_peek = jiter.next_array().unwrap().unwrap();
-        let i = jiter.known_int(first_peek).unwrap();
-        black_box(i);
-        while let Some(peek) = jiter.array_step().unwrap() {
-            let i = jiter.known_int(peek).unwrap();
+
+    c.bench_function(title, |bench| {
+        bench.iter(|| {
+            let mut jiter = Jiter::new(json_data);
+            let first_peek = jiter.next_array().unwrap().unwrap();
+            let i = jiter.known_bool(first_peek).unwrap();
             black_box(i);
-        }
+            while let Some(peek) = jiter.array_step().unwrap() {
+                let i = jiter.known_bool(peek).unwrap();
+                black_box(i);
+            }
+        });
     });
 }
 
-fn jiter_iter_floats_array(path: &str, bench: &mut Bencher) {
+fn jiter_iter_true_object(title: &str, path: &str, c: &mut Criterion) {
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
-    bench.iter(|| {
-        let mut jiter = Jiter::new(json_data);
-        let first_peek = jiter.next_array().unwrap().unwrap();
-        let i = jiter.known_float(first_peek).unwrap();
-        black_box(i);
-        while let Some(peek) = jiter.array_step().unwrap() {
-            let i = jiter.known_float(peek).unwrap();
+
+    c.bench_function(title, |bench| {
+        bench.iter(|| {
+            let mut jiter = Jiter::new(json_data);
+            if let Some(first_key) = jiter.next_object().unwrap() {
+                let first_key = first_key.to_string();
+                let first_value = jiter.next_bool().unwrap();
+                black_box((first_key, first_value));
+                while let Some(key) = jiter.next_key().unwrap() {
+                    let key = key.to_string();
+                    let value = jiter.next_bool().unwrap();
+                    black_box((key, value));
+                }
+            }
+        });
+    });
+}
+
+fn jiter_iter_ints_array(title: &str, path: &str, c: &mut Criterion) {
+    let json = read_file(path);
+    let json_data = black_box(json.as_bytes());
+
+    c.bench_function(title, |bench| {
+        bench.iter(|| {
+            let mut jiter = Jiter::new(json_data);
+            let first_peek = jiter.next_array().unwrap().unwrap();
+            let i = jiter.known_int(first_peek).unwrap();
             black_box(i);
-        }
+            while let Some(peek) = jiter.array_step().unwrap() {
+                let i = jiter.known_int(peek).unwrap();
+                black_box(i);
+            }
+        });
     });
 }
 
-fn jiter_string(path: &str, bench: &mut Bencher) {
+fn jiter_iter_floats_array(title: &str, path: &str, c: &mut Criterion) {
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
-    bench.iter(|| {
-        let mut jiter = Jiter::new(json_data);
-        let string = jiter.next_str().unwrap();
-        black_box(string);
-        jiter.finish().unwrap();
+
+    c.bench_function(title, |bench| {
+        bench.iter(|| {
+            let mut jiter = Jiter::new(json_data);
+            let first_peek = jiter.next_array().unwrap().unwrap();
+            let i = jiter.known_float(first_peek).unwrap();
+            black_box(i);
+            while let Some(peek) = jiter.array_step().unwrap() {
+                let i = jiter.known_float(peek).unwrap();
+                black_box(i);
+            }
+        });
     });
 }
 
-fn serde_value(path: &str, bench: &mut Bencher) {
+fn jiter_string(title: &str, path: &str, c: &mut Criterion) {
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
-    bench.iter(|| {
-        let value: Value = serde_json::from_slice(json_data).unwrap();
-        black_box(value);
+
+    c.bench_function(title, |bench| {
+        bench.iter(|| {
+            let mut jiter = Jiter::new(json_data);
+            let string = jiter.next_str().unwrap();
+            black_box(string);
+            jiter.finish().unwrap();
+        });
     });
 }
 
-fn serde_str(path: &str, bench: &mut Bencher) {
+fn serde_value(title: &str, path: &str, c: &mut Criterion) {
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
-    bench.iter(|| {
-        let value: String = serde_json::from_slice(json_data).unwrap();
-        black_box(value);
+
+    c.bench_function(title, |bench| {
+        bench.iter(|| {
+            let value: Value = serde_json::from_slice(json_data).unwrap();
+            black_box(value);
+        });
+    });
+}
+
+fn serde_str(title: &str, path: &str, c: &mut Criterion) {
+    let json = read_file(path);
+    let json_data = black_box(json.as_bytes());
+
+    c.bench_function(title, |bench| {
+        bench.iter(|| {
+            let value: String = serde_json::from_slice(json_data).unwrap();
+            black_box(value);
+        });
     });
 }
 
 macro_rules! test_cases {
     ($file_name:ident) => {
         paste::item! {
-            fn [< $file_name _jiter_value >](bench: &mut Bencher) {
-                let file_path = format!("./benches/{}.json", stringify!($file_name));
-                jiter_value(&file_path, bench);
-            }
-
-            fn [< $file_name _jiter_iter >](bench: &mut Bencher) {
+            fn [< $file_name _jiter_value >](c: &mut Criterion) {
                 let file_name = stringify!($file_name);
                 let file_path = format!("./benches/{}.json", file_name);
-                if file_name == "big" {
-                    jiter_iter_big(&file_path, bench);
-                } else if file_name == "pass2" {
-                    jiter_iter_pass2(&file_path, bench);
-                } else if file_name == "string_array" {
-                    jiter_iter_string_array(&file_path, bench);
-                } else if file_name == "true_array" {
-                    jiter_iter_true_array(&file_path, bench);
-                } else if file_name == "true_object" {
-                    jiter_iter_true_object(&file_path, bench);
-                } else if file_name == "bigints_array" {
-                    jiter_iter_ints_array(&file_path, bench);
-                } else if file_name == "massive_ints_array" {
-                    jiter_iter_ints_array(&file_path, bench);
-                } else if file_name == "floats_array" {
-                    jiter_iter_floats_array(&file_path, bench);
-                } else if file_name == "x100" || file_name == "sentence" || file_name == "unicode" {
-                    jiter_string(&file_path, bench);
-                }
-            }
-            fn [< $file_name _jiter_skip >](bench: &mut Bencher) {
-                let file_path = format!("./benches/{}.json", stringify!($file_name));
-                jiter_skip(&file_path, bench);
+                jiter_value(&format!("{}_jiter_value", file_name), &file_path, c);
             }
 
-            fn [< $file_name _serde_value >](bench: &mut Bencher) {
-                let file_path = format!("./benches/{}.json", stringify!($file_name));
-                serde_value(&file_path, bench);
+            fn [< $file_name _jiter_iter >](c: &mut Criterion) {
+                let file_name = stringify!($file_name);
+                let file_path = format!("./benches/{}.json", file_name);
+                let test_name = format!("{}_jiter_iter", file_name);
+                if file_name == "big" {
+                    jiter_iter_big(&test_name, &file_path, c);
+                } else if file_name == "pass2" {
+                    jiter_iter_pass2(&test_name, &file_path, c);
+                } else if file_name == "string_array" {
+                    jiter_iter_string_array(&test_name, &file_path, c);
+                } else if file_name == "true_array" {
+                    jiter_iter_true_array(&test_name, &file_path, c);
+                } else if file_name == "true_object" {
+                    jiter_iter_true_object(&test_name, &file_path, c);
+                } else if file_name == "bigints_array" {
+                    jiter_iter_ints_array(&test_name, &file_path, c);
+                } else if file_name == "massive_ints_array" {
+                    jiter_iter_ints_array(&test_name, &file_path, c);
+                } else if file_name == "floats_array" {
+                    jiter_iter_floats_array(&test_name, &file_path, c);
+                } else if file_name == "x100" || file_name == "sentence" || file_name == "unicode" {
+                    jiter_string(&test_name, &file_path, c);
+                }
+            }
+            fn [< $file_name _jiter_skip >](c: &mut Criterion) {
+                let file_name = stringify!($file_name);
+                let file_path = format!("./benches/{}.json", file_name);
+                jiter_skip(&format!("{}_jiter_skip", file_name), &file_path, c);
+            }
+
+            fn [< $file_name _serde_value >](c: &mut Criterion) {
+                let file_name = stringify!($file_name);
+                let file_path = format!("./benches/{}.json", file_name);
+                serde_value(&format!("{}_serde_value", file_name), &file_path, c);
             }
         }
     };
@@ -254,29 +293,35 @@ test_cases!(sentence);
 test_cases!(unicode);
 test_cases!(short_numbers);
 
-fn string_array_jiter_value_owned(bench: &mut Bencher) {
+fn string_array_jiter_value_owned(c: &mut Criterion) {
     let json = read_file("./benches/string_array.json");
     let json_data = json.as_bytes();
-    bench.iter(|| {
-        let v = JsonValue::parse_owned(black_box(json_data), false, PartialMode::Off).unwrap();
-        black_box(v)
+
+    c.bench_function("string_array_jiter_value_owned", |bench| {
+        bench.iter(|| {
+            let v = JsonValue::parse_owned(black_box(json_data), false, PartialMode::Off).unwrap();
+            black_box(v)
+        });
     });
 }
 
-fn medium_response_jiter_value_owned(bench: &mut Bencher) {
+fn medium_response_jiter_value_owned(c: &mut Criterion) {
     let json = read_file("./benches/medium_response.json");
     let json_data = json.as_bytes();
-    bench.iter(|| {
-        let v = JsonValue::parse_owned(black_box(json_data), false, PartialMode::Off).unwrap();
-        black_box(v)
+
+    c.bench_function("medium_response_jiter_value_owned", |bench| {
+        bench.iter(|| {
+            let v = JsonValue::parse_owned(black_box(json_data), false, PartialMode::Off).unwrap();
+            black_box(v)
+        });
     });
 }
 
-fn x100_serde_iter(bench: &mut Bencher) {
-    serde_str("./benches/x100.json", bench);
+fn x100_serde_iter(c: &mut Criterion) {
+    serde_str("x100_serde_iter", "./benches/x100.json", c);
 }
 
-benchmark_group!(
+criterion_group!(
     benches,
     big_jiter_iter,
     big_jiter_skip,
@@ -338,4 +383,4 @@ benchmark_group!(
     short_numbers_jiter_value,
     short_numbers_serde_value,
 );
-benchmark_main!(benches);
+criterion_main!(benches);

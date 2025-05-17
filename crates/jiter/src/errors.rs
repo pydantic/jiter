@@ -155,6 +155,8 @@ impl std::fmt::Display for JsonError {
     }
 }
 
+impl std::error::Error for JsonError {}
+
 macro_rules! json_error {
     ($error_type:ident, $index:expr) => {
         crate::errors::JsonError::new(crate::errors::JsonErrorType::$error_type, $index)
@@ -230,6 +232,8 @@ impl std::fmt::Display for JiterError {
         write!(f, "{} at index {}", self.error_type, self.index)
     }
 }
+
+impl std::error::Error for JiterError {}
 
 impl JiterError {
     pub(crate) fn new(error_type: JiterErrorType, index: usize) -> Self {
