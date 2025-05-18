@@ -614,6 +614,8 @@ jobs:
     environment: release-python
     permissions:
       id-token: write
+      # needed to be able to upload wasm wheels
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
