@@ -138,7 +138,7 @@ impl<StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: MaybeP
                 let s = self
                     .parser
                     .consume_string::<StringDecoder>(&mut self.tape, self.partial_mode.allow_trailing_str())?;
-                Ok(StringCache::get_value(py, s.as_str(), s.ascii_only()).into_any())
+                Ok(StringCache::get_value(py, s).into_any())
             }
             Peek::Array => {
                 let peek_first = match self.parser.array_first() {
@@ -198,14 +198,14 @@ impl<StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: MaybeP
         if let Some(first_key) = self.parser.object_first::<StringDecoder>(&mut self.tape)? {
             let first_key_s = first_key.as_str();
             check_keys.check(first_key_s, self.parser.index)?;
-            let first_key = StringCache::get_key(py, first_key_s, first_key.ascii_only());
+            let first_key = StringCache::get_key(py, first_key);
             let peek = self.parser.peek()?;
             let first_value = self.check_take_value(py, peek)?;
             set_item(first_key, first_value);
             while let Some(key) = self.parser.object_step::<StringDecoder>(&mut self.tape)? {
                 let key_s = key.as_str();
                 check_keys.check(key_s, self.parser.index)?;
-                let key = StringCache::get_key(py, key_s, key.ascii_only());
+                let key = StringCache::get_key(py, key);
                 let peek = self.parser.peek()?;
                 let value = self.check_take_value(py, peek)?;
                 set_item(key, value);

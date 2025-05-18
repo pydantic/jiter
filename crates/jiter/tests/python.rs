@@ -1,7 +1,7 @@
 use pyo3::prelude::*;
 use pyo3::types::PyString;
 
-use jiter::{pystring_fast_new, JsonValue, PythonParse, StringCacheMode};
+use jiter::{pystring_ascii_new, JsonValue, PythonParse, StringCacheMode};
 
 #[cfg(feature = "num-bigint")]
 #[test]
@@ -71,19 +71,10 @@ fn test_cache_into() {
 }
 
 #[test]
-fn test_pystring_fast_new_non_ascii() {
-    let json = "£100 💩";
-    Python::with_gil(|py| {
-        let s = pystring_fast_new(py, json, false);
-        assert_eq!(s.to_string(), "£100 💩");
-    });
-}
-
-#[test]
-fn test_pystring_fast_new_ascii() {
+fn test_pystring_ascii_new() {
     let json = "100abc";
     Python::with_gil(|py| {
-        let s = pystring_fast_new(py, json, true);
+        let s = unsafe { pystring_ascii_new(py, json) };
         assert_eq!(s.to_string(), "100abc");
     });
 }

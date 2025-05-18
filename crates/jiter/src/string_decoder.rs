@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::ops::Range;
 use std::str::{from_utf8, from_utf8_unchecked};
 
@@ -26,47 +25,86 @@ where
 pub struct StringDecoder;
 
 #[derive(Debug)]
-pub enum StringOutput<'t, 'j>
+pub enum StringOutputType<'t, 'j>
 where
     'j: 't,
 {
-    Tape(&'t str, bool),
-    Data(&'j str, bool),
+    Tape(&'t str),
+    Data(&'j str),
 }
 
-impl From<StringOutput<'_, '_>> for String {
-    fn from(val: StringOutput) -> Self {
-        match val {
-            StringOutput::Tape(s, _) => s.to_owned(),
-            StringOutput::Data(s, _) => s.to_owned(),
+/// This submodule is used to create a safety boundary where the `ascii_only`
+/// flag can be used to carry soundness information about the string.
+mod string_output {
+    use std::borrow::Cow;
+
+    use super::StringOutputType;
+
+    #[derive(Debug)]
+    pub struct StringOutput<'t, 'j>
+    where
+        'j: 't,
+    {
+        data: StringOutputType<'t, 'j>,
+        // SAFETY: this is used as an invariant to determine if the string is ascii only
+        // so this should not be set except when known
+        ascii_only: bool,
+    }
+
+    impl From<StringOutput<'_, '_>> for String {
+        fn from(val: StringOutput) -> Self {
+            match val.data {
+                StringOutputType::Tape(s) | StringOutputType::Data(s) => s.to_owned(),
+            }
+        }
+    }
+
+    impl<'j> From<StringOutput<'_, 'j>> for Cow<'j, str> {
+        fn from(val: StringOutput<'_, 'j>) -> Self {
+            match val.data {
+                StringOutputType::Tape(s) => s.to_owned().into(),
+                StringOutputType::Data(s) => s.into(),
+            }
+        }
+    }
+
+    impl<'t, 'j> StringOutput<'t, 'j>
+    where
+        'j: 't,
+    {
+        /// # Safety
+        ///
+        /// `accii_only` must only be set to true if the string is ascii only
+        pub unsafe fn tape(data: &'t str, ascii_only: bool) -> Self {
+            StringOutput {
+                data: StringOutputType::Tape(data),
+                ascii_only,
+            }
+        }
+
+        /// # Safety
+        ///
+        /// `accii_only` must only be set to true if the string is ascii only
+        pub unsafe fn data(data: &'j str, ascii_only: bool) -> Self {
+            StringOutput {
+                data: StringOutputType::Data(data),
+                ascii_only,
+            }
+        }
+
+        pub fn as_str(&self) -> &'t str {
+            match self.data {
+                StringOutputType::Tape(s) | StringOutputType::Data(s) => s,
+            }
+        }
+
+        pub fn ascii_only(&self) -> bool {
+            self.ascii_only
         }
     }
 }
 
-impl<'j> From<StringOutput<'_, 'j>> for Cow<'j, str> {
-    fn from(val: StringOutput<'_, 'j>) -> Self {
-        match val {
-            StringOutput::Tape(s, _) => s.to_owned().into(),
-            StringOutput::Data(s, _) => s.into(),
-        }
-    }
-}
-
-impl<'t> StringOutput<'t, '_> {
-    pub fn as_str(&self) -> &'t str {
-        match self {
-            Self::Tape(s, _) => s,
-            Self::Data(s, _) => s,
-        }
-    }
-
-    pub fn ascii_only(&self) -> bool {
-        match self {
-            Self::Tape(_, ascii_only) => *ascii_only,
-            Self::Data(_, ascii_only) => *ascii_only,
-        }
-    }
-}
+pub use string_output::StringOutput;
 
 impl<'t, 'j> AbstractStringDecoder<'t, 'j> for StringDecoder
 where
@@ -85,7 +123,7 @@ where
         match decode_chunk(data, start, true, allow_partial)? {
             (StringChunk::StringEnd, ascii_only, index) => {
                 let s = to_str(&data[start..index], ascii_only, start)?;
-                Ok((StringOutput::Data(s, ascii_only), index + 1))
+                Ok((unsafe { StringOutput::data(s, ascii_only) }, index + 1))
             }
             (StringChunk::Backslash, ascii_only, index) => {
                 decode_to_tape(data, index, tape, start, ascii_only, allow_partial)
@@ -134,7 +172,7 @@ fn decode_to_tape<'t, 'j>(
                 tape.extend_from_slice(&data[index..new_index]);
                 index = new_index + 1;
                 let s = to_str(tape, ascii_only, start)?;
-                return Ok((StringOutput::Tape(s, ascii_only), index));
+                return Ok((unsafe { StringOutput::tape(s, ascii_only) }, index));
             }
             (StringChunk::Backslash, ascii_only_new, index_new) => {
                 ascii_only = ascii_only_new;

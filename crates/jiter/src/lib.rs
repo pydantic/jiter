@@ -172,7 +172,9 @@ pub use value::{JsonArray, JsonObject, JsonValue};
 #[cfg(feature = "python")]
 pub use py_lossless_float::{FloatMode, LosslessFloat};
 #[cfg(feature = "python")]
-pub use py_string_cache::{cache_clear, cache_usage, cached_py_string, pystring_fast_new, StringCacheMode};
+pub use py_string_cache::{
+    cache_clear, cache_usage, cached_py_string, cached_py_string_ascii, pystring_ascii_new, StringCacheMode,
+};
 #[cfg(feature = "python")]
 pub use python::{map_json_error, PythonParse};
 
