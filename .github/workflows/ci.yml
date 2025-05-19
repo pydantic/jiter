@@ -61,6 +61,11 @@ jobs:
         with:
           toolchain: ${{ matrix.rust-version }}
 
+      - name: Generate MSRV-compatible lockfile
+        if: matrix.rust-version == needs.resolve.outputs.MSRV
+        run: |
+          CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback cargo +stable update
+
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-llvm-cov
 
