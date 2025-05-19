@@ -233,7 +233,7 @@ fn serde_value(path: &str, c: &mut Criterion) {
 }
 
 fn serde_str(path: &str, c: &mut Criterion) {
-    let title = read_title(path) + "_serde_str";
+    let title = read_title(path) + "_serde_iter";
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
 
