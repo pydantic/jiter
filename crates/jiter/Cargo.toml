@@ -35,7 +35,7 @@ serde_json = { version = "1.0.87", features = [
 ] }
 serde = "1.0.147"
 pyo3 = { workspace = true, features = ["auto-initialize"] }
-codspeed-criterion-compat = "2.7.1"
+codspeed-criterion-compat = "2.7.2"
 
 [build-dependencies]
 pyo3-build-config = { workspace = true, optional = true }
