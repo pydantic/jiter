@@ -1,7 +1,7 @@
 use std::ops::Range;
 use std::str::{from_utf8, from_utf8_unchecked};
 
-use crate::errors::{json_err, json_error, JsonResult};
+use crate::errors::{json_err, json_error, JsonErrorType, JsonResult};
 
 pub type Tape = Vec<u8>;
 
@@ -154,16 +154,28 @@ fn decode_to_tape<'t, 'j>(
                 b'n' => tape.push(b'\n'),
                 b'r' => tape.push(b'\r'),
                 b't' => tape.push(b'\t'),
-                b'u' => {
-                    let (c, new_index) = parse_escape(data, index)?;
-                    ascii_only = false;
-                    index = new_index;
-                    tape.extend_from_slice(c.encode_utf8(&mut [0_u8; 4]).as_bytes());
-                }
+                b'u' => match parse_escape(data, index) {
+                    Ok((c, new_index)) => {
+                        ascii_only = false;
+                        index = new_index;
+                        tape.extend_from_slice(c.encode_utf8(&mut [0_u8; 4]).as_bytes());
+                    }
+                    Err(e) => {
+                        if allow_partial && e.error_type == JsonErrorType::EofWhileParsingString {
+                            let s = to_str(tape, ascii_only, start)?;
+                            return Ok((unsafe { StringOutput::tape(s, ascii_only) }, e.index));
+                        }
+                        return Err(e);
+                    }
+                },
                 _ => return json_err!(InvalidEscape, index),
             }
             index += 1;
         } else {
+            if allow_partial {
+                let s = to_str(tape, ascii_only, start)?;
+                return Ok((unsafe { StringOutput::tape(s, ascii_only) }, index));
+            }
             return json_err!(EofWhileParsingString, index);
         }
 

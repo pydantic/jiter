@@ -1565,6 +1565,24 @@ fn jiter_partial_string() {
 }
 
 #[test]
+fn jiter_partial_string_escape() {
+    let mut jiter = Jiter::new(br#""foo\"#).with_allow_partial_strings();
+    assert_eq!(jiter.next_str().unwrap(), "foo");
+
+    let mut jiter = Jiter::new(br#""foo\u"#).with_allow_partial_strings();
+    assert_eq!(jiter.next_str().unwrap(), "foo");
+
+    let mut jiter = Jiter::new(br#""foo\u1"#).with_allow_partial_strings();
+    assert_eq!(jiter.next_str().unwrap(), "foo");
+
+    let mut jiter = Jiter::new(br#""foo\u12"#).with_allow_partial_strings();
+    assert_eq!(jiter.next_str().unwrap(), "foo");
+
+    let mut jiter = Jiter::new(br#""foo\u123"#).with_allow_partial_strings();
+    assert_eq!(jiter.next_str().unwrap(), "foo");
+}
+
+#[test]
 fn test_unicode_roundtrip() {
     // '"中文"'
     let json_bytes = b"\"\\u4e2d\\u6587\"";
