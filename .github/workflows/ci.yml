@@ -33,7 +33,7 @@ jobs:
       matrix:
         rust-version: [stable]
         runs-on: [ubuntu, macos]
-        python-version: ["3.13"]
+        python-version: [""]
         include:
           - rust-version: ${{ needs.resolve.outputs.MSRV }}
             runs-on: ubuntu
@@ -55,7 +55,7 @@ jobs:
       - name: set up python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: ${{ matrix.python-version || '3.13' }}
 
       - uses: dtolnay/rust-toolchain@master
         with:
