@@ -283,17 +283,26 @@ jobs:
           - os: linux
             manylinux: musllinux_1_1
             target: aarch64
+            runs-on: ubuntu-24.04-arm
+            python-architecture: "aarch64"
 
           # macos;
           # all versions x86_64
-          # older pythons which can't be run on the arm hardware for PGO
+          # 3.9 can't be run on the arm hardware for PGO
           - os: macos
             target: x86_64
           - os: macos
             target: aarch64
             interpreter: "3.9"
 
-    runs-on: ${{ (matrix.os == 'linux' && 'ubuntu') || matrix.os }}-latest
+          # windows 11 arm supports 3.11 and up
+          - os: windows_aarch64
+            target: aarch64
+            runs-on: windows-11-arm
+            interpreter: "3.11 3.12 3.13 3.13t 3.14 3.14t"
+            python-architecture: "aarch64"
+
+    runs-on: ${{ matrix.runs-on || format('{0}-latest', (matrix.os == 'linux' && 'ubuntu') || matrix.os)  }}
     steps:
       - uses: actions/checkout@v4
 
@@ -335,7 +344,6 @@ jobs:
             { os: linux, runs-on: ubuntu-latest },
             { os: linux_aarch64, runs-on: ubuntu-24.04-arm },
             { os: windows, runs-on: windows-latest, ls: dir },
-            { os: windows_aarch64, runs-on: windows-11-arm, ls: dir },
             { os: macos, runs-on: macos-latest },
           ]
         interpreter:
@@ -345,13 +353,6 @@ jobs:
           - platform:
               os: macos
             interpreter: "3.9"
-          # windows 11 arm only supported from 3.11 and up
-          - platform:
-              os: windows_aarch64
-            interpreter: "3.9"
-          - platform:
-              os: windows_aarch64
-            interpreter: "3.10"
 
     runs-on: ${{ matrix.platform.runs-on }}
     steps:
