@@ -312,7 +312,6 @@ jobs:
           architecture: ${{ matrix.python-architecture }}
 
       - name: install rust stable
-        id: rust-toolchain
         uses: dtolnay/rust-toolchain@stable
 
       - name: build wheels
@@ -346,7 +345,7 @@ jobs:
           [
             { os: linux, runs-on: ubuntu-latest },
             { os: linux_aarch64, runs-on: ubuntu-24.04-arm },
-            { os: windows, runs-on: windows-latest, ls: dir },
+            { os: windows, runs-on: windows-latest },
             { os: macos, runs-on: macos-latest },
           ]
         interpreter:
@@ -380,7 +379,7 @@ jobs:
           interpreter: ${{ matrix.interpreter }}
           rust-toolchain: ${{ steps.rust-toolchain.outputs.name }}
 
-      - run: ${{ matrix.platform.ls || 'ls -lh' }} crates/jiter-python/dist/
+      - run: ${{ (startsWith(matrix.platform.os, 'windows') && 'dir') || 'ls -lh' }} crates/jiter-python/dist/
 
       - uses: actions/upload-artifact@v4
         with:
