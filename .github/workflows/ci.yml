@@ -311,6 +311,10 @@ jobs:
           python-version: "3.13"
           architecture: ${{ matrix.python-architecture }}
 
+      - name: install rust stable
+        id: rust-toolchain
+        uses: dtolnay/rust-toolchain@stable
+
       - name: build wheels
         uses: PyO3/maturin-action@v1
         with:
