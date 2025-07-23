@@ -297,16 +297,11 @@ jobs:
             target: aarch64
             interpreter: "3.9"
 
-          # windows;
-          # aarch64 only 3.11 and up, also not PGO optimized
+          # windows i686, not bothering to PGO optimize
           - os: windows
             target: i686
             python-architecture: x86
             interpreter: 3.9 3.10 3.11 3.12 3.13 3.14
-          # FIXME had link failures, needs investigation
-          # - os: windows
-          #   target: aarch64
-          #   interpreter: 3.11 3.12
         exclude:
           # PGO optimized below
           - os: linux
