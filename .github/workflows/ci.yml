@@ -362,16 +362,18 @@ jobs:
             runs-on: windows-latest
           - os: macos
             runs-on: macos-latest
+          - os: windows
+            runs-on: windows-11-arm
         exclude:
           # macos arm only supported from 3.10 and up
           - os: macos
             interpreter: "3.9"
-          # windows 3.14 cffi install blocks build on 3.14 beta 1
-          # https://github.com/python/cpython/issues/133779
+          # windows 11 arm only supported from 3.11 and up
           - os: windows
-            interpreter: "3.14"
+            runs-on: windows-11-arm
+            interpreter: "3.9"
           - os: windows
-            interpreter: "3.14t"
+            runs-on: windows-11-arm
 
     runs-on: ${{ matrix.runs-on }}
     steps:
