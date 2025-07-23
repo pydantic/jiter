@@ -345,7 +345,6 @@ jobs:
             { os: windows_aarch64, runs-on: windows-11-arm, ls: dir },
             { os: macos, runs-on: macos-latest },
           ]
-        os: [linux, windows, macos]
         interpreter:
           ["3.9", "3.10", "3.11", "3.12", "3.13", "3.13t", "3.14", "3.14t"]
         exclude:
