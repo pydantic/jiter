@@ -262,12 +262,10 @@ jobs:
         interpreter: [""]
         include:
           # manylinux for various platforms
+          # x86_64 and aarch64 are PGO optimized below
           - os: linux
             manylinux: auto
             target: i686
-          - os: linux
-            manylinux: auto
-            target: aarch64
           - os: linux
             manylinux: auto
             target: armv7
@@ -294,11 +292,6 @@ jobs:
           - os: macos
             target: aarch64
             interpreter: "3.9"
-        exclude:
-          # PGO optimized below
-          - os: linux
-            manylinux: auto
-            target: x86_64
 
     runs-on: ${{ (matrix.os == 'linux' && 'ubuntu') || matrix.os }}-latest
     steps:
