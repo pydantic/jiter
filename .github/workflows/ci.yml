@@ -259,7 +259,7 @@ jobs:
         os: [linux, windows] # windows and macos builds added manually
         target: [i686]
         manylinux: [auto]
-        interpreter: ["3.9 3.10 3.11 3.12 3.13 3.14 3.14t"]
+        interpreter: [""]
         include:
           # manylinux for various platforms
           - os: linux
@@ -315,7 +315,7 @@ jobs:
         with:
           target: ${{ matrix.target }}
           manylinux: ${{ matrix.manylinux }}
-          args: --release --out dist --interpreter ${{ matrix.interpreter || '3.9 3.10 3.11 3.12 3.13 3.14' }}
+          args: --release --out dist --interpreter ${{ matrix.interpreter || '3.9 3.10 3.11 3.12 3.13 3.14 3.14t' }}
           rust-toolchain: stable
           working-directory: crates/jiter-python
 
