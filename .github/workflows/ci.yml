@@ -354,12 +354,10 @@ jobs:
             interpreter: "3.9"
           # windows 11 arm only supported from 3.11 and up
           - platform:
-              os: windows
-              runs-on: windows-11-arm
+              os: windows_aarch64
             interpreter: "3.9"
           - platform:
-              os: windows
-              runs-on: windows-11-arm
+              os: windows_aarch64
             interpreter: "3.10"
 
     runs-on: ${{ matrix.platform.runs-on }}
