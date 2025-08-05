@@ -263,6 +263,10 @@ jobs:
           # manylinux for various platforms
           - os: linux
             manylinux: auto
+            target: x86_64
+            interpreter: 3.9 3.10 3.11 3.12 3.13 3.14 graalpy3.11
+          - os: linux
+            manylinux: auto
             target: i686
           - os: linux
             manylinux: auto
@@ -331,6 +335,7 @@ jobs:
           args: --release --out dist --interpreter ${{ matrix.interpreter || '3.9 3.10 3.11 3.12 3.13 3.14' }}
           rust-toolchain: stable
           working-directory: crates/jiter-python
+          before-script-linux: ${{ contains(matrix.interpreter, 'graalpy') && 'manylinux-interpreters ensure-all' || '' }}
 
       - run: ${{ (matrix.os == 'windows' && 'dir') || 'ls -lh' }} crates/jiter-python/dist/
 
