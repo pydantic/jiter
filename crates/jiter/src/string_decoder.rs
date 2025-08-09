@@ -352,8 +352,10 @@ fn to_str(bytes: &[u8], ascii_only: bool, start: usize, allow_partial: bool) -> 
     } else {
         match from_utf8(bytes) {
             Ok(s) => Ok(s),
-            Err(e) if allow_partial => {
-                // In partial mode, truncate to the last valid UTF-8 boundary
+            Err(e) if allow_partial && e.error_len().is_none() => {
+                // In partial mode, we handle incomplete (not invalid) UTF-8 sequences
+                // by truncating to the last valid UTF-8 boundary
+                // (`error_len()` is `None` for incomplete sequences)
                 let valid_up_to = e.valid_up_to();
                 if valid_up_to > 0 {
                     // SAFETY: `valid_up_to()` returns the byte index up to which the input is valid UTF-8

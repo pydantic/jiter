@@ -185,6 +185,17 @@ def test_partial_json_invalid_utf8_bytes():
     result = jiter.from_json(non_unicode_partial_string_bytes, partial_mode='trailing-strings')
     assert result == 'abc'
 
+    # However, truly invalid UTF-8 (not just incomplete) should always raise an error
+    invalid_utf8_bytes = b'"abc\xff'  # 0xFF is never valid in UTF-8
+
+    # This should fail by default (invalid UTF-8 sequence)...
+    with pytest.raises(ValueError, match='EOF while parsing a string'):
+        jiter.from_json(invalid_utf8_bytes)
+
+    # ...but ALSO WITH partial mode
+    with pytest.raises(ValueError, match='invalid unicode code point'):
+        jiter.from_json(invalid_utf8_bytes, partial_mode='trailing-strings')
+
 
 def test_partial_nested():
     json = b'{"a": 1, "b": 2, "c": [1, 2, {"d": 1, '
