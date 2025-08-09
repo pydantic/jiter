@@ -122,7 +122,7 @@ where
 
         match decode_chunk(data, start, true, allow_partial)? {
             (StringChunk::StringEnd, ascii_only, index) => {
-                let s = to_str(&data[start..index], ascii_only, start)?;
+                let s = to_str(&data[start..index], ascii_only, start, allow_partial)?;
                 Ok((unsafe { StringOutput::data(s, ascii_only) }, index + 1))
             }
             (StringChunk::Backslash, ascii_only, index) => {
@@ -162,7 +162,7 @@ fn decode_to_tape<'t, 'j>(
                     }
                     Err(e) => {
                         if allow_partial && e.error_type == JsonErrorType::EofWhileParsingString {
-                            let s = to_str(tape, ascii_only, start)?;
+                            let s = to_str(tape, ascii_only, start, allow_partial)?;
                             return Ok((unsafe { StringOutput::tape(s, ascii_only) }, e.index));
                         }
                         return Err(e);
@@ -173,7 +173,7 @@ fn decode_to_tape<'t, 'j>(
             index += 1;
         } else {
             if allow_partial {
-                let s = to_str(tape, ascii_only, start)?;
+                let s = to_str(tape, ascii_only, start, allow_partial)?;
                 return Ok((unsafe { StringOutput::tape(s, ascii_only) }, index));
             }
             return json_err!(EofWhileParsingString, index);
@@ -183,7 +183,7 @@ fn decode_to_tape<'t, 'j>(
             (StringChunk::StringEnd, ascii_only, new_index) => {
                 tape.extend_from_slice(&data[index..new_index]);
                 index = new_index + 1;
-                let s = to_str(tape, ascii_only, start)?;
+                let s = to_str(tape, ascii_only, start, allow_partial)?;
                 return Ok((unsafe { StringOutput::tape(s, ascii_only) }, index));
             }
             (StringChunk::Backslash, ascii_only_new, index_new) => {
@@ -344,13 +344,27 @@ static CHAR_TYPE: [CharType; 256] = {
     ]
 };
 
-fn to_str(bytes: &[u8], ascii_only: bool, start: usize) -> JsonResult<&str> {
+fn to_str(bytes: &[u8], ascii_only: bool, start: usize, allow_partial: bool) -> JsonResult<&str> {
     if ascii_only {
         // safety: in this case we've already confirmed that all characters are ascii, we can safely
         // transmute from bytes to str
         Ok(unsafe { from_utf8_unchecked(bytes) })
     } else {
-        from_utf8(bytes).map_err(|e| json_error!(InvalidUnicodeCodePoint, start + e.valid_up_to() + 1))
+        match from_utf8(bytes) {
+            Ok(s) => Ok(s),
+            Err(e) if allow_partial => {
+                // In partial mode, truncate to the last valid UTF-8 boundary
+                let valid_up_to = e.valid_up_to();
+                if valid_up_to > 0 {
+                    // SAFETY: `valid_up_to()` returns the byte index up to which the input is valid UTF-8
+                    Ok(unsafe { from_utf8_unchecked(&bytes[..valid_up_to]) })
+                } else {
+                    // If no valid UTF-8 at all, return empty string
+                    Ok("")
+                }
+            }
+            Err(e) => Err(json_error!(InvalidUnicodeCodePoint, start + e.valid_up_to() + 1)),
+        }
     }
 }
 

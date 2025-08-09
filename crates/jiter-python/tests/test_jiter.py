@@ -168,6 +168,24 @@ def test_partial_object_string_trailing_strings():
     assert parsed == {'title': 'Pride and Prejudice', 'author': 'Jane A'}
 
 
+def test_partial_json_invalid_utf8_bytes():
+    missiong_closing_quote_string = '"abc€'
+    missiong_closing_quote_bytes = missiong_closing_quote_string.encode()  # b'"abc\xe2\x82\xac'
+    result = jiter.from_json(missiong_closing_quote_bytes, partial_mode='trailing-strings')
+    assert result == 'abc€'
+
+    # remove the last byte to create an invalid UTF-8 sequence
+    non_unicode_partial_string_bytes = missiong_closing_quote_bytes[:-1]  # b'"abc\xe2\x82' - missing last byte of €
+
+    # This should fail by default (incomplete UTF-8 sequence)...
+    with pytest.raises(ValueError, match='EOF while parsing a string'):
+        jiter.from_json(non_unicode_partial_string_bytes)
+
+    # ...but succeed in partial mode by truncating to valid UTF-8 boundary
+    result = jiter.from_json(non_unicode_partial_string_bytes, partial_mode='trailing-strings')
+    assert result == 'abc'
+
+
 def test_partial_nested():
     json = b'{"a": 1, "b": 2, "c": [1, 2, {"d": 1, '
     parsed = jiter.from_json(json, partial_mode=True)
