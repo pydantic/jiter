@@ -89,6 +89,6 @@ impl LosslessFloat {
 
 static DECIMAL_TYPE: GILOnceCell<Py<PyType>> = GILOnceCell::new();
 
-pub fn get_decimal_type(py: Python) -> PyResult<&Bound<'_, PyType>> {
+pub fn get_decimal_type(py: Python<'_>) -> PyResult<&Bound<'_, PyType>> {
     DECIMAL_TYPE.import(py, "decimal", "Decimal")
 }
