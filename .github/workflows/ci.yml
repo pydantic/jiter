@@ -264,7 +264,7 @@ jobs:
           - os: linux
             manylinux: auto
             target: x86_64
-            interpreter: 3.9 3.10 3.11 3.12 3.13 3.14 graalpy3.11
+            interpreter: graalpy3.11
           - os: linux
             manylinux: auto
             target: i686
