@@ -44,7 +44,7 @@ impl PythonParse {
     /// # Returns
     ///
     /// A [PyObject](https://docs.rs/pyo3/latest/pyo3/type.PyObject.html) representing the parsed JSON value.
-    pub fn python_parse<'py>(self, py: Python<'py>, json_data: &[u8]) -> JsonResult<Bound<'py, PyAny>> {
+    pub fn python_parse<'py>(&self, py: Python<'py>, json_data: &[u8]) -> JsonResult<Bound<'py, PyAny>> {
         macro_rules! ppp {
             ($string_cache:ident, $key_check:ident, $parse_number:ident) => {
                 PythonParser::<$string_cache, $key_check, $parse_number>::parse(
