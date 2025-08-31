@@ -11,7 +11,7 @@ fn test_to_py_object_numeric() {
         false,
     )
     .unwrap();
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let python_value = value.into_pyobject(py).unwrap();
         let string = python_value.to_string();
         assert_eq!(
