@@ -81,7 +81,7 @@ fn test_pystring_ascii_new() {
 
 #[test]
 fn test_python_parse_default() {
-    Python::attach:wq(|py| {
+    Python::attach(|py| {
         let v = PythonParse::default().python_parse(py, b"[123]").unwrap();
         assert_eq!(v.to_string(), "[123]");
     });
