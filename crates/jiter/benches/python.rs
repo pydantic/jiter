@@ -9,7 +9,7 @@ use pyo3::Python;
 use jiter::{cache_clear, PythonParse, StringCacheMode};
 
 fn python_parse_numeric(c: &mut Criterion) {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         cache_clear();
         c.bench_function("python_parse_numeric", |bench| {
             bench.iter(|| {
@@ -25,7 +25,7 @@ fn python_parse_numeric(c: &mut Criterion) {
 }
 
 fn python_parse_other(c: &mut Criterion) {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         cache_clear();
         c.bench_function("python_parse_other", |bench| {
             bench.iter(|| {
@@ -55,7 +55,7 @@ fn python_parse_file(path: &str, c: &mut Criterion, cache_mode: StringCacheMode)
         "python_parse_".to_owned() + file_stem + cache_mode
     };
 
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         cache_clear();
 
         c.bench_function(&title, |bench| {
