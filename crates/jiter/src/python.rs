@@ -239,7 +239,7 @@ const PARTIAL_ERROR: &str = "Invalid partial mode, should be `'off'`, `'on'`, `'
 
 impl<'py> FromPyObject<'py> for PartialMode {
     fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
-        if let Ok(bool_mode) = ob.downcast::<PyBool>() {
+        if let Ok(bool_mode) = ob.cast::<PyBool>() {
             Ok(bool_mode.is_true().into())
         } else if let Ok(str_mode) = ob.extract::<&str>() {
             match str_mode {
