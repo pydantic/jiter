@@ -94,7 +94,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.13", "3.13t", "graalpy-24.2"]
+        python-version: ["3.13", "3.13t", "graalpy-25.0"]
 
     env:
       RUNS_ON: ubuntu-latest
@@ -264,13 +264,14 @@ jobs:
           - os: linux
             manylinux: auto
             target: x86_64
-            interpreter: graalpy3.11
+            interpreter: graalpy3.11 graalpy3.12
           - os: linux
             manylinux: auto
             target: i686
           - os: linux
             manylinux: auto
             target: aarch64
+            interpreter: 3.9 3.10 3.11 3.12 3.13 3.14 graalpy3.11 graalpy3.12
           - os: linux
             manylinux: auto
             target: armv7
@@ -297,9 +298,10 @@ jobs:
           # older pythons which can't be run on the arm hardware for PGO
           - os: macos
             target: x86_64
+            interpreter: 3.9 3.10 3.11 3.12 3.13 3.14 graalpy3.11 graalpy3.12
           - os: macos
             target: aarch64
-            interpreter: "3.9"
+            interpreter: 3.9 graalpy3.11 graalpy3.12
 
           # windows;
           # aarch64 only 3.11 and up, also not PGO optimized
@@ -335,7 +337,6 @@ jobs:
           args: --release --out dist --interpreter ${{ matrix.interpreter || '3.9 3.10 3.11 3.12 3.13 3.14' }}
           rust-toolchain: stable
           working-directory: crates/jiter-python
-          before-script-linux: ${{ contains(matrix.interpreter, 'graalpy') && 'manylinux-interpreters ensure-all' || '' }}
 
       - run: ${{ (matrix.os == 'windows' && 'dir') || 'ls -lh' }} crates/jiter-python/dist/
 
