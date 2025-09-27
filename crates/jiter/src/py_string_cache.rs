@@ -20,8 +20,10 @@ impl Default for StringCacheMode {
     }
 }
 
-impl<'py> FromPyObject<'py> for StringCacheMode {
-    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<StringCacheMode> {
+impl<'py> FromPyObject<'_, 'py> for StringCacheMode {
+    type Error = PyErr;
+
+    fn extract(ob: Borrowed<'_, 'py, PyAny>) -> PyResult<StringCacheMode> {
         if let Ok(bool_mode) = ob.cast::<PyBool>() {
             Ok(bool_mode.is_true().into())
         } else if let Ok(str_mode) = ob.extract::<&str>() {
