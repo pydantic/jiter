@@ -14,10 +14,10 @@ jobs:
     outputs:
       MSRV: ${{ steps.resolve-msrv.outputs.MSRV }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: set up python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
@@ -50,10 +50,10 @@ jobs:
       RUST_VERSION: ${{ matrix.rust-version }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: set up python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -100,10 +100,10 @@ jobs:
       RUNS_ON: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - name: set up python
-        uses: actions/setup-python@v5
+      - name: set up python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -141,9 +141,9 @@ jobs:
   bench:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
@@ -157,7 +157,7 @@ jobs:
 
       - run: cargo codspeed build -F python -p jiter
 
-      - uses: CodSpeedHQ/action@v3
+      - uses: CodSpeedHQ/action@v4
         with:
           run: cargo codspeed run
           token: ${{ secrets.CODSPEED_TOKEN }}
@@ -172,7 +172,7 @@ jobs:
     runs-on: ${{ matrix.runs-on }}-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: dtolnay/rust-toolchain@nightly
       - id: cache-rust
@@ -191,7 +191,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: dtolnay/rust-toolchain@nightly
       - id: cache-rust
@@ -207,10 +207,10 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: set up python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
@@ -220,7 +220,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - uses: pre-commit/action@v3.0.0
+      - uses: pre-commit/action@v3.0.1
         with:
           extra_args: --all-files --verbose
         env:
@@ -233,9 +233,9 @@ jobs:
     name: build sdist
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: set up python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.13"
       - uses: PyO3/maturin-action@v1
@@ -319,10 +319,10 @@ jobs:
 
     runs-on: ${{ (matrix.os == 'linux' && 'ubuntu') || matrix.os }}-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: set up python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.13"
           architecture: ${{ matrix.python-architecture || 'x64' }}
@@ -340,7 +340,7 @@ jobs:
       - run: ${{ (matrix.os == 'windows' && 'dir') || 'ls -lh' }} crates/jiter-python/dist/
 
       - run: |
-          pip install -U twine
+          pip install --upgrade twine
           twine check --strict crates/jiter-python/dist/*
 
       - uses: actions/upload-artifact@v4
@@ -380,11 +380,11 @@ jobs:
 
     runs-on: ${{ matrix.runs-on }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - id: setup-python
         name: set up python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.interpreter }}
           allow-prereleases: true
@@ -413,11 +413,11 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || contains(github.event.pull_request.labels.*.name, 'Full Build')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - id: setup-python
         name: set up python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: 3.12
 
@@ -441,7 +441,7 @@ jobs:
           actions-cache-folder: emsdk-cache
 
       - name: install deps
-        run: pip install -U pip maturin
+        run: pip install --upgrade pip maturin
 
       - name: build wheels
         run: maturin build --release --target wasm32-unknown-emscripten --out dist -i 3.12
@@ -472,7 +472,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: get dist artifacts
         uses: actions/download-artifact@v4
@@ -513,7 +513,7 @@ jobs:
             distro: alpine_latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: get dist artifacts
         uses: actions/download-artifact@v4
@@ -545,7 +545,7 @@ jobs:
             # typing-extensions isn't automatically installed because of `--no-index --no-deps`
             python3 -m venv venv
             source venv/bin/activate
-            python3 -m pip install -U pip -r tests/requirements.txt
+            python3 -m pip install --upgrade pip -r tests/requirements.txt
             python3 -m pip install jiter --no-index --no-deps --find-links dist --force-reinstall
             python3 -m pytest
             python3 -c 'import jiter; print(jiter.__version__)'
@@ -561,10 +561,10 @@ jobs:
 
     runs-on: ${{ matrix.os }}-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: set up python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
@@ -577,7 +577,7 @@ jobs:
 
       - name: run tests
         run: |
-          python3 -m pip install -U pip -r tests/requirements.txt
+          python3 -m pip install --upgrade pip -r tests/requirements.txt
           python3 -m pip install jiter --no-index --no-deps --find-links dist --force-reinstall
           python3 -m pytest
           python3 -c 'import jiter; print(jiter.__version__)'
@@ -601,7 +601,7 @@ jobs:
     environment: release
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: install rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -628,10 +628,10 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: set up python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
@@ -643,7 +643,7 @@ jobs:
           path: dist
 
       - run: |
-          pip install -U twine
+          pip install --upgrade twine
           ls -l dist/
           twine check --strict dist/*
 
