@@ -157,7 +157,7 @@ jobs:
 
       - run: cargo codspeed build -F python -p jiter
 
-      - uses: CodSpeedHQ/action@v4
+      - uses: CodSpeedHQ/action@v3
         with:
           run: cargo codspeed run
           token: ${{ secrets.CODSPEED_TOKEN }}
