@@ -1,6 +1,6 @@
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::sync::GILOnceCell;
+use pyo3::sync::PyOnceLock;
 use pyo3::types::PyType;
 
 use crate::Jiter;
@@ -87,8 +87,8 @@ impl LosslessFloat {
     }
 }
 
-static DECIMAL_TYPE: GILOnceCell<Py<PyType>> = GILOnceCell::new();
+static DECIMAL_TYPE: PyOnceLock<Py<PyType>> = PyOnceLock::new();
 
-pub fn get_decimal_type(py: Python) -> PyResult<&Bound<'_, PyType>> {
+pub fn get_decimal_type(py: Python<'_>) -> PyResult<&Bound<'_, PyType>> {
     DECIMAL_TYPE.import(py, "decimal", "Decimal")
 }

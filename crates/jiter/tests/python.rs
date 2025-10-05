@@ -11,7 +11,7 @@ fn test_to_py_object_numeric() {
         false,
     )
     .unwrap();
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let python_value = value.into_pyobject(py).unwrap();
         let string = python_value.to_string();
         assert_eq!(
@@ -28,7 +28,7 @@ fn test_to_py_object_other() {
         true,
     )
     .unwrap();
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let python_value = value.into_pyobject(py).unwrap();
         let string = python_value.to_string();
         assert_eq!(string, "['string', '£', True, False, None, nan, inf, -inf]");
@@ -37,7 +37,7 @@ fn test_to_py_object_other() {
 
 #[test]
 fn test_cache_into() {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let c: StringCacheMode = true.into_pyobject(py).unwrap().extract().unwrap();
         assert!(matches!(c, StringCacheMode::All));
 
@@ -73,7 +73,7 @@ fn test_cache_into() {
 #[test]
 fn test_pystring_ascii_new() {
     let json = "100abc";
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let s = unsafe { pystring_ascii_new(py, json) };
         assert_eq!(s.to_string(), "100abc");
     });
@@ -81,7 +81,7 @@ fn test_pystring_ascii_new() {
 
 #[test]
 fn test_python_parse_default() {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let v = PythonParse::default().python_parse(py, b"[123]").unwrap();
         assert_eq!(v.to_string(), "[123]");
     });

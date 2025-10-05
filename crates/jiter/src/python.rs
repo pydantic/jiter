@@ -44,7 +44,7 @@ impl PythonParse {
     /// # Returns
     ///
     /// A [PyObject](https://docs.rs/pyo3/latest/pyo3/type.PyObject.html) representing the parsed JSON value.
-    pub fn python_parse<'py>(self, py: Python<'py>, json_data: &[u8]) -> JsonResult<Bound<'py, PyAny>> {
+    pub fn python_parse<'py>(&self, py: Python<'py>, json_data: &[u8]) -> JsonResult<Bound<'py, PyAny>> {
         macro_rules! ppp {
             ($string_cache:ident, $key_check:ident, $parse_number:ident) => {
                 PythonParser::<$string_cache, $key_check, $parse_number>::parse(
@@ -239,7 +239,7 @@ const PARTIAL_ERROR: &str = "Invalid partial mode, should be `'off'`, `'on'`, `'
 
 impl<'py> FromPyObject<'py> for PartialMode {
     fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
-        if let Ok(bool_mode) = ob.downcast::<PyBool>() {
+        if let Ok(bool_mode) = ob.cast::<PyBool>() {
             Ok(bool_mode.is_true().into())
         } else if let Ok(str_mode) = ob.extract::<&str>() {
             match str_mode {

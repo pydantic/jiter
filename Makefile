@@ -38,7 +38,7 @@ python-bench: python-dev-release
 
 .PHONY: bench
 bench:
-	cargo bench  -p jiter -F python
+	cargo bench -p jiter -F python
 
 .PHONY: fuzz
 fuzz:
