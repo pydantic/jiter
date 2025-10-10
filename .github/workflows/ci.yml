@@ -33,7 +33,7 @@ jobs:
       matrix:
         rust-version: [stable]
         runs-on: [ubuntu, macos]
-        python-version: ["3.13"]
+        python-version: [""]
         include:
           - rust-version: ${{ needs.resolve.outputs.MSRV }}
             runs-on: ubuntu
@@ -55,7 +55,7 @@ jobs:
       - name: set up python
         uses: actions/setup-python@v6
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: ${{ matrix.python-version || '3.13' }}
 
       - uses: dtolnay/rust-toolchain@master
         with:
@@ -256,34 +256,34 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [linux] # windows and macos builds added manually
-        target: [x86_64, aarch64]
+        os: [linux, windows] # windows and macos builds added manually
+        target: [i686]
         manylinux: [auto]
         include:
           # manylinux for various platforms
+          # x86_64 and aarch64 are PGO optimized below
+          - os: linux
+            manylinux: auto
+            target: i686
+          - os: linux
+            manylinux: auto
+            target: armv7
+          - os: linux
+            manylinux: auto
+            target: ppc64le
+          - os: linux
+            manylinux: auto
+            target: s390x
+
+          # manylinux graalpy on major architectures
           - os: linux
             manylinux: auto
             target: x86_64
             interpreter: graalpy3.11 graalpy3.12
           - os: linux
             manylinux: auto
-            target: i686
-          - os: linux
-            manylinux: auto
             target: aarch64
-            interpreter: 3.9 3.10 3.11 3.12 3.13 3.14 graalpy3.11 graalpy3.12
-          - os: linux
-            manylinux: auto
-            target: armv7
-            interpreter: 3.9 3.10 3.11 3.12 3.13 3.14
-          - os: linux
-            manylinux: auto
-            target: ppc64le
-            interpreter: 3.9 3.10 3.11 3.12 3.13 3.14
-          - os: linux
-            manylinux: auto
-            target: s390x
-            interpreter: 3.9 3.10 3.11 3.12 3.13 3.14
+            interpreter: graalpy3.11 graalpy3.12
 
           # musllinux
           - os: linux
@@ -292,10 +292,11 @@ jobs:
           - os: linux
             manylinux: musllinux_1_1
             target: aarch64
+            runs-on: ubuntu-24.04-arm
 
           # macos;
           # all versions x86_64
-          # older pythons which can't be run on the arm hardware for PGO
+          # 3.9 can't be run on the arm hardware for PGO
           - os: macos
             target: x86_64
             interpreter: 3.9 3.10 3.11 3.12 3.13 3.14 graalpy3.11 graalpy3.12
@@ -303,23 +304,13 @@ jobs:
             target: aarch64
             interpreter: 3.9 graalpy3.11 graalpy3.12
 
-          # windows;
-          # aarch64 only 3.11 and up, also not PGO optimized
+          # windows 11 arm supports 3.11 and up
           - os: windows
-            target: i686
-            python-architecture: x86
-            interpreter: 3.9 3.10 3.11 3.12 3.13 3.14
-          # FIXME had link failures, needs investigation
-          # - os: windows
-          #   target: aarch64
-          #   interpreter: 3.11 3.12
-        exclude:
-          # PGO optimized below
-          - os: linux
-            manylinux: auto
-            target: x86_64
+            target: aarch64
+            runs-on: windows-11-arm
+            interpreter: "3.11 3.12 3.13 3.13t 3.14 3.14t"
 
-    runs-on: ${{ (matrix.os == 'linux' && 'ubuntu') || matrix.os }}-latest
+    runs-on: ${{ matrix.runs-on || format('{0}-latest', (matrix.os == 'linux' && 'ubuntu') || matrix.os)  }}
     steps:
       - uses: actions/checkout@v5
 
@@ -327,14 +318,16 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.13"
-          architecture: ${{ matrix.python-architecture || 'x64' }}
+
+      - name: install rust stable
+        uses: dtolnay/rust-toolchain@stable
 
       - name: build wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
           manylinux: ${{ matrix.manylinux }}
-          args: --release --out dist --interpreter ${{ matrix.interpreter || '3.9 3.10 3.11 3.12 3.13 3.14' }}
+          args: --release --out dist --interpreter ${{ matrix.interpreter || '3.9 3.10 3.11 3.12 3.13 3.14 3.14t' }}
           rust-toolchain: stable
           working-directory: crates/jiter-python
 
@@ -350,36 +343,28 @@ jobs:
           path: crates/jiter-python/dist
 
   build-pgo:
-    name: build pgo-optimized on ${{ matrix.os }} / ${{ matrix.interpreter }}
+    name: build pgo-optimized on ${{ matrix.platform.os }} / ${{ matrix.interpreter }}
     # only run on push to main and on release
     if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || contains(github.event.pull_request.labels.*.name, 'Full Build')
     strategy:
       fail-fast: false
       matrix:
-        os: [linux, windows, macos]
+        platform:
+          [
+            { os: linux, runs-on: ubuntu-latest },
+            { os: linux_aarch64, runs-on: ubuntu-24.04-arm },
+            { os: windows, runs-on: windows-latest },
+            { os: macos, runs-on: macos-latest },
+          ]
         interpreter:
           ["3.9", "3.10", "3.11", "3.12", "3.13", "3.13t", "3.14", "3.14t"]
-        include:
-          # standard runners with override for macos arm
-          - os: linux
-            runs-on: ubuntu-latest
-          - os: windows
-            ls: dir
-            runs-on: windows-latest
-          - os: macos
-            runs-on: macos-latest
         exclude:
           # macos arm only supported from 3.10 and up
-          - os: macos
+          - platform:
+              os: macos
             interpreter: "3.9"
-          # windows 3.14 cffi install blocks build on 3.14 beta 1
-          # https://github.com/python/cpython/issues/133779
-          - os: windows
-            interpreter: "3.14"
-          - os: windows
-            interpreter: "3.14t"
 
-    runs-on: ${{ matrix.runs-on }}
+    runs-on: ${{ matrix.platform.runs-on }}
     steps:
       - uses: actions/checkout@v5
 
@@ -402,11 +387,11 @@ jobs:
           interpreter: ${{ matrix.interpreter }}
           rust-toolchain: ${{ steps.rust-toolchain.outputs.name }}
 
-      - run: ${{ matrix.ls || 'ls -lh' }} crates/jiter-python/dist/
+      - run: ${{ (startsWith(matrix.platform.os, 'windows') && 'dir') || 'ls -lh' }} crates/jiter-python/dist/
 
       - uses: actions/upload-artifact@v4
         with:
-          name: pypi_files_${{ matrix.os }}_${{ matrix.interpreter }}
+          name: pypi_files_${{ matrix.platform.os }}_${{ matrix.interpreter }}
           path: crates/jiter-python/dist
 
   build-wasm-emscripten:
