@@ -178,17 +178,12 @@ pub use py_string_cache::{
 #[cfg(feature = "python")]
 pub use python::{map_json_error, PythonParse};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub enum PartialMode {
+    #[default]
     Off,
     On,
     TrailingStrings,
-}
-
-impl Default for PartialMode {
-    fn default() -> Self {
-        Self::Off
-    }
 }
 
 impl From<bool> for PartialMode {

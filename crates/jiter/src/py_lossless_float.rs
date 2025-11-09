@@ -5,17 +5,12 @@ use pyo3::types::PyType;
 
 use crate::Jiter;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub enum FloatMode {
+    #[default]
     Float,
     Decimal,
     LosslessFloat,
-}
-
-impl Default for FloatMode {
-    fn default() -> Self {
-        Self::Float
-    }
 }
 
 const FLOAT_ERROR: &str = "Invalid float mode, should be `'float'`, `'decimal'` or `'lossless-float'`";

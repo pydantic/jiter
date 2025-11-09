@@ -7,17 +7,12 @@ use pyo3::types::{PyBool, PyString};
 
 use crate::string_decoder::StringOutput;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub enum StringCacheMode {
+    #[default]
     All,
     Keys,
     None,
-}
-
-impl Default for StringCacheMode {
-    fn default() -> Self {
-        Self::All
-    }
 }
 
 impl<'py> FromPyObject<'_, 'py> for StringCacheMode {
