@@ -1351,6 +1351,71 @@ fn test_number_int_try_from_bytes() {
 }
 
 #[test]
+fn test_number_any_try_from_bytes() {
+    let n: NumberAny = b"123".as_ref().try_into().unwrap();
+    assert_eq!(n, NumberAny::Int(NumberInt::Int(123)));
+
+    let n: NumberAny = b"0".as_ref().try_into().unwrap();
+    assert_eq!(n, NumberAny::Int(NumberInt::Int(0)));
+
+    let n: NumberAny = b"123.456".as_ref().try_into().unwrap();
+    assert_eq!(n, NumberAny::Float(123.456));
+
+    let n: NumberAny = b"123.45e2".as_ref().try_into().unwrap();
+    assert_eq!(n, NumberAny::Float(12345.0));
+
+    let twenty_nines = "9".repeat(29);
+    let n: NumberAny = twenty_nines.as_bytes().try_into().unwrap();
+    match n {
+        NumberAny::Int(NumberInt::BigInt(v)) => assert_eq!(v.to_string(), twenty_nines),
+        _ => panic!("expected big int"),
+    }
+
+    let e = NumberAny::try_from(b"x23".as_ref()).unwrap_err();
+    assert_eq!(e.to_string(), "invalid number at index 0");
+
+    let e = NumberAny::try_from(b"".as_ref()).unwrap_err();
+    assert_eq!(e.to_string(), "invalid number at index 0");
+
+    let e = NumberAny::try_from(b"2x3".as_ref()).unwrap_err();
+    assert_eq!(e.to_string(), "invalid number at index 1");
+
+    let e = NumberAny::try_from(b"123 ".as_ref()).unwrap_err();
+    assert_eq!(e.to_string(), "invalid number at index 3");
+
+    let e = NumberAny::try_from(b"123.1 ".as_ref()).unwrap_err();
+    assert_eq!(e.to_string(), "invalid number at index 5");
+
+    let e = NumberAny::try_from(b"0123".as_ref()).unwrap_err();
+    assert_eq!(e.to_string(), "invalid number at index 1");
+
+    let e = NumberAny::try_from(b"NaN".as_ref()).unwrap_err();
+    assert_eq!(e.to_string(), "expected value at index 0");
+
+    let too_long = "9".repeat(4309);
+    let e = NumberAny::try_from(too_long.as_bytes()).unwrap_err();
+    assert_eq!(e.to_string(), "number out of range at index 4301");
+}
+
+#[test]
+fn test_number_any_try_from_bytes_allow() {
+    let n = NumberAny::from_bytes(b"123", true).unwrap();
+    assert_eq!(n, NumberAny::Int(NumberInt::Int(123)));
+
+    let e = NumberAny::from_bytes(b"x23", true).unwrap_err();
+    assert_eq!(e.to_string(), "invalid number at index 0");
+
+    let n = NumberAny::from_bytes(b"NaN", true).unwrap();
+    assert_eq!(format!("{n:?}"), "Float(NaN)");
+
+    let n = NumberAny::from_bytes(b"Infinity", true).unwrap();
+    assert_eq!(format!("{n:?}"), "Float(inf)");
+
+    let e = NumberAny::from_bytes(b"NaN", false).unwrap_err();
+    assert_eq!(e.to_string(), "expected value at index 0");
+}
+
+#[test]
 fn jiter_skip_whole_object() {
     let mut jiter = Jiter::new(br#"{"x": 1}"#);
     jiter.next_skip().unwrap();

@@ -131,6 +131,27 @@ impl From<NumberAny> for f64 {
     }
 }
 
+impl TryFrom<&[u8]> for NumberAny {
+    type Error = JsonError;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        Self::from_bytes(value, false)
+    }
+}
+
+impl NumberAny {
+    pub fn from_bytes(data: &[u8], allow_inf_nan: bool) -> Result<Self, JsonError> {
+        let first = *data.first().ok_or_else(|| json_error!(InvalidNumber, 0))?;
+        let (number, index) = Self::decode(data, 0, first, allow_inf_nan)?;
+
+        if index == data.len() {
+            Ok(number)
+        } else {
+            json_err!(InvalidNumber, index)
+        }
+    }
+}
+
 impl AbstractNumberDecoder for NumberAny {
     type Output = NumberAny;
 
