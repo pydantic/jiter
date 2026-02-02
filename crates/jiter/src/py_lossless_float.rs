@@ -1,7 +1,8 @@
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
+use pyo3::py_format;
 use pyo3::sync::PyOnceLock;
-use pyo3::types::PyType;
+use pyo3::types::{PyString, PyType};
 
 use crate::Jiter;
 
@@ -33,7 +34,7 @@ impl<'py> FromPyObject<'_, 'py> for FloatMode {
 
 /// Represents a float from JSON, by holding the underlying bytes representing a float from JSON.
 #[derive(Debug, Clone)]
-#[pyclass(module = "jiter")]
+#[pyclass(module = "jiter", skip_from_py_object)]
 pub struct LosslessFloat(Vec<u8>);
 
 impl LosslessFloat {
@@ -78,8 +79,9 @@ impl LosslessFloat {
         std::str::from_utf8(&self.0).map_err(|_| PyValueError::new_err("Invalid UTF-8"))
     }
 
-    fn __repr__(&self) -> PyResult<String> {
-        self.__str__().map(|s| format!("LosslessFloat({s})"))
+    fn __repr__<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyString>> {
+        let s = self.__str__()?;
+        py_format!(py, "LosslessFloat({s})")
     }
 }
 
