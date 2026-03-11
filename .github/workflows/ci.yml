@@ -244,6 +244,15 @@ jobs:
           args: --out dist
           rust-toolchain: stable
           working-directory: crates/jiter-python
+      - name: verify sdist lockfile for locked vendoring
+        run: |
+          set -euxo pipefail
+          sdist_path=$(echo crates/jiter-python/dist/*.tar.gz)
+          sdist_name=$(basename "$sdist_path" .tar.gz)
+          mkdir sdist-check
+          tar -xzf "$sdist_path" -C sdist-check
+          cd "sdist-check/$sdist_name"
+          cargo vendor --locked > /dev/null
       - uses: actions/upload-artifact@v4
         with:
           name: pypi_files_sdist
