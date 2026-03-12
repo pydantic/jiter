@@ -274,6 +274,9 @@ jobs:
           - os: linux
             manylinux: auto
             target: s390x
+          - os: linux
+            manylinux: auto
+            target: riscv64
 
           # manylinux graalpy on major architectures
           - os: linux
