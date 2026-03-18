@@ -1,5 +1,6 @@
 [workspace]
-members = ["crates/jiter", "crates/jiter-python", "crates/fuzz"]
+members = ["crates/jiter", "crates/jiter-python"]
+exclude = ["crates/fuzz"]
 resolver = "2"
 
 [workspace.package]
