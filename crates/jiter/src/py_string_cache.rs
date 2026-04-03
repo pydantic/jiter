@@ -152,14 +152,21 @@ struct PyStringCache {
     hash_builder: RandomState,
 }
 
+const ARRAY_REPEAT_VALUE: Entry = None;
+
 impl Default for PyStringCache {
     fn default() -> Self {
         Self {
-            // SAFETY: all-zero bytes is a valid representation of `[None; CAPACITY]`
-            // because `Py<PyString>` uses a NonNull niche, so null ptr = None.
-            // This is necessary to avoid potential stack overflows if we were
-            // to use `Bow::new()`, as the `CAPACITY` is quite large.
-            entries: unsafe { Box::<[Entry; CAPACITY]>::new_zeroed().assume_init() },
+            // Make sure we don't allocate a large array on the stack (e.g. using `Box::new([ARRAY_REPEAT_VALUE; CAPACITY])`)
+            // to avoid potential stack overflows.
+            // Note: we might want to use `Box::<[Entry; CAPACITY]>::new_zeroed()` if we ever bump the MSRV above 1.92,
+            // given that `Entry` can be used as a niche optimization.
+            entries: std::iter::repeat_with(|| ARRAY_REPEAT_VALUE)
+                .take(CAPACITY)
+                .collect::<Vec<_>>()
+                .into_boxed_slice()
+                .try_into()
+                .unwrap(),
             hash_builder: RandomState::default(),
         }
     }
