@@ -241,7 +241,7 @@ unsafe fn pystring_fast_new_maybe_ascii<'py>(py: Python<'py>, s: &str, ascii_onl
 }
 
 /// Faster creation of PyString from an ASCII string, inspired by
-/// https://github.com/ijl/orjson/blob/3.10.0/src/str/create.rs#L41
+/// <https://github.com/ijl/orjson/blob/3.10.0/src/str/create.rs#L41>
 ///
 /// # Safety
 ///

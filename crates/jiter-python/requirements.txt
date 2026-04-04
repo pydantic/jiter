@@ -1,3 +1,0 @@
-maturin
-orjson
-ujson

@@ -6,10 +6,10 @@ def from_json(
     /,
     *,
     allow_inf_nan: bool = True,
-    cache_mode: Literal[True, False, "all", "keys", "none"] = "all",
-    partial_mode: Literal[True, False, "off", "on", "trailing-strings"] = False,
+    cache_mode: Literal[True, False, 'all', 'keys', 'none'] = 'all',
+    partial_mode: Literal[True, False, 'off', 'on', 'trailing-strings'] = False,
     catch_duplicate_keys: bool = False,
-    float_mode: Literal["float", "decimal", "lossless-float"] = "float",
+    float_mode: Literal['float', 'decimal', 'lossless-float'] = 'float',
 ) -> Any:
     """
     Parse input bytes into a JSON object.
@@ -46,12 +46,11 @@ def cache_usage() -> int:
         Size of the string cache in bytes.
     """
 
-
 class LosslessFloat:
     """
     Represents a float from JSON, by holding the underlying bytes representing a float from JSON.
     """
-    def __init__(self, json_float: bytes):
+    def __init__(self, json_float: bytes) -> None:
         """Construct a LosslessFloat object from a JSON bytes slice"""
 
     def as_decimal(self) -> decimal.Decimal:
@@ -63,8 +62,7 @@ class LosslessFloat:
     def __bytes__(self) -> bytes:
         """Return the JSON bytes slice as bytes"""
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Return the JSON bytes slice as a string"""
 
-    def __repr__(self):
-        ...
+    def __repr__(self) -> str: ...

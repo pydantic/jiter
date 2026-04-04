@@ -1,0 +1,31 @@
+[project]
+name = "jiter-workspace"  # NOT "my-app"
+version = "0.1.0"
+requires-python = ">=3.9"
+
+[dependency-groups]
+dev = [
+    "maturin",
+    "pytest",
+    "pytest-pretty",
+    "dirty-equals",
+]
+bench = [
+    "orjson",
+    "ujson",
+]
+linting = [
+    "ruff",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["crates/jiter-python"]
+
+[tool.ruff]
+target-version = "py39"
+
+[tool.ruff.format]
+quote-style = "single"
