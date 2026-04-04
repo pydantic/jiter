@@ -16,6 +16,11 @@ repos:
     hooks:
       - id: yamlfmt
 
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: v1.23.1
+    hooks:
+      - id: zizmor
+
   - repo: local
     hooks:
       - id: format-check
