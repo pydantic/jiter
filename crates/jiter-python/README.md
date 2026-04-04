@@ -15,10 +15,10 @@ def from_json(
     /,
     *,
     allow_inf_nan: bool = True,
-    cache_mode: Literal[True, False, "all", "keys", "none"] = "all",
-    partial_mode: Literal[True, False, "off", "on", "trailing-strings"] = False,
+    cache_mode: Literal[True, False, 'all', 'keys', 'none'] = 'all',
+    partial_mode: Literal[True, False, 'off', 'on', 'trailing-strings'] = False,
     catch_duplicate_keys: bool = False,
-    float_mode: Literal["float", "decimal", "lossless-float"] = "float",
+    float_mode: Literal['float', 'decimal', 'lossless-float'] = 'float',
 ) -> Any:
     """
     Parse input bytes into a JSON object.
@@ -42,10 +42,12 @@ def from_json(
         Python object built from the JSON input.
     """
 
+
 def cache_clear() -> None:
     """
     Reset the string cache.
     """
+
 
 def cache_usage() -> int:
     """
@@ -54,6 +56,7 @@ def cache_usage() -> int:
     Returns:
         Size of the string cache in bytes.
     """
+
 ```
 ## Examples
 
@@ -80,7 +83,7 @@ partial_json = b'{"name": "John", "age": 30, "city": "New Yor'
 try:
     jiter.from_json(partial_json, partial_mode=False)
 except ValueError as e:
-    print(f"Error: {e}")
+    print(f'Error: {e}')
 
 # Parse incomplete JSON, discarding incomplete last field
 result = jiter.from_json(partial_json, partial_mode=True)
@@ -108,5 +111,5 @@ print(result)  # Output: {'foo': 2}
 try:
     jiter.from_json(json_with_dupes, catch_duplicate_keys=True)
 except ValueError as e:
-    print(f"Error: {e}")
+    print(f'Error: {e}')
 ```

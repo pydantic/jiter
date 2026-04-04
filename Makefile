@@ -1,4 +1,10 @@
 .DEFAULT_GOAL := all
+python_sources = crates/jiter/benches/generate_big.py crates/jiter-python/bench.py crates/jiter-python/jiter.pyi crates/jiter-python/tests/test_jiter.py
+
+
+.PHONY: .uv
+.uv:
+	@uv -V || echo 'Please install uv: https://docs.astral.sh/uv/getting-started/installation/'
 
 .PHONY: format
 format:
@@ -11,14 +17,18 @@ lint:
 	cargo clippy -- -D warnings
 	cargo doc
 
+.PHONY: lint-python
+lint-python: .uv
+	uv run ruff check $(python_sources)
+	uv run ruff format --check $(python_sources)
+
 .PHONY: test
 test:
 	cargo test
 
 .PHONY: python-install
 python-install:
-	pip install -U maturin ujson orjson
-	pip install -r crates/jiter-python/tests/requirements.txt
+	uv sync --all-groups --all-packages
 
 .PHONY: python-dev
 python-dev:
@@ -26,7 +36,7 @@ python-dev:
 
 .PHONY: python-test
 python-test: python-dev
-	pytest crates/jiter-python/tests
+	uv run pytest crates/jiter-python/tests
 
 .PHONY: python-dev-release
 python-dev-release:
@@ -34,7 +44,7 @@ python-dev-release:
 
 .PHONY: python-bench
 python-bench: python-dev-release
-	python crates/jiter-python/bench.py
+	uv run python crates/jiter-python/bench.py
 
 .PHONY: bench
 bench:

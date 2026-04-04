@@ -34,20 +34,15 @@ runs:
       env:
         RUSTFLAGS: '-Cprofile-generate=${{ github.workspace }}/profdata'
 
-    - name: detect rust host
-      run: echo RUST_HOST=$(rustc -Vv | grep host | cut -d ' ' -f 2) >> "$GITHUB_ENV"
-      shell: bash
-
     - name: generate pgo data
       run: |
-        python -m pip install -U pip
-        python -m pip install -r tests/requirements.txt
-        python -m pip install jiter --no-index --no-deps --find-links pgo-wheel --force-reinstall
-        python bench.py jiter jiter-cache
-        RUST_HOST=$(rustc -Vv | grep host | cut -d ' ' -f 2)
+        export RUST_HOST=$(rustc --print host-tuple)
+        uv sync --group dev --no-install-package jiter
+        cd crates/jiter-python
+        uv pip install jiter --no-index --no-deps --find-links pgo-wheel --force-reinstall
+        uv run bench.py jiter jiter-cache
         rustup run ${{ inputs.rust-toolchain }} bash -c 'echo LLVM_PROFDATA=$RUSTUP_HOME/toolchains/$RUSTUP_TOOLCHAIN/lib/rustlib/$RUST_HOST/bin/llvm-profdata >> "$GITHUB_ENV"'
       shell: bash
-      working-directory: crates/jiter-python
 
     - name: merge pgo data
       run: ${{ env.LLVM_PROFDATA }} merge -o ${{ github.workspace }}/merged.profdata ${{ github.workspace }}/profdata

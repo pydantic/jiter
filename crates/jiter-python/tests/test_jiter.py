@@ -170,19 +170,27 @@ def test_partial_object_string_trailing_strings():
 
 def test_partial_json_invalid_utf8_bytes():
     missing_closing_quote_string = '"abc€'
-    missing_closing_quote_bytes = missing_closing_quote_string.encode()  # b'"abc\xe2\x82\xac'
-    result = jiter.from_json(missing_closing_quote_bytes, partial_mode='trailing-strings')
+    missing_closing_quote_bytes = (
+        missing_closing_quote_string.encode()
+    )  # b'"abc\xe2\x82\xac'
+    result = jiter.from_json(
+        missing_closing_quote_bytes, partial_mode='trailing-strings'
+    )
     assert result == 'abc€'
 
     # remove the last byte to create an invalid UTF-8 sequence
-    non_unicode_partial_string_bytes = missing_closing_quote_bytes[:-1]  # b'"abc\xe2\x82' - missing last byte of €
+    non_unicode_partial_string_bytes = missing_closing_quote_bytes[
+        :-1
+    ]  # b'"abc\xe2\x82' - missing last byte of €
 
     # This should fail by default (incomplete UTF-8 sequence)...
     with pytest.raises(ValueError, match='EOF while parsing a string'):
         jiter.from_json(non_unicode_partial_string_bytes)
 
     # ...but succeed in partial mode by truncating to valid UTF-8 boundary
-    result = jiter.from_json(non_unicode_partial_string_bytes, partial_mode='trailing-strings')
+    result = jiter.from_json(
+        non_unicode_partial_string_bytes, partial_mode='trailing-strings'
+    )
     assert result == 'abc'
 
     # However, truly invalid UTF-8 (not just incomplete) should always raise an error
@@ -225,9 +233,9 @@ def test_partial_error():
 
     msg = "Invalid partial mode, should be `'off'`, `'on'`, `'trailing-strings'` or a `bool`"
     with pytest.raises(ValueError, match=msg):
-        jiter.from_json(json, partial_mode='wrong')
+        jiter.from_json(json, partial_mode='wrong')  # type: ignore
     with pytest.raises(TypeError, match=msg):
-        jiter.from_json(json, partial_mode=123)
+        jiter.from_json(json, partial_mode=123)  # type: ignore
 
 
 def test_python_cache_usage_all():
