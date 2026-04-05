@@ -1,0 +1,7 @@
+rules:
+  secrets-outside-env:
+    disable: true
+  superfluous-actions:
+    disable: true
+  use-trusted-publishing:
+    disable: true
