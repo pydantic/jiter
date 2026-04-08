@@ -5,11 +5,11 @@ use std::sync::{Arc, OnceLock};
 use num_bigint::BigInt;
 use smallvec::SmallVec;
 
-use crate::errors::{json_error, JsonError, JsonResult, DEFAULT_RECURSION_LIMIT};
+use crate::PartialMode;
+use crate::errors::{DEFAULT_RECURSION_LIMIT, JsonError, JsonResult, json_error};
 use crate::number_decoder::{NumberAny, NumberInt, NumberRange};
 use crate::parse::{Parser, Peek};
 use crate::string_decoder::{StringDecoder, StringDecoderRange, StringOutput, Tape};
-use crate::PartialMode;
 
 /// Enum representing a JSON value.
 #[derive(Clone, Debug, PartialEq)]

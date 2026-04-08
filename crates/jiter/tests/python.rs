@@ -1,7 +1,7 @@
 use pyo3::prelude::*;
 use pyo3::types::PyString;
 
-use jiter::{pystring_ascii_new, JsonValue, PythonParse, StringCacheMode};
+use jiter::{JsonValue, PythonParse, StringCacheMode, pystring_ascii_new};
 
 #[cfg(feature = "num-bigint")]
 #[test]

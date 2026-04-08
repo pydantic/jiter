@@ -7,9 +7,9 @@ use pyo3::{IntoPyObject, IntoPyObjectRef};
 
 use std::ops::Range;
 
-use lexical_parse_float::{format as lexical_format, FromLexicalWithOptions, Options as ParseFloatOptions};
+use lexical_parse_float::{FromLexicalWithOptions, Options as ParseFloatOptions, format as lexical_format};
 
-use crate::errors::{json_err, json_error, JsonError, JsonResult};
+use crate::errors::{JsonError, JsonResult, json_err, json_error};
 
 pub trait AbstractNumberDecoder {
     type Output;
@@ -483,7 +483,7 @@ impl AbstractNumberDecoder for NumberRange {
                             let end = consume_exponential(data, index)?;
                             Ok((Self::float(start..end), end))
                         }
-                    }
+                    };
                 }
             }
         }

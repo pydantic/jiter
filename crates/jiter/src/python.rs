@@ -8,10 +8,10 @@ use pyo3::types::{PyBool, PyDict, PyList, PyString};
 
 use smallvec::SmallVec;
 
-use crate::errors::{json_err, json_error, JsonError, JsonResult, DEFAULT_RECURSION_LIMIT};
+use crate::errors::{DEFAULT_RECURSION_LIMIT, JsonError, JsonResult, json_err, json_error};
 use crate::number_decoder::{AbstractNumberDecoder, NumberAny, NumberRange};
 use crate::parse::{Parser, Peek};
-use crate::py_lossless_float::{get_decimal_type, FloatMode};
+use crate::py_lossless_float::{FloatMode, get_decimal_type};
 use crate::py_string_cache::{StringCacheAll, StringCacheKeys, StringCacheMode, StringMaybeCache, StringNoCache};
 use crate::string_decoder::{StringDecoder, Tape};
 use crate::{JsonErrorType, LosslessFloat, PartialMode};

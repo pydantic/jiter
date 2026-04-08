@@ -1,7 +1,7 @@
 use std::fmt;
 use std::ops::Range;
 
-use crate::errors::{json_err, JsonResult, LinePosition};
+use crate::errors::{JsonResult, LinePosition, json_err};
 use crate::number_decoder::AbstractNumberDecoder;
 use crate::string_decoder::{AbstractStringDecoder, Tape};
 

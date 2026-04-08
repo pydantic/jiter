@@ -36,7 +36,7 @@ use std::arch::aarch64::{
 };
 use crate::JsonResult;
 
-use crate::number_decoder::{decode_int_chunk_fallback, IntChunk};
+use crate::number_decoder::{IntChunk, decode_int_chunk_fallback};
 use crate::string_decoder::StringChunk;
 
 type SimdVecu8_16 = uint8x16_t;
@@ -65,8 +65,9 @@ const ZERO_DIGIT_16: SimdVecu8_16 = simd_const!([b'0'; 16]);
 const NINE_DIGIT_16: SimdVecu8_16 = simd_const!([b'9'; 16]);
 
 const ZERO_VAL_U8_16: SimdVecu8_16 = simd_const!([0u8; 16]);
-const ALT_MUL_U8_16: SimdVecu8_16 =
-    simd_const!([10u8, 1u8, 10u8, 1u8, 10u8, 1u8, 10u8, 1u8, 10u8, 1u8, 10u8, 1u8, 10u8, 1u8, 10u8, 1u8]);
+const ALT_MUL_U8_16: SimdVecu8_16 = simd_const!([
+    10u8, 1u8, 10u8, 1u8, 10u8, 1u8, 10u8, 1u8, 10u8, 1u8, 10u8, 1u8, 10u8, 1u8, 10u8, 1u8
+]);
 const ALT_MUL_U16_8: SimdVecu16_8 = simd_const!([100u16, 1u16, 100u16, 1u16, 100u16, 1u16, 100u16, 1u16]);
 const ALT_MUL_U32_4: SimdVecu32_4 = simd_const!([10000u32, 1u32, 10000u32, 1u32]);
 

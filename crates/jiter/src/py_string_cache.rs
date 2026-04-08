@@ -40,11 +40,7 @@ impl<'py> FromPyObject<'_, 'py> for StringCacheMode {
 
 impl From<bool> for StringCacheMode {
     fn from(mode: bool) -> Self {
-        if mode {
-            Self::All
-        } else {
-            Self::None
-        }
+        if mode { Self::All } else { Self::None }
     }
 }
 
