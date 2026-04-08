@@ -139,9 +139,8 @@ unsafe fn cached_py_string_maybe_ascii<'py>(py: Python<'py>, s: &str, ascii_only
     }
 }
 
-// capacity should be a power of 2 so the compiler can convert `%` to a right shift below
+// Capacity should be a power of 2 so the compiler can convert `%` to a right shift below
 // Using a smaller number here (e.g. 1024) seems to be faster in many cases than a larger number (like 65536)
-// and also avoids stack overflow risks
 const CAPACITY: usize = 16_384;
 type Entry = Option<(u64, Py<PyString>)>;
 
@@ -158,8 +157,16 @@ const ARRAY_REPEAT_VALUE: Entry = None;
 impl Default for PyStringCache {
     fn default() -> Self {
         Self {
-            #[allow(clippy::large_stack_arrays)]
-            entries: Box::new([ARRAY_REPEAT_VALUE; CAPACITY]),
+            // Make sure we don't allocate a large array on the stack (e.g. using `Box::new([ARRAY_REPEAT_VALUE; CAPACITY])`)
+            // to avoid potential stack overflows.
+            // Note: we might want to use `Box::<[Entry; CAPACITY]>::new_zeroed()` if we ever bump the MSRV above 1.92,
+            // given that `Entry` can be used as a niche optimization.
+            entries: std::iter::repeat_with(|| ARRAY_REPEAT_VALUE)
+                .take(CAPACITY)
+                .collect::<Vec<_>>()
+                .into_boxed_slice()
+                .try_into()
+                .unwrap(),
             hash_builder: RandomState::default(),
         }
     }
