@@ -6,14 +6,14 @@ resolver = "2"
 [workspace.package]
 authors = ["Samuel Colvin <samuel@pydantic.dev>"]
 version = "0.13.0"
-edition = "2021"
+edition = "2024"
 license = "MIT"
 keywords = ["JSON", "parsing", "deserialization", "iter"]
 categories = ["parser-implementations", "parsing"]
 homepage = "https://github.com/pydantic/jiter/"
 repository = "https://github.com/pydantic/jiter/"
 # MSRV should match pydantic-core
-rust-version = "1.83"
+rust-version = "1.88"
 
 [profile.bench]
 debug = true
