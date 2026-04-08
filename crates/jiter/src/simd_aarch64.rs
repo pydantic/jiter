@@ -113,7 +113,7 @@ fn get_digit_mask(byte_vec: SimdVecu8_16) -> SimdVecu8_16 {
     }
 }
 
-unsafe fn first_half_calc(byte_vec: SimdVecu8_16, last_digit: u32) -> u64 {
+unsafe fn first_half_calc(byte_vec: SimdVecu8_16, last_digit: u32) -> u64 { unsafe {
     let small_byte_vec = simd_get_low(byte_vec);
     // subtract ascii '0' from every byte to get the digit values
     let digits: SimdVecu8_8 = simd_sub_8(small_byte_vec, ZERO_DIGIT_U8_8);
@@ -146,9 +146,9 @@ unsafe fn first_half_calc(byte_vec: SimdVecu8_16, last_digit: u32) -> u64 {
     let x: SimdVecu64_1 = simd_add_u32_2(x);
     // transmute the 64-bit lane into a u64
     transmute(x)
-}
+}}
 
-unsafe fn full_calc(byte_vec: SimdVecu8_16, last_digit: u32) -> u64 {
+unsafe fn full_calc(byte_vec: SimdVecu8_16, last_digit: u32) -> u64 { unsafe {
     // subtract ascii '0' from every byte to get the digit values
     let digits: SimdVecu8_16 = simd_sub_16(byte_vec, ZERO_DIGIT_16);
     let digits = match last_digit {
@@ -179,7 +179,7 @@ unsafe fn full_calc(byte_vec: SimdVecu8_16, last_digit: u32) -> u64 {
     let t: [u64; 2] = transmute(x);
     // since the data started out as digits, it's safe to assume the result fits in a u64
     t[0].wrapping_mul(100_000_000).wrapping_add(t[1])
-}
+}}
 
 fn next_is_float(data: &[u8], index: usize) -> bool {
     let next = unsafe { data.get_unchecked(index) };

@@ -126,14 +126,14 @@ pub unsafe fn cached_py_string_ascii<'py>(py: Python<'py>, s: &str) -> Bound<'py
 /// # Safety
 ///
 /// Caller must match the ascii_only flag to the string passed in.
-unsafe fn cached_py_string_maybe_ascii<'py>(py: Python<'py>, s: &str, ascii_only: bool) -> Bound<'py, PyString> {
+unsafe fn cached_py_string_maybe_ascii<'py>(py: Python<'py>, s: &str, ascii_only: bool) -> Bound<'py, PyString> { unsafe {
     // from tests, 0 and 1 character strings are faster not cached
     if (2..64).contains(&s.len()) {
         get_string_cache().get_or_insert(py, s, ascii_only)
     } else {
         pystring_fast_new_maybe_ascii(py, s, ascii_only)
     }
-}
+}}
 
 // Capacity should be a power of 2 so the compiler can convert `%` to a right shift below
 // Using a smaller number here (e.g. 1024) seems to be faster in many cases than a larger number (like 65536)
@@ -249,7 +249,7 @@ unsafe fn pystring_fast_new_maybe_ascii<'py>(py: Python<'py>, s: &str, ascii_onl
 /// # Safety
 ///
 /// `s` must be ASCII only
-pub unsafe fn pystring_ascii_new<'py>(py: Python<'py>, s: &str) -> Bound<'py, PyString> {
+pub unsafe fn pystring_ascii_new<'py>(py: Python<'py>, s: &str) -> Bound<'py, PyString> { unsafe {
     #[cfg(not(any(PyPy, GraalPy, Py_LIMITED_API)))]
     {
         let ptr = pyo3::ffi::PyUnicode_New(s.len() as isize, 127);
@@ -265,4 +265,4 @@ pub unsafe fn pystring_ascii_new<'py>(py: Python<'py>, s: &str) -> Bound<'py, Py
     {
         PyString::new(py, s)
     }
-}
+}}
