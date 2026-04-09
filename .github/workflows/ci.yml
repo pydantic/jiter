@@ -482,15 +482,14 @@ jobs:
         with:
           components: rust-src
           targets: wasm32-unknown-emscripten
-          # might be able to unpin when pydodide uses emscripten 4, see below
-          toolchain: nightly-2025-02-17
+          toolchain: nightly
 
       - uses: mymindstorm/setup-emsdk@6ab9eb1bda2574c4ddb79809fc9247783eaf9021 # v14
         with:
           # NOTE!: as per https://github.com/pydantic/pydantic-core/pull/149 this version needs to match the version
           # in node_modules/pyodide/repodata.json, to get the version, run:
           # `cat node_modules/pyodide/repodata.json | python -m json.tool | rg platform`
-          version: '3.1.58'
+          version: '4.0.9'
           actions-cache-folder: emsdk-cache
 
       - name: install deps
@@ -502,7 +501,7 @@ jobs:
 
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
-          node-version: '20'
+          node-version: '18'
           package-manager-cache: false
 
       - run: npm install
