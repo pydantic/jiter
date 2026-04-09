@@ -19,7 +19,7 @@ pub fn get_jiter_version() -> &'static str {
 mod jiter_python {
     use pyo3::prelude::*;
 
-    use jiter::{map_json_error, FloatMode, LosslessFloat, PartialMode, PythonParse, StringCacheMode};
+    use jiter::{FloatMode, LosslessFloat, PartialMode, PythonParse, StringCacheMode, map_json_error};
 
     use super::get_jiter_version;
 

@@ -173,10 +173,10 @@ pub use value::{JsonArray, JsonObject, JsonValue};
 pub use py_lossless_float::{FloatMode, LosslessFloat};
 #[cfg(feature = "python")]
 pub use py_string_cache::{
-    cache_clear, cache_usage, cached_py_string, cached_py_string_ascii, pystring_ascii_new, StringCacheMode,
+    StringCacheMode, cache_clear, cache_usage, cached_py_string, cached_py_string_ascii, pystring_ascii_new,
 };
 #[cfg(feature = "python")]
-pub use python::{map_json_error, PythonParse};
+pub use python::{PythonParse, map_json_error};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub enum PartialMode {
@@ -188,11 +188,7 @@ pub enum PartialMode {
 
 impl From<bool> for PartialMode {
     fn from(mode: bool) -> Self {
-        if mode {
-            Self::On
-        } else {
-            Self::Off
-        }
+        if mode { Self::On } else { Self::Off }
     }
 }
 

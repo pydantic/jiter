@@ -1,4 +1,4 @@
-use codspeed_criterion_compat::{criterion_group, criterion_main, Criterion};
+use codspeed_criterion_compat::{Criterion, criterion_group, criterion_main};
 
 use std::fs::File;
 use std::io::Read;
@@ -6,7 +6,7 @@ use std::path::Path;
 
 use pyo3::Python;
 
-use jiter::{cache_clear, PythonParse, StringCacheMode};
+use jiter::{PythonParse, StringCacheMode, cache_clear};
 
 fn python_parse_numeric(c: &mut Criterion) {
     Python::attach(|py| {

@@ -8,10 +8,10 @@ use pyo3::types::{PyBool, PyDict, PyList, PyString};
 
 use smallvec::SmallVec;
 
-use crate::errors::{json_err, json_error, JsonError, JsonResult, DEFAULT_RECURSION_LIMIT};
+use crate::errors::{DEFAULT_RECURSION_LIMIT, JsonError, JsonResult, json_err, json_error};
 use crate::number_decoder::{AbstractNumberDecoder, NumberAny, NumberRange};
 use crate::parse::{Parser, Peek};
-use crate::py_lossless_float::{get_decimal_type, FloatMode};
+use crate::py_lossless_float::{FloatMode, get_decimal_type};
 use crate::py_string_cache::{StringCacheAll, StringCacheKeys, StringCacheMode, StringMaybeCache, StringNoCache};
 use crate::string_decoder::{StringDecoder, Tape};
 use crate::{JsonErrorType, LosslessFloat, PartialMode};
@@ -148,10 +148,10 @@ impl<StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: MaybeP
                 };
 
                 let mut vec: SmallVec<[Bound<'_, PyAny>; 8]> = SmallVec::with_capacity(8);
-                if let Err(e) = self.parse_array(py, peek_first, &mut vec) {
-                    if !self.allow_partial_err(&e) {
-                        return Err(e);
-                    }
+                if let Err(e) = self.parse_array(py, peek_first, &mut vec)
+                    && !self.allow_partial_err(&e)
+                {
+                    return Err(e);
                 }
 
                 Ok(PyList::new(py, vec)
@@ -160,10 +160,10 @@ impl<StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: MaybeP
             }
             Peek::Object => {
                 let dict = PyDict::new(py);
-                if let Err(e) = self.parse_object(py, &dict) {
-                    if !self.allow_partial_err(&e) {
-                        return Err(e);
-                    }
+                if let Err(e) = self.parse_object(py, &dict)
+                    && !self.allow_partial_err(&e)
+                {
+                    return Err(e);
                 }
                 Ok(dict.into_any())
             }

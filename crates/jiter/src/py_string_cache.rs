@@ -40,11 +40,7 @@ impl<'py> FromPyObject<'_, 'py> for StringCacheMode {
 
 impl From<bool> for StringCacheMode {
     fn from(mode: bool) -> Self {
-        if mode {
-            Self::All
-        } else {
-            Self::None
-        }
+        if mode { Self::All } else { Self::None }
     }
 }
 
@@ -131,11 +127,13 @@ pub unsafe fn cached_py_string_ascii<'py>(py: Python<'py>, s: &str) -> Bound<'py
 ///
 /// Caller must match the ascii_only flag to the string passed in.
 unsafe fn cached_py_string_maybe_ascii<'py>(py: Python<'py>, s: &str, ascii_only: bool) -> Bound<'py, PyString> {
-    // from tests, 0 and 1 character strings are faster not cached
-    if (2..64).contains(&s.len()) {
-        get_string_cache().get_or_insert(py, s, ascii_only)
-    } else {
-        pystring_fast_new_maybe_ascii(py, s, ascii_only)
+    unsafe {
+        // from tests, 0 and 1 character strings are faster not cached
+        if (2..64).contains(&s.len()) {
+            get_string_cache().get_or_insert(py, s, ascii_only)
+        } else {
+            pystring_fast_new_maybe_ascii(py, s, ascii_only)
+        }
     }
 }
 
@@ -254,19 +252,21 @@ unsafe fn pystring_fast_new_maybe_ascii<'py>(py: Python<'py>, s: &str, ascii_onl
 ///
 /// `s` must be ASCII only
 pub unsafe fn pystring_ascii_new<'py>(py: Python<'py>, s: &str) -> Bound<'py, PyString> {
-    #[cfg(not(any(PyPy, GraalPy, Py_LIMITED_API)))]
-    {
-        let ptr = pyo3::ffi::PyUnicode_New(s.len() as isize, 127);
-        // see https://github.com/pydantic/jiter/pull/72#discussion_r1545485907
-        debug_assert_eq!(pyo3::ffi::PyUnicode_KIND(ptr), pyo3::ffi::PyUnicode_1BYTE_KIND);
-        let data_ptr = pyo3::ffi::PyUnicode_DATA(ptr).cast();
-        core::ptr::copy_nonoverlapping(s.as_ptr(), data_ptr, s.len());
-        core::ptr::write(data_ptr.add(s.len()), 0);
-        Bound::from_owned_ptr(py, ptr).cast_into_unchecked()
-    }
+    unsafe {
+        #[cfg(not(any(PyPy, GraalPy, Py_LIMITED_API)))]
+        {
+            let ptr = pyo3::ffi::PyUnicode_New(s.len() as isize, 127);
+            // see https://github.com/pydantic/jiter/pull/72#discussion_r1545485907
+            debug_assert_eq!(pyo3::ffi::PyUnicode_KIND(ptr), pyo3::ffi::PyUnicode_1BYTE_KIND);
+            let data_ptr = pyo3::ffi::PyUnicode_DATA(ptr).cast();
+            core::ptr::copy_nonoverlapping(s.as_ptr(), data_ptr, s.len());
+            core::ptr::write(data_ptr.add(s.len()), 0);
+            Bound::from_owned_ptr(py, ptr).cast_into_unchecked()
+        }
 
-    #[cfg(any(PyPy, GraalPy, Py_LIMITED_API))]
-    {
-        PyString::new(py, s)
+        #[cfg(any(PyPy, GraalPy, Py_LIMITED_API))]
+        {
+            PyString::new(py, s)
+        }
     }
 }

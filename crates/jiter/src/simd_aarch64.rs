@@ -36,7 +36,7 @@ use std::arch::aarch64::{
 };
 use crate::JsonResult;
 
-use crate::number_decoder::{decode_int_chunk_fallback, IntChunk};
+use crate::number_decoder::{IntChunk, decode_int_chunk_fallback};
 use crate::string_decoder::StringChunk;
 
 type SimdVecu8_16 = uint8x16_t;
@@ -65,8 +65,9 @@ const ZERO_DIGIT_16: SimdVecu8_16 = simd_const!([b'0'; 16]);
 const NINE_DIGIT_16: SimdVecu8_16 = simd_const!([b'9'; 16]);
 
 const ZERO_VAL_U8_16: SimdVecu8_16 = simd_const!([0u8; 16]);
-const ALT_MUL_U8_16: SimdVecu8_16 =
-    simd_const!([10u8, 1u8, 10u8, 1u8, 10u8, 1u8, 10u8, 1u8, 10u8, 1u8, 10u8, 1u8, 10u8, 1u8, 10u8, 1u8]);
+const ALT_MUL_U8_16: SimdVecu8_16 = simd_const!([
+    10u8, 1u8, 10u8, 1u8, 10u8, 1u8, 10u8, 1u8, 10u8, 1u8, 10u8, 1u8, 10u8, 1u8, 10u8, 1u8
+]);
 const ALT_MUL_U16_8: SimdVecu16_8 = simd_const!([100u16, 1u16, 100u16, 1u16, 100u16, 1u16, 100u16, 1u16]);
 const ALT_MUL_U32_4: SimdVecu32_4 = simd_const!([10000u32, 1u32, 10000u32, 1u32]);
 
@@ -113,71 +114,75 @@ fn get_digit_mask(byte_vec: SimdVecu8_16) -> SimdVecu8_16 {
 }
 
 unsafe fn first_half_calc(byte_vec: SimdVecu8_16, last_digit: u32) -> u64 {
-    let small_byte_vec = simd_get_low(byte_vec);
-    // subtract ascii '0' from every byte to get the digit values
-    let digits: SimdVecu8_8 = simd_sub_8(small_byte_vec, ZERO_DIGIT_U8_8);
-    let digits = match last_digit {
-        0 => return 0,
-        1 => {
-            let t: [u8; 8] = transmute(digits);
-            return t[0] as u64;
-        }
-        2 => combine_vecs_8::<2>(ZERO_VAL_U8_8, digits),
-        3 => combine_vecs_8::<3>(ZERO_VAL_U8_8, digits),
-        4 => combine_vecs_8::<4>(ZERO_VAL_U8_8, digits),
-        5 => combine_vecs_8::<5>(ZERO_VAL_U8_8, digits),
-        6 => combine_vecs_8::<6>(ZERO_VAL_U8_8, digits),
-        7 => combine_vecs_8::<7>(ZERO_VAL_U8_8, digits),
-        8 => digits,
-        _ => unreachable!("last_digit should be less than 8"),
-    };
-    // multiple every other digit by 10
-    let x: SimdVecu8_8 = simd_mul_8(digits, ALT_MUL_U8_8);
-    // add the value together and combine the 8x8-bit lanes into 4x16-bit lanes
-    let x: SimdVecu16_4 = simd_add_8(x);
-    // multiple every other digit by 100
-    let x: SimdVecu16_4 = simd_mul_u16_4(x, ALT_MUL_U16_4);
-    // add the value together and combine the 4x16-bit lanes into 2x32-bit lanes
-    let x: SimdVecu32_2 = simd_add_u16_4(x);
-    // multiple the first value 10000
-    let x: SimdVecu32_2 = simd_mul_u32_2(x, ALT_MUL_U32_2);
-    // add the value together and combine the 2x32-bit lanes into 1x64-bit lane
-    let x: SimdVecu64_1 = simd_add_u32_2(x);
-    // transmute the 64-bit lane into a u64
-    transmute(x)
+    unsafe {
+        let small_byte_vec = simd_get_low(byte_vec);
+        // subtract ascii '0' from every byte to get the digit values
+        let digits: SimdVecu8_8 = simd_sub_8(small_byte_vec, ZERO_DIGIT_U8_8);
+        let digits = match last_digit {
+            0 => return 0,
+            1 => {
+                let t: [u8; 8] = transmute(digits);
+                return t[0] as u64;
+            }
+            2 => combine_vecs_8::<2>(ZERO_VAL_U8_8, digits),
+            3 => combine_vecs_8::<3>(ZERO_VAL_U8_8, digits),
+            4 => combine_vecs_8::<4>(ZERO_VAL_U8_8, digits),
+            5 => combine_vecs_8::<5>(ZERO_VAL_U8_8, digits),
+            6 => combine_vecs_8::<6>(ZERO_VAL_U8_8, digits),
+            7 => combine_vecs_8::<7>(ZERO_VAL_U8_8, digits),
+            8 => digits,
+            _ => unreachable!("last_digit should be less than 8"),
+        };
+        // multiple every other digit by 10
+        let x: SimdVecu8_8 = simd_mul_8(digits, ALT_MUL_U8_8);
+        // add the value together and combine the 8x8-bit lanes into 4x16-bit lanes
+        let x: SimdVecu16_4 = simd_add_8(x);
+        // multiple every other digit by 100
+        let x: SimdVecu16_4 = simd_mul_u16_4(x, ALT_MUL_U16_4);
+        // add the value together and combine the 4x16-bit lanes into 2x32-bit lanes
+        let x: SimdVecu32_2 = simd_add_u16_4(x);
+        // multiple the first value 10000
+        let x: SimdVecu32_2 = simd_mul_u32_2(x, ALT_MUL_U32_2);
+        // add the value together and combine the 2x32-bit lanes into 1x64-bit lane
+        let x: SimdVecu64_1 = simd_add_u32_2(x);
+        // transmute the 64-bit lane into a u64
+        transmute(x)
+    }
 }
 
 unsafe fn full_calc(byte_vec: SimdVecu8_16, last_digit: u32) -> u64 {
-    // subtract ascii '0' from every byte to get the digit values
-    let digits: SimdVecu8_16 = simd_sub_16(byte_vec, ZERO_DIGIT_16);
-    let digits = match last_digit {
-        9 => combine_vecs_16::<9>(ZERO_VAL_U8_16, digits),
-        10 => combine_vecs_16::<10>(ZERO_VAL_U8_16, digits),
-        11 => combine_vecs_16::<11>(ZERO_VAL_U8_16, digits),
-        12 => combine_vecs_16::<12>(ZERO_VAL_U8_16, digits),
-        13 => combine_vecs_16::<13>(ZERO_VAL_U8_16, digits),
-        14 => combine_vecs_16::<14>(ZERO_VAL_U8_16, digits),
-        15 => combine_vecs_16::<15>(ZERO_VAL_U8_16, digits),
-        16 => digits,
-        _ => unreachable!("last_digit should be between 9 and 16"),
-    };
-    // multiple every other digit by 10
-    let x: SimdVecu8_16 = simd_mul_16(digits, ALT_MUL_U8_16);
-    // add the value together and combine the 16x8-bit lanes into 8x16-bit lanes
-    let x: SimdVecu16_8 = simd_add_16(x);
-    // multiple every other digit by 100
-    let x: SimdVecu16_8 = simd_mul_u16_8(x, ALT_MUL_U16_8);
-    // add the value together and combine the 8x16-bit lanes into 4x32-bit lanes
-    let x: SimdVecu32_4 = simd_add_u16_8(x);
-    // multiple every other digit by 10000
-    let x: SimdVecu32_4 = simd_mul_u32_4(x, ALT_MUL_U32_4);
-    // add the value together and combine the 4x32-bit lanes into 2x64-bit lane
-    let x: SimdVecu64_2 = simd_add_u32_4(x);
+    unsafe {
+        // subtract ascii '0' from every byte to get the digit values
+        let digits: SimdVecu8_16 = simd_sub_16(byte_vec, ZERO_DIGIT_16);
+        let digits = match last_digit {
+            9 => combine_vecs_16::<9>(ZERO_VAL_U8_16, digits),
+            10 => combine_vecs_16::<10>(ZERO_VAL_U8_16, digits),
+            11 => combine_vecs_16::<11>(ZERO_VAL_U8_16, digits),
+            12 => combine_vecs_16::<12>(ZERO_VAL_U8_16, digits),
+            13 => combine_vecs_16::<13>(ZERO_VAL_U8_16, digits),
+            14 => combine_vecs_16::<14>(ZERO_VAL_U8_16, digits),
+            15 => combine_vecs_16::<15>(ZERO_VAL_U8_16, digits),
+            16 => digits,
+            _ => unreachable!("last_digit should be between 9 and 16"),
+        };
+        // multiple every other digit by 10
+        let x: SimdVecu8_16 = simd_mul_16(digits, ALT_MUL_U8_16);
+        // add the value together and combine the 16x8-bit lanes into 8x16-bit lanes
+        let x: SimdVecu16_8 = simd_add_16(x);
+        // multiple every other digit by 100
+        let x: SimdVecu16_8 = simd_mul_u16_8(x, ALT_MUL_U16_8);
+        // add the value together and combine the 8x16-bit lanes into 4x32-bit lanes
+        let x: SimdVecu32_4 = simd_add_u16_8(x);
+        // multiple every other digit by 10000
+        let x: SimdVecu32_4 = simd_mul_u32_4(x, ALT_MUL_U32_4);
+        // add the value together and combine the 4x32-bit lanes into 2x64-bit lane
+        let x: SimdVecu64_2 = simd_add_u32_4(x);
 
-    // transmute the 2x64-bit lane into an array;
-    let t: [u64; 2] = transmute(x);
-    // since the data started out as digits, it's safe to assume the result fits in a u64
-    t[0].wrapping_mul(100_000_000).wrapping_add(t[1])
+        // transmute the 2x64-bit lane into an array;
+        let t: [u64; 2] = transmute(x);
+        // since the data started out as digits, it's safe to assume the result fits in a u64
+        t[0].wrapping_mul(100_000_000).wrapping_add(t[1])
+    }
 }
 
 fn next_is_float(data: &[u8], index: usize) -> bool {

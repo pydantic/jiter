@@ -1,7 +1,7 @@
 use std::ops::Range;
 use std::str::{from_utf8, from_utf8_unchecked};
 
-use crate::errors::{json_err, json_error, JsonErrorType, JsonResult};
+use crate::errors::{JsonErrorType, JsonResult, json_err, json_error};
 
 pub type Tape = Vec<u8>;
 
