@@ -149,9 +149,10 @@ impl<StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: MaybeP
 
                 let mut vec: SmallVec<[Bound<'_, PyAny>; 8]> = SmallVec::with_capacity(8);
                 if let Err(e) = self.parse_array(py, peek_first, &mut vec)
-                    && !self.allow_partial_err(&e) {
-                        return Err(e);
-                    }
+                    && !self.allow_partial_err(&e)
+                {
+                    return Err(e);
+                }
 
                 Ok(PyList::new(py, vec)
                     .map_err(|e| py_err_to_json_err(&e, self.parser.index))?
@@ -160,9 +161,10 @@ impl<StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: MaybeP
             Peek::Object => {
                 let dict = PyDict::new(py);
                 if let Err(e) = self.parse_object(py, &dict)
-                    && !self.allow_partial_err(&e) {
-                        return Err(e);
-                    }
+                    && !self.allow_partial_err(&e)
+                {
+                    return Err(e);
+                }
                 Ok(dict.into_any())
             }
             _ => ParseNumber::parse_number(py, &mut self.parser, peek, self.allow_inf_nan),
