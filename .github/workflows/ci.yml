@@ -496,7 +496,7 @@ jobs:
         run: uv sync --group dev --all-packages
 
       - name: build wheels
-        run: uv run maturin build --release --target wasm32-unknown-emscripten --out dist -i 3.12
+        run: uv run maturin build --release --target wasm32-unknown-emscripten --out dist -i 3.13
         working-directory: crates/jiter-python
 
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
