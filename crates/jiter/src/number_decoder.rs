@@ -40,18 +40,37 @@ impl TryFrom<&[u8]> for NumberInt {
     type Error = JsonError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        let first = *value.first().ok_or_else(|| json_error!(InvalidNumber, 0))?;
-        let (int_parse, index) = IntParse::parse(value, 0, first)?;
-        match int_parse {
-            IntParse::Int(int) => {
-                if index == value.len() {
-                    Ok(int)
-                } else {
-                    json_err!(InvalidNumber, index)
-                }
-            }
-            _ => json_err!(InvalidNumber, index),
-        }
+        parse_int_bytes(value)
+    }
+}
+
+/// Parse `data` as a JSON number, erroring if the input is empty or contains trailing bytes.
+pub fn parse_number_bytes(data: &[u8], allow_inf_nan: bool) -> JsonResult<NumberAny> {
+    parse_complete::<NumberAny>(data, allow_inf_nan)
+}
+
+/// Parse `data` as a JSON integer, erroring if the input is not a valid integer, is empty, or contains trailing bytes.
+pub fn parse_int_bytes(data: &[u8]) -> JsonResult<NumberInt> {
+    let first = *data.first().ok_or_else(|| json_error!(InvalidNumber, 0))?;
+    let (int_parse, index) = IntParse::parse(data, 0, first)?;
+    match int_parse {
+        IntParse::Int(int) if index == data.len() => Ok(int),
+        _ => json_err!(InvalidNumber, index),
+    }
+}
+
+/// Parse `data` as a JSON float, erroring if the input is empty or contains trailing bytes.
+pub fn parse_float_bytes(data: &[u8], allow_inf_nan: bool) -> JsonResult<f64> {
+    parse_complete::<NumberFloat>(data, allow_inf_nan)
+}
+
+fn parse_complete<D: AbstractNumberDecoder>(data: &[u8], allow_inf_nan: bool) -> JsonResult<D::Output> {
+    let first = *data.first().ok_or_else(|| json_error!(InvalidNumber, 0))?;
+    let (output, index) = D::decode(data, 0, first, allow_inf_nan)?;
+    if index == data.len() {
+        Ok(output)
+    } else {
+        json_err!(InvalidNumber, index)
     }
 }
 

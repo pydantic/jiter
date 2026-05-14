@@ -178,7 +178,7 @@ impl<'j> Jiter<'j> {
     }
 
     /// Knowing the next value is a number, parse it and return bytes from the original JSON data.
-    fn known_number_bytes(&mut self, peek: Peek) -> JiterResult<&[u8]> {
+    pub fn known_number_bytes(&mut self, peek: Peek) -> JiterResult<&[u8]> {
         match self
             .parser
             .consume_number::<NumberRange>(peek.into_inner(), self.allow_inf_nan)
