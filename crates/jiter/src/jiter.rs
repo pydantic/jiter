@@ -168,6 +168,7 @@ impl<'j> Jiter<'j> {
     pub fn known_float(&mut self, peek: Peek) -> JiterResult<f64> {
         self.parser
             .consume_number::<NumberFloat>(peek.into_inner(), self.allow_inf_nan)
+            .map(|f| f.0)
             .map_err(|e| self.maybe_number_error(e, JsonType::Float, peek))
     }
 

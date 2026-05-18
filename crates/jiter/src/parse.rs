@@ -213,7 +213,7 @@ impl<'j> Parser<'j> {
         &mut self,
         first: u8,
         allow_inf_nan: bool,
-    ) -> JsonResult<D::Output> {
+    ) -> JsonResult<D> {
         let (output, index) = D::decode(self.data, self.index, first, allow_inf_nan)?;
         self.index = index;
         Ok(output)
