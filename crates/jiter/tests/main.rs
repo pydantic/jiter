@@ -1352,13 +1352,25 @@ fn test_number_int_try_from_bytes() {
 
 #[test]
 fn test_number_any_from_bytes() {
-    assert_eq!(NumberAny::from_bytes(b"123", false).unwrap(), NumberAny::Int(NumberInt::Int(123)));
-    assert_eq!(NumberAny::from_bytes(b"-123", false).unwrap(), NumberAny::Int(NumberInt::Int(-123)));
-    assert_eq!(NumberAny::from_bytes(b"0", false).unwrap(), NumberAny::Int(NumberInt::Int(0)));
+    assert_eq!(
+        NumberAny::from_bytes(b"123", false).unwrap(),
+        NumberAny::Int(NumberInt::Int(123))
+    );
+    assert_eq!(
+        NumberAny::from_bytes(b"-123", false).unwrap(),
+        NumberAny::Int(NumberInt::Int(-123))
+    );
+    assert_eq!(
+        NumberAny::from_bytes(b"0", false).unwrap(),
+        NumberAny::Int(NumberInt::Int(0))
+    );
     assert_eq!(NumberAny::from_bytes(b"1.5", false).unwrap(), NumberAny::Float(1.5));
     assert_eq!(NumberAny::from_bytes(b"-1.5", false).unwrap(), NumberAny::Float(-1.5));
     assert_eq!(NumberAny::from_bytes(b"1e3", false).unwrap(), NumberAny::Float(1e3));
-    assert_eq!(NumberAny::from_bytes(b"0.5e-2", false).unwrap(), NumberAny::Float(0.5e-2));
+    assert_eq!(
+        NumberAny::from_bytes(b"0.5e-2", false).unwrap(),
+        NumberAny::Float(0.5e-2)
+    );
 
     #[cfg(feature = "num-bigint")]
     {
@@ -1395,8 +1407,14 @@ fn test_number_any_from_bytes() {
         NumberAny::Float(f) => assert!(f.is_nan()),
         other @ NumberAny::Int(_) => panic!("expected NaN, got {other:?}"),
     }
-    assert_eq!(NumberAny::from_bytes(b"Infinity", true).unwrap(), NumberAny::Float(f64::INFINITY));
-    assert_eq!(NumberAny::from_bytes(b"-Infinity", true).unwrap(), NumberAny::Float(f64::NEG_INFINITY));
+    assert_eq!(
+        NumberAny::from_bytes(b"Infinity", true).unwrap(),
+        NumberAny::Float(f64::INFINITY)
+    );
+    assert_eq!(
+        NumberAny::from_bytes(b"-Infinity", true).unwrap(),
+        NumberAny::Float(f64::NEG_INFINITY)
+    );
 }
 
 #[test]
@@ -1428,8 +1446,14 @@ fn test_number_float_from_bytes() {
     assert_eq!(e.error_type, JsonErrorType::ExpectedSomeValue);
 
     assert!(NumberFloat::from_bytes(b"NaN", true).unwrap().0.is_nan());
-    assert_eq!(NumberFloat::from_bytes(b"Infinity", true).unwrap(), NumberFloat(f64::INFINITY));
-    assert_eq!(NumberFloat::from_bytes(b"-Infinity", true).unwrap(), NumberFloat(f64::NEG_INFINITY));
+    assert_eq!(
+        NumberFloat::from_bytes(b"Infinity", true).unwrap(),
+        NumberFloat(f64::INFINITY)
+    );
+    assert_eq!(
+        NumberFloat::from_bytes(b"-Infinity", true).unwrap(),
+        NumberFloat(f64::NEG_INFINITY)
+    );
 
     // From<NumberFloat> for f64
     let f: f64 = NumberFloat::from_bytes(b"2.5", false).unwrap().into();

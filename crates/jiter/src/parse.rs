@@ -209,11 +209,7 @@ impl<'j> Parser<'j> {
         Ok(output)
     }
 
-    pub fn consume_number<D: AbstractNumberDecoder>(
-        &mut self,
-        first: u8,
-        allow_inf_nan: bool,
-    ) -> JsonResult<D> {
+    pub fn consume_number<D: AbstractNumberDecoder>(&mut self, first: u8, allow_inf_nan: bool) -> JsonResult<D> {
         let (output, index) = D::decode(self.data, self.index, first, allow_inf_nan)?;
         self.index = index;
         Ok(output)
