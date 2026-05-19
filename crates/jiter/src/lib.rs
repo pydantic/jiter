@@ -165,7 +165,7 @@ mod value;
 
 pub use errors::{JiterError, JiterErrorType, JsonError, JsonErrorType, JsonResult, JsonType, LinePosition};
 pub use jiter::{Jiter, JiterResult};
-pub use number_decoder::{NumberAny, NumberInt};
+pub use number_decoder::{NumberAny, NumberFloat, NumberInt};
 pub use parse::Peek;
 pub use value::{JsonArray, JsonObject, JsonValue};
 

@@ -11,7 +11,7 @@ use num_bigint::BigInt;
 
 use jiter::{
     Jiter, JiterErrorType, JiterResult, JsonErrorType, JsonObject, JsonType, JsonValue, LinePosition, NumberAny,
-    NumberInt, PartialMode, Peek,
+    NumberFloat, NumberInt, PartialMode, Peek,
 };
 
 fn json_vec(jiter: &mut Jiter, peek: Option<Peek>) -> JiterResult<Vec<String>> {
@@ -1348,6 +1348,116 @@ fn test_number_int_try_from_bytes() {
         let e = NumberInt::try_from(too_long.as_bytes()).unwrap_err();
         assert_eq!(e.to_string(), "number out of range at index 4301");
     }
+}
+
+#[test]
+fn test_number_any_from_bytes() {
+    assert_eq!(
+        NumberAny::from_bytes(b"123", false).unwrap(),
+        NumberAny::Int(NumberInt::Int(123))
+    );
+    assert_eq!(
+        NumberAny::from_bytes(b"-123", false).unwrap(),
+        NumberAny::Int(NumberInt::Int(-123))
+    );
+    assert_eq!(
+        NumberAny::from_bytes(b"0", false).unwrap(),
+        NumberAny::Int(NumberInt::Int(0))
+    );
+    assert_eq!(NumberAny::from_bytes(b"1.5", false).unwrap(), NumberAny::Float(1.5));
+    assert_eq!(NumberAny::from_bytes(b"-1.5", false).unwrap(), NumberAny::Float(-1.5));
+    assert_eq!(NumberAny::from_bytes(b"1e3", false).unwrap(), NumberAny::Float(1e3));
+    assert_eq!(
+        NumberAny::from_bytes(b"0.5e-2", false).unwrap(),
+        NumberAny::Float(0.5e-2)
+    );
+
+    #[cfg(feature = "num-bigint")]
+    {
+        let twenty_nines = "9".repeat(29);
+        let n = NumberAny::from_bytes(twenty_nines.as_bytes(), false).unwrap();
+        match n {
+            NumberAny::Int(NumberInt::BigInt(v)) => assert_eq!(v.to_string(), twenty_nines),
+            _ => panic!("expected big int"),
+        }
+    }
+
+    let e = NumberAny::from_bytes(b"", false).unwrap_err();
+    assert_eq!(e.to_string(), "invalid number at index 0");
+
+    let e = NumberAny::from_bytes(b"x23", false).unwrap_err();
+    assert_eq!(e.to_string(), "invalid number at index 0");
+
+    let e = NumberAny::from_bytes(b"123 ", false).unwrap_err();
+    assert_eq!(e.to_string(), "invalid number at index 3");
+
+    let e = NumberAny::from_bytes(b"1.5x", false).unwrap_err();
+    assert_eq!(e.to_string(), "invalid number at index 3");
+
+    let e = NumberAny::from_bytes(b"0123", false).unwrap_err();
+    assert_eq!(e.to_string(), "invalid number at index 1");
+
+    // allow_inf_nan toggles
+    let e = NumberAny::from_bytes(b"NaN", false).unwrap_err();
+    assert_eq!(e.error_type, JsonErrorType::ExpectedSomeValue);
+    let e = NumberAny::from_bytes(b"Infinity", false).unwrap_err();
+    assert_eq!(e.error_type, JsonErrorType::ExpectedSomeValue);
+
+    match NumberAny::from_bytes(b"NaN", true).unwrap() {
+        NumberAny::Float(f) => assert!(f.is_nan()),
+        other @ NumberAny::Int(_) => panic!("expected NaN, got {other:?}"),
+    }
+    assert_eq!(
+        NumberAny::from_bytes(b"Infinity", true).unwrap(),
+        NumberAny::Float(f64::INFINITY)
+    );
+    assert_eq!(
+        NumberAny::from_bytes(b"-Infinity", true).unwrap(),
+        NumberAny::Float(f64::NEG_INFINITY)
+    );
+}
+
+#[test]
+fn test_number_float_from_bytes() {
+    assert_eq!(NumberFloat::from_bytes(b"1.5", false).unwrap(), NumberFloat(1.5));
+    assert_eq!(NumberFloat::from_bytes(b"-1.5", false).unwrap(), NumberFloat(-1.5));
+    assert_eq!(NumberFloat::from_bytes(b"0", false).unwrap(), NumberFloat(0.0));
+    // integer-shaped input parses as float
+    assert_eq!(NumberFloat::from_bytes(b"42", false).unwrap(), NumberFloat(42.0));
+    assert_eq!(NumberFloat::from_bytes(b"1e3", false).unwrap(), NumberFloat(1e3));
+    assert_eq!(NumberFloat::from_bytes(b"1.5e-2", false).unwrap(), NumberFloat(1.5e-2));
+
+    let e = NumberFloat::from_bytes(b"", false).unwrap_err();
+    assert_eq!(e.to_string(), "invalid number at index 0");
+
+    let e = NumberFloat::from_bytes(b"x", false).unwrap_err();
+    assert_eq!(e.to_string(), "invalid number at index 0");
+
+    let e = NumberFloat::from_bytes(b"1.5 ", false).unwrap_err();
+    assert_eq!(e.to_string(), "invalid number at index 3");
+
+    let e = NumberFloat::from_bytes(b"1.5x", false).unwrap_err();
+    assert_eq!(e.to_string(), "invalid number at index 3");
+
+    // allow_inf_nan toggles
+    let e = NumberFloat::from_bytes(b"NaN", false).unwrap_err();
+    assert_eq!(e.error_type, JsonErrorType::ExpectedSomeValue);
+    let e = NumberFloat::from_bytes(b"Infinity", false).unwrap_err();
+    assert_eq!(e.error_type, JsonErrorType::ExpectedSomeValue);
+
+    assert!(NumberFloat::from_bytes(b"NaN", true).unwrap().0.is_nan());
+    assert_eq!(
+        NumberFloat::from_bytes(b"Infinity", true).unwrap(),
+        NumberFloat(f64::INFINITY)
+    );
+    assert_eq!(
+        NumberFloat::from_bytes(b"-Infinity", true).unwrap(),
+        NumberFloat(f64::NEG_INFINITY)
+    );
+
+    // From<NumberFloat> for f64
+    let f: f64 = NumberFloat::from_bytes(b"2.5", false).unwrap().into();
+    assert_eq!(f, 2.5);
 }
 
 #[test]
