@@ -158,6 +158,8 @@ mod py_lossless_float;
 mod py_string_cache;
 #[cfg(feature = "python")]
 mod python;
+#[cfg(feature = "serde")]
+pub mod serde;
 #[cfg(target_arch = "aarch64")]
 mod simd_aarch64;
 mod string_decoder;

@@ -45,7 +45,7 @@ mod string_output {
     where
         'j: 't,
     {
-        data: StringOutputType<'t, 'j>,
+        pub(crate) data: StringOutputType<'t, 'j>,
         // SAFETY: this is used as an invariant to determine if the string is ascii only
         // so this should not be set except when known
         ascii_only: bool,
