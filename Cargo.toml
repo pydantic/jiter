@@ -26,5 +26,5 @@ inherits = "release"
 debug = true
 
 [workspace.dependencies]
-pyo3 = { version = "0.28.2" }
-pyo3-build-config = { version = "0.28.2" }
+pyo3 = { version = "0.29.0" }
+pyo3-build-config = { version = "0.29.0" }
