@@ -38,7 +38,7 @@ jobs:
             runs-on: ubuntu
           - rust-version: stable
             runs-on: ubuntu
-            python-version: '3.13t'
+            python-version: '3.14t'
           - rust-version: nightly
             runs-on: ubuntu
 
@@ -103,7 +103,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.13', '3.13t', 'graalpy3.12']
+        python-version: ['3.14', '3.14t', 'graalpy3.12']
 
     env:
       RUNS_ON: ubuntu-latest
@@ -374,7 +374,7 @@ jobs:
           - os: windows
             target: aarch64
             runs-on: windows-11-arm
-            interpreter: '3.11 3.12 3.13 3.13t 3.14 3.14t'
+            interpreter: '3.11 3.12 3.13 3.14 3.14t'
 
     runs-on: ${{ matrix.runs-on || format('{0}-latest', (matrix.os == 'linux' && 'ubuntu') || matrix.os)  }}
     steps:
@@ -420,7 +420,7 @@ jobs:
       fail-fast: false
       matrix:
         platform: [{os: linux, runs-on: ubuntu-latest}, {os: linux_aarch64, runs-on: ubuntu-24.04-arm}, {os: windows, runs-on: windows-latest}, {os: macos, runs-on: macos-latest}]
-        interpreter: ['3.9', '3.10', '3.11', '3.12', '3.13', '3.13t', '3.14', '3.14t']
+        interpreter: ['3.9', '3.10', '3.11', '3.12', '3.13', '3.14', '3.14t']
         exclude:
           # macos arm only supported from 3.10 and up
           - platform:
