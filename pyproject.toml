@@ -17,6 +17,9 @@ bench = [
 linting = [
     "ruff",
 ]
+pyodide-build = [
+    "pyodide-build",
+]
 
 [tool.uv]
 package = false
