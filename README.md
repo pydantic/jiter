@@ -146,3 +146,11 @@ test x100_jiter_value                  ... bench:          20 ns/iter (+/- 1)
 test x100_serde_iter                   ... bench:          72 ns/iter (+/- 3)
 test x100_serde_value                  ... bench:          83 ns/iter (+/- 3)
 ```
+
+## Part of the Pydantic Stack
+
+The Pydantic Stack is everything you need to ship production-grade AI agents:
+
+- [Pydantic AI](https://pydantic.dev/pydantic-ai?utm_source=github&utm_medium=readme&utm_campaign=jiter) - Type-safe agent framework
+- [Pydantic Logfire](https://pydantic.dev/logfire?utm_source=github&utm_medium=readme&utm_campaign=jiter) - AI-first, full-stack observability
+- [Logfire AI Gateway](https://pydantic.dev/ai-gateway?utm_source=github&utm_medium=readme&utm_campaign=jiter) - Unified LLM proxy
