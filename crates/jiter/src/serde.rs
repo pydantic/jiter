@@ -66,8 +66,10 @@ impl Display for EnumError {
 pub enum Error {
     /// A JSON syntax error from the parser.
     Syntax(JsonError),
-    /// A `serde` error (type mismatch, missing field, …); `index` is set when the position is known.
-    Data { message: String, index: Option<usize> },
+    /// A `serde` error (type mismatch, missing field, …) whose byte position isn't yet known.
+    Message(String),
+    /// A `serde` error (type mismatch, missing field, …) at byte `index`.
+    Data { message: String, index: usize },
     /// A malformed enum encoding.
     Enum { kind: EnumError, index: usize },
 }
@@ -77,8 +79,8 @@ impl Error {
     pub fn index(&self) -> Option<usize> {
         match self {
             Self::Syntax(err) => Some(err.index),
-            Self::Data { index, .. } => *index,
-            Self::Enum { index, .. } => Some(*index),
+            Self::Data { index, .. } | Self::Enum { index, .. } => Some(*index),
+            Self::Message(_) => None,
         }
     }
 
@@ -91,12 +93,20 @@ impl Error {
     pub fn description(&self, data: &[u8]) -> String {
         match self {
             Self::Syntax(err) => err.description(data),
-            Self::Data {
-                message,
-                index: Some(index),
-            } => format!("{message} at {}", LinePosition::find(data, *index)),
-            Self::Data { message, index: None } => message.to_string(),
+            Self::Data { message, index } => format!("{message} at {}", LinePosition::find(data, *index)),
             Self::Enum { kind, index } => format!("{kind} at {}", LinePosition::find(data, *index)),
+            Self::Message(message) => message.clone(),
+        }
+    }
+
+    /// Position an as-yet-unpositioned [`Message`](Error::Message) at `index`; a no-op otherwise.
+    ///
+    /// Called as the error unwinds past the failing value (where the parser is frozen), and once
+    /// more at the deserialization boundary to catch any error that bypassed the unwinding path.
+    fn with_index(self, index: usize) -> Self {
+        match self {
+            Self::Message(message) => Self::Data { message, index },
+            positioned => positioned,
         }
     }
 }
@@ -105,12 +115,9 @@ impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Syntax(err) => write!(f, "{err}"),
-            Self::Data {
-                message,
-                index: Some(index),
-            } => write!(f, "{message} at index {index}"),
-            Self::Data { message, index: None } => f.write_str(message),
+            Self::Data { message, index } => write!(f, "{message} at index {index}"),
             Self::Enum { kind, index } => write!(f, "{kind} at index {index}"),
+            Self::Message(message) => f.write_str(message),
         }
     }
 }
@@ -119,7 +126,7 @@ impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Syntax(err) => Some(err),
-            Self::Data { .. } | Self::Enum { .. } => None,
+            Self::Data { .. } | Self::Enum { .. } | Self::Message(_) => None,
         }
     }
 }
@@ -132,21 +139,9 @@ impl From<JsonError> for Error {
 
 impl de::Error for Error {
     fn custom<T: Display>(msg: T) -> Self {
-        // no position available here; `stamp_index` fills it in as the error unwinds
-        Self::Data {
-            message: msg.to_string(),
-            index: None,
-        }
+        // a visitor has only a message; `with_index` supplies the position as the error unwinds
+        Self::Message(msg.to_string())
     }
-}
-
-/// Fill in the position of an as-yet-unpositioned [`Error::Data`] as it unwinds through
-/// `deserialize_any`, where the parser is frozen at the failing value.
-fn stamp_index(mut err: Error, index: usize) -> Error {
-    if let Error::Data { index: slot @ None, .. } = &mut err {
-        *slot = Some(index);
-    }
-    err
 }
 
 /// Deserialize an instance of `T` from a slice of JSON bytes.
@@ -155,7 +150,9 @@ where
     T: serde::Deserialize<'a>,
 {
     let mut de = JiterDeserializer::new(data);
-    let value = T::deserialize(&mut de)?;
+    let result = T::deserialize(&mut de);
+    // position any error that reached the boundary unpositioned, at where the parser stopped
+    let value = result.map_err(|e| e.with_index(de.parser.index))?;
     de.finish()?;
     Ok(value)
 }
@@ -300,7 +297,7 @@ impl<'de> de::Deserializer<'de> for &mut JiterDeserializer<'de> {
                 NumberAny::Float(f) => visitor.visit_borrowed_str(non_finite_str(f)),
             },
         }
-        .map_err(|e| stamp_index(e, start))
+        .map_err(|e| e.with_index(start))
     }
 
     fn deserialize_option<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {

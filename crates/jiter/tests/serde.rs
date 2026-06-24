@@ -212,6 +212,16 @@ fn type_error_carries_real_position() {
 }
 
 #[test]
+fn top_level_unknown_variant_is_positioned() {
+    // an unknown variant on a top-level enum is reported during variant identification and never
+    // unwinds through `deserialize_any`, so the error must be positioned at the boundary rather than
+    // reaching the caller as a bare, unpositioned `Message`
+    let err = from_str::<Shape>(r#"{"Nope": 1}"#).unwrap_err();
+    assert!(matches!(err, Error::Data { .. }), "got {err:?}");
+    assert!(err.index().is_some(), "unknown-variant error should carry a position");
+}
+
+#[test]
 fn error_resolves_to_line_and_column() {
     #[derive(Deserialize, Debug)]
     #[allow(dead_code)]
@@ -420,4 +430,95 @@ fn matches_serde_json() {
     let from_jiter: Doc = from_str(data).unwrap();
     let from_serde: Doc = serde_json::from_str(data).unwrap();
     assert_eq!(from_jiter, from_serde);
+}
+
+// --- differential property tests against serde_json ---------------------------------------------
+//
+// We generate an arbitrary `serde_json::Value`, serialize it, then parse it back with both
+// `jiter::serde` and `serde_json`, asserting the two agree. Generation is constrained to the part
+// of the search space both parsers handle identically, sidestepping jiter's documented divergences:
+//   * integers are bounded to `i64`, so we never hit the `i128`/`u128`/`f64` widening that differs
+//     from serde_json's arbitrary-precision representation (covered by `big_integers`);
+//   * floats are always finite, so we never produce `NaN`/`Infinity` (covered by the `non_finite_*`
+//     and `nan_and_infinity_*` tests).
+
+use proptest::prelude::*;
+use serde_json::Value;
+
+/// Strategy for a finite `f64` (excludes `NaN`/`±Infinity`, which `Number::from_f64` rejects).
+fn finite_f64() -> impl Strategy<Value = f64> {
+    prop::num::f64::NORMAL | prop::num::f64::SUBNORMAL | prop::num::f64::ZERO
+}
+
+/// Strategy for an integer both parsers decode identically.
+///
+/// With `num-bigint` the full `i64` range works. Without it, jiter's decoder rejects integers of 19+
+/// digits even when they fit in `i64` (it accumulates in 18-digit chunks, then needs the bigint
+/// path), so we keep generation within ±10^18 to stay inside the shared search space.
+#[cfg(feature = "num-bigint")]
+fn json_int() -> impl Strategy<Value = i64> {
+    any::<i64>()
+}
+#[cfg(not(feature = "num-bigint"))]
+fn json_int() -> impl Strategy<Value = i64> {
+    -999_999_999_999_999_999_i64..=999_999_999_999_999_999_i64
+}
+
+/// Strategy for arbitrary JSON values both parsers agree on (see module note above).
+fn json_value() -> impl Strategy<Value = Value> {
+    let leaf = prop_oneof![
+        Just(Value::Null),
+        any::<bool>().prop_map(Value::Bool),
+        json_int().prop_map(|i| Value::Number(i.into())),
+        finite_f64().prop_map(|f| Value::Number(serde_json::Number::from_f64(f).unwrap())),
+        any::<String>().prop_map(Value::String),
+    ];
+    leaf.prop_recursive(5, 64, 10, |inner| {
+        prop_oneof![
+            prop::collection::vec(inner.clone(), 0..10).prop_map(Value::Array),
+            prop::collection::hash_map(any::<String>(), inner, 0..10)
+                .prop_map(|m| Value::Object(m.into_iter().collect())),
+        ]
+    })
+}
+
+/// Compare two numbers by value rather than representation: with serde_json's `arbitrary_precision`
+/// a `Number` stores its source text, so `9.5` parsed by serde_json and the same `f64` round-tripped
+/// by jiter would compare unequal under `==` despite being the same number.
+fn number_eq(a: &serde_json::Number, b: &serde_json::Number) -> bool {
+    if let (Some(x), Some(y)) = (a.as_i64(), b.as_i64()) {
+        return x == y;
+    }
+    if let (Some(x), Some(y)) = (a.as_u64(), b.as_u64()) {
+        return x == y;
+    }
+    matches!((a.as_f64(), b.as_f64()), (Some(x), Some(y)) if x == y)
+}
+
+/// Structural equality with by-value number comparison (see [`number_eq`]).
+fn json_eq(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Null, Value::Null) => true,
+        (Value::Bool(x), Value::Bool(y)) => x == y,
+        (Value::String(x), Value::String(y)) => x == y,
+        (Value::Number(x), Value::Number(y)) => number_eq(x, y),
+        (Value::Array(x), Value::Array(y)) => x.len() == y.len() && x.iter().zip(y).all(|(a, b)| json_eq(a, b)),
+        (Value::Object(x), Value::Object(y)) => {
+            x.len() == y.len() && x.iter().all(|(k, v)| y.get(k).is_some_and(|w| json_eq(v, w)))
+        }
+        _ => false,
+    }
+}
+
+proptest! {
+    #[test]
+    fn proptest_matches_serde_json(value in json_value()) {
+        let json = serde_json::to_string(&value).unwrap();
+        let jiter: Value = from_str(&json).unwrap();
+        let serde: Value = serde_json::from_str(&json).unwrap();
+        prop_assert!(
+            json_eq(&jiter, &serde),
+            "mismatch for {json}\n  jiter: {jiter:?}\n  serde: {serde:?}"
+        );
+    }
 }
