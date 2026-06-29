@@ -20,11 +20,13 @@ smallvec = "1.11.0"
 pyo3 = { workspace = true, optional = true }
 lexical-parse-float = { version = "1.0.5", features = ["format"] }
 bitvec = "1.0.1"
+serde = { version = "1.0.147", optional = true }
 
 [features]
 default = ["num-bigint"]
 python = ["dep:pyo3", "dep:pyo3-build-config"]
 num-bigint = ["dep:num-bigint", "pyo3?/num-bigint"]
+serde = ["dep:serde"]
 
 [dev-dependencies]
 paste = "1.0.7"
@@ -33,9 +35,10 @@ serde_json = { version = "1.0.87", features = [
     "arbitrary_precision",
     "float_roundtrip",
 ] }
-serde = "1.0.147"
+serde = { version = "1.0.147", features = ["derive"] }
 pyo3 = { workspace = true, features = ["auto-initialize"] }
 codspeed-criterion-compat = "2.7.2"
+proptest = "1.4.0"
 
 [build-dependencies]
 pyo3-build-config = { workspace = true, optional = true }
@@ -43,6 +46,10 @@ pyo3-build-config = { workspace = true, optional = true }
 [[test]]
 name = "python"
 required-features = ["python"]
+
+[[test]]
+name = "serde"
+required-features = ["serde"]
 
 [[bench]]
 name = "main"
