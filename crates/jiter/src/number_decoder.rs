@@ -219,7 +219,6 @@ pub(crate) enum IntParse {
 
 impl IntParse {
     pub(crate) fn parse(data: &[u8], mut index: usize, first: u8) -> JsonResult<(Self, usize)> {
-        let digit_start = index + usize::from(first == b'-');
         let positive = match first {
             b'N' => return Ok((Self::FloatNaN, index)),
             b'-' => false,
@@ -229,6 +228,7 @@ impl IntParse {
             // we started with a minus sign, so the first digit is at index + 1
             index += 1;
         }
+        let digit_start = index;
         let first2 = if positive { Some(&first) } else { data.get(index) };
         let first_value = match first2 {
             Some(b'0') => {
