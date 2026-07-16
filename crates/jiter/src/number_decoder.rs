@@ -444,7 +444,6 @@ impl AbstractNumberDecoder for NumberRange {
             // we started with a minus sign, so the first digit is at index + 1
             index += 1;
         }
-        let digit_start = index;
 
         match data.get(index) {
             Some(b'0') => {
@@ -494,8 +493,10 @@ impl AbstractNumberDecoder for NumberRange {
         }
         loop {
             let (chunk, new_index) = IntChunk::parse_big(data, index);
-            if (new_index - digit_start) > MAX_INT_DIGITS {
-                return json_err!(NumberOutOfRange, digit_start + MAX_INT_DIGITS + 1);
+            let consumed_len = new_index - start;
+            if consumed_len > MAX_INT_DIGITS && (positive || consumed_len > MAX_INT_DIGITS + 1) {
+                let error_index = start + MAX_INT_DIGITS + if positive { 1 } else { 2 };
+                return json_err!(NumberOutOfRange, error_index);
             }
             #[allow(clippy::single_match_else)]
             match chunk {
