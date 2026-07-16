@@ -219,6 +219,7 @@ pub(crate) enum IntParse {
 
 impl IntParse {
     pub(crate) fn parse(data: &[u8], mut index: usize, first: u8) -> JsonResult<(Self, usize)> {
+        let start = index;
         let positive = match first {
             b'N' => return Ok((Self::FloatNaN, index)),
             b'-' => false,
@@ -228,7 +229,6 @@ impl IntParse {
             // we started with a minus sign, so the first digit is at index + 1
             index += 1;
         }
-        let digit_start = index;
         let first2 = if positive { Some(&first) } else { data.get(index) };
         let first_value = match first2 {
             Some(b'0') => {
@@ -267,7 +267,7 @@ impl IntParse {
         #[cfg(not(feature = "num-bigint"))]
         {
             // silence unused variable warning
-            let _ = (ongoing, digit_start);
+            let _ = (ongoing, start);
             return json_err!(NumberOutOfRange, index);
         }
 
@@ -306,8 +306,10 @@ impl IntParse {
 
             loop {
                 let (chunk, new_index) = IntChunk::parse_big(data, index);
-                if (new_index - digit_start) > MAX_INT_DIGITS {
-                    return json_err!(NumberOutOfRange, digit_start + MAX_INT_DIGITS + 1);
+                let consumed_len = new_index - start;
+                if consumed_len > MAX_INT_DIGITS && (positive || consumed_len > MAX_INT_DIGITS + 1) {
+                    let error_index = start + MAX_INT_DIGITS + if positive { 1 } else { 2 };
+                    return json_err!(NumberOutOfRange, error_index);
                 }
                 match chunk {
                     IntChunk::Ongoing(value) => {
