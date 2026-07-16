@@ -52,11 +52,11 @@ impl Peek {
     }
 }
 
-static TRUE_REST: [u8; 3] = [b'r', b'u', b'e'];
-static FALSE_REST: [u8; 4] = [b'a', b'l', b's', b'e'];
-static NULL_REST: [u8; 3] = [b'u', b'l', b'l'];
-static NAN_REST: [u8; 2] = [b'a', b'N'];
-static INFINITY_REST: [u8; 7] = [b'n', b'f', b'i', b'n', b'i', b't', b'y'];
+static TRUE_REST: [u8; 3] = *b"rue";
+static FALSE_REST: [u8; 4] = *b"alse";
+static NULL_REST: [u8; 3] = *b"ull";
+static NAN_REST: [u8; 2] = *b"aN";
+static INFINITY_REST: [u8; 7] = *b"nfinity";
 
 #[derive(Debug, Clone)]
 pub(crate) struct Parser<'j> {
