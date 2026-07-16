@@ -11,6 +11,8 @@ use lexical_parse_float::{FromLexicalWithOptions, Options as ParseFloatOptions, 
 
 use crate::errors::{JsonError, JsonResult, json_err, json_error};
 
+const MAX_INT_DIGITS: usize = 4300;
+
 pub trait AbstractNumberDecoder: Sized {
     fn decode(data: &[u8], index: usize, first: u8, allow_inf_nan: bool) -> JsonResult<(Self, usize)>;
 }
@@ -217,7 +219,7 @@ pub(crate) enum IntParse {
 
 impl IntParse {
     pub(crate) fn parse(data: &[u8], mut index: usize, first: u8) -> JsonResult<(Self, usize)> {
-        let start = index;
+        let digit_start = index + usize::from(first == b'-');
         let positive = match first {
             b'N' => return Ok((Self::FloatNaN, index)),
             b'-' => false,
@@ -265,7 +267,7 @@ impl IntParse {
         #[cfg(not(feature = "num-bigint"))]
         {
             // silence unused variable warning
-            let _ = (ongoing, start);
+            let _ = (ongoing, digit_start);
             return json_err!(NumberOutOfRange, index);
         }
 
@@ -304,8 +306,8 @@ impl IntParse {
 
             loop {
                 let (chunk, new_index) = IntChunk::parse_big(data, index);
-                if (new_index - start) > 4300 {
-                    return json_err!(NumberOutOfRange, start + 4301);
+                if (new_index - digit_start) > MAX_INT_DIGITS {
+                    return json_err!(NumberOutOfRange, digit_start + MAX_INT_DIGITS + 1);
                 }
                 match chunk {
                     IntChunk::Ongoing(value) => {
@@ -440,6 +442,7 @@ impl AbstractNumberDecoder for NumberRange {
             // we started with a minus sign, so the first digit is at index + 1
             index += 1;
         }
+        let digit_start = index;
 
         match data.get(index) {
             Some(b'0') => {
@@ -489,8 +492,8 @@ impl AbstractNumberDecoder for NumberRange {
         }
         loop {
             let (chunk, new_index) = IntChunk::parse_big(data, index);
-            if (new_index - start) > 4300 {
-                return json_err!(NumberOutOfRange, start + 4301);
+            if (new_index - digit_start) > MAX_INT_DIGITS {
+                return json_err!(NumberOutOfRange, digit_start + MAX_INT_DIGITS + 1);
             }
             #[allow(clippy::single_match_else)]
             match chunk {
