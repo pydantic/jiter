@@ -272,7 +272,7 @@ macro_rules! test_cases {
                     jiter_iter_ints_array(&file_path, c);
                 } else if file_name == "floats_array" {
                     jiter_iter_floats_array(&file_path, c);
-                } else if file_name == "x100" || file_name == "sentence" || file_name == "unicode" {
+                } else if file_name == "x100" || file_name == "sentence" || file_name == "unicode" || file_name == "unicode_dense" {
                     jiter_string(&file_path, c);
                 }
             }
@@ -308,6 +308,7 @@ test_cases!(medium_response);
 test_cases!(x100);
 test_cases!(sentence);
 test_cases!(unicode);
+test_cases!(unicode_dense);
 test_cases!(short_numbers);
 
 fn string_array_jiter_value_owned(c: &mut Criterion) {
@@ -374,6 +375,10 @@ criterion_group!(
     unicode_jiter_skip,
     unicode_jiter_value,
     unicode_serde_value,
+    unicode_dense_jiter_iter,
+    unicode_dense_jiter_skip,
+    unicode_dense_jiter_value,
+    unicode_dense_serde_value,
     pass1_jiter_iter,
     pass1_jiter_skip,
     pass1_jiter_value,
