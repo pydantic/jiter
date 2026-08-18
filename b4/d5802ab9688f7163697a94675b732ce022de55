@@ -1,0 +1,19 @@
+.github/workflows/ci.yml
+  s_dbb68ddd1de0bd::t_644f41cac8404c 75,81,131
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "b4d5802ab9688f7163697a94675b732ce022de55",
+  "prompts": {},
+  "sessions": {
+    "s_dbb68ddd1de0bd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "31670ff7-bbd9-4c2a-9418-e7025168a5a1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Samuel Colvin <s@muelcolvin.com>"
+    }
+  }
+}
