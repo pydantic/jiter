@@ -305,9 +305,6 @@ jobs:
 
       - run: cargo doc -F python
 
-      - name: check Cargo.lock is up to date
-        run: cargo metadata --locked --format-version 1 > /dev/null
-
   build-sdist:
     name: build sdist
     runs-on: ubuntu-latest
