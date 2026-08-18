@@ -72,13 +72,13 @@ jobs:
         with:
           lookup-only: false # zizmor: ignore[cache-poisoning] -- Job does not produce release artifacts and does not have sensitive permissions
 
-      - uses: taiki-e/install-action@1ed3272338f573e042a2e6bca3893aa19f43b47a # v2.71.3
+      - uses: taiki-e/install-action@5b4d68e2e660441203ab128a23676f1e4faf1532 # v2.86.3
         with:
           tool: cargo-llvm-cov
 
       - name: install cargo-careful
         if: matrix.rust-version == 'nightly'
-        uses: taiki-e/install-action@1ed3272338f573e042a2e6bca3893aa19f43b47a # v2.71.3
+        uses: taiki-e/install-action@5b4d68e2e660441203ab128a23676f1e4faf1532 # v2.86.3
         with:
           tool: cargo-careful
 
@@ -128,7 +128,7 @@ jobs:
         with:
           lookup-only: false # zizmor: ignore[cache-poisoning] -- Job does not produce release artifacts and does not have sensitive permissions
 
-      - uses: taiki-e/install-action@1ed3272338f573e042a2e6bca3893aa19f43b47a # v2.71.3
+      - uses: taiki-e/install-action@5b4d68e2e660441203ab128a23676f1e4faf1532 # v2.86.3
         with:
           tool: cargo-llvm-cov
 
@@ -183,6 +183,32 @@ jobs:
           run: cargo codspeed run
           mode: simulation
           token: ${{ secrets.CODSPEED_TOKEN }}
+
+  test-latest-deps:
+    name: test with latest dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: set up python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.13'
+
+      # no release versioning, see https://github.com/dtolnay/rust-toolchain/issues/180
+      - uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9
+        with:
+          toolchain: stable
+
+      # resolve dependencies fresh, as they are for anyone adding jiter to their
+      # project; every other job builds against the committed Cargo.lock
+      - run: rm Cargo.lock
+
+      - run: cargo test -F python
+        env:
+          RUST_BACKTRACE: 1
 
   fuzz:
     name: fuzz on ${{ matrix.runs-on }}
@@ -684,7 +710,7 @@ jobs:
   # https://github.com/marketplace/actions/alls-green#why used for branch protection checks
   check:
     if: always()
-    needs: [test, test-python, bench, fuzz, fuzz-skip, lint]
+    needs: [test, test-latest-deps, test-python, bench, fuzz, fuzz-skip, lint]
     runs-on: ubuntu-latest
     steps:
       - name: Decide whether the needed jobs succeeded or failed
