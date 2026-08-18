@@ -1,0 +1,21 @@
+.gitignore
+  s_dbb68ddd1de0bd::t_bc12f09dd1fc7c 11-12
+Cargo.lock
+  ai_agent 1-1192
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "dd2a0ff784ab2e8f669aba97f181186760fdaeae",
+  "prompts": {},
+  "sessions": {
+    "s_dbb68ddd1de0bd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "31670ff7-bbd9-4c2a-9418-e7025168a5a1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Samuel Colvin <s@muelcolvin.com>"
+    }
+  }
+}
