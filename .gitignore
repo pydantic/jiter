@@ -8,5 +8,7 @@ target
 env*/
 
 **/Cargo.lock
+# committed so benchmarks resolve the same dependencies on every run
+!/Cargo.lock
 profile.json
 __pycache__

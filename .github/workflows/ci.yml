@@ -184,6 +184,32 @@ jobs:
           mode: simulation
           token: ${{ secrets.CODSPEED_TOKEN }}
 
+  test-latest-deps:
+    name: test with latest dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: set up python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.13'
+
+      # no release versioning, see https://github.com/dtolnay/rust-toolchain/issues/180
+      - uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9
+        with:
+          toolchain: stable
+
+      # every other job builds against the committed Cargo.lock; this one takes the
+      # newest semver-compatible release of each dependency instead
+      - run: cargo update
+
+      - run: cargo test -F python
+        env:
+          RUST_BACKTRACE: 1
+
   fuzz:
     name: fuzz on ${{ matrix.runs-on }}
     strategy:
@@ -278,6 +304,9 @@ jobs:
           UV_NO_PROGRESS: '1'
 
       - run: cargo doc -F python
+
+      - name: check Cargo.lock is up to date
+        run: cargo metadata --locked --format-version 1 > /dev/null
 
   build-sdist:
     name: build sdist
@@ -684,7 +713,7 @@ jobs:
   # https://github.com/marketplace/actions/alls-green#why used for branch protection checks
   check:
     if: always()
-    needs: [test, test-python, bench, fuzz, fuzz-skip, lint]
+    needs: [test, test-latest-deps, test-python, bench, fuzz, fuzz-skip, lint]
     runs-on: ubuntu-latest
     steps:
       - name: Decide whether the needed jobs succeeded or failed
