@@ -202,9 +202,9 @@ jobs:
         with:
           toolchain: stable
 
-      # every other job builds against the committed Cargo.lock; this one takes the
-      # newest semver-compatible release of each dependency instead
-      - run: cargo update
+      # resolve dependencies fresh, as they are for anyone adding jiter to their
+      # project; every other job builds against the committed Cargo.lock
+      - run: rm Cargo.lock
 
       - run: cargo test -F python
         env:
