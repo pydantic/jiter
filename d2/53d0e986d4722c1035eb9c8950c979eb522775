@@ -1,0 +1,41 @@
+.github/workflows/ci.yml
+  ai_agent 89-90
+  s_f02311aad44b55::t_c0eb35b9c347cd 50-51,81-88,91-98,229-230,234
+crates/jiter/Cargo.toml
+  s_f02311aad44b55::t_1d63f1e531ca95 59-61
+crates/jiter/benches/README.md
+  s_f02311aad44b55::t_a63771e4eb9a4c 14-17,19-25,27-30
+  s_f02311aad44b55::t_01ea4389108de6 18,26
+  s_f02311aad44b55::t_5e429ad2c4331f 31-42
+crates/jiter/tests/json_cases.rs
+  s_f02311aad44b55::t_01ea4389108de6 1,15
+  s_f02311aad44b55::t_6c7e8322b3afed 11-12,30,32
+crates/jiter/benches/json_cases.rs
+  s_f02311aad44b55::t_1d63f1e531ca95 4,6-7,14-17,19-36,38-66,68-72,75,78-79,81-84,86,88-103
+  s_f02311aad44b55::t_9f710309b7ec68 67
+  s_f02311aad44b55::t_01ea4389108de6 18
+  s_f02311aad44b55::t_8901bfb23cbddc 76
+  s_f02311aad44b55::t_e88000d6d7b208 1-3,5,8-13,37,73-74,77,80,85,87
+crates/jiter/tests/corpus/mod.rs
+  s_f02311aad44b55::t_9f710309b7ec68 4-5,51,57-58,67-76
+  s_f02311aad44b55::t_a859e837fe8695 11-15,59-66,77
+  s_f02311aad44b55::t_ad207c68845446 29-31,44-45,108,115-135
+  s_f02311aad44b55::t_2c070b5b3ae5e5 2-3,6-7,9-10,16-28,32-43,46-50,52-56,78-107,109-114,136
+  s_f02311aad44b55::t_01ea4389108de6 1,8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "d253d0e986d4722c1035eb9c8950c979eb522775",
+  "prompts": {},
+  "sessions": {
+    "s_f02311aad44b55": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3a82af73-2baa-449b-aa80-c03e77e0caf8",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Samuel Colvin <s@muelcolvin.com>"
+    }
+  }
+}
