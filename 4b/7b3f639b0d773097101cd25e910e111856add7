@@ -1,0 +1,21 @@
+crates/jiter/tests/json_cases.rs
+  s_f02311aad44b55::t_50f15be096b107 384-490,495-502
+  s_f02311aad44b55::t_fb3a30c60810f6 491-494
+  s_f02311aad44b55::t_299306b7cd123c 6-10,41-54,167,174-183,311,314,317,351-353,357,360-361,363,370-372
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "4b7b3f639b0d773097101cd25e910e111856add7",
+  "prompts": {},
+  "sessions": {
+    "s_f02311aad44b55": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3a82af73-2baa-449b-aa80-c03e77e0caf8",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Samuel Colvin <s@muelcolvin.com>"
+    }
+  }
+}
