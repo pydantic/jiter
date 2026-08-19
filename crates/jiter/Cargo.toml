@@ -56,6 +56,10 @@ name = "main"
 harness = false
 
 [[bench]]
+name = "json_cases"
+harness = false
+
+[[bench]]
 name = "python"
 required-features = ["python"]
 harness = false

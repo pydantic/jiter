@@ -1,4 +1,4 @@
-//! Compare `jiter` with `serde_json` over the [`json-cases`](https://github.com/pydantic/json-cases)
+//! Compare `jiter` with `serde_json` over the [`json-cases`](https://github.com/samuelcolvin/json-cases)
 //! corpus: every document is parsed by both, and the two must agree on whether it is valid JSON
 //! and, when it is, on the value it decodes to. The handful of places they legitimately differ are
 //! listed in [`known_difference`]; any other divergence fails the test.
@@ -8,12 +8,11 @@
 //! [`similar_cases_agree`] holds jiter to what that promises, that every member of a group decodes
 //! to the same value, or that they are all rejected.
 //!
-//! `json-cases` is a separate checkout whose `cases/` directory is a build artifact, so these tests
-//! skip themselves when the corpus is not there. `../json-cases` next to this repository is used by
-//! default, `JSON_CASES` overrides it:
+//! The corpus is a separate checkout, loaded by [`corpus`]; these tests skip themselves when it is
+//! not there:
 //!
 //! ```bash
-//! git clone https://github.com/pydantic/json-cases ../json-cases
+//! git clone https://github.com/samuelcolvin/json-cases ../json-cases
 //! make -C ../json-cases build              # writes cases/ and cases.json
 //! cargo test --test json_cases             # or JSON_CASES=/path/to/json-cases cargo test ...
 //! ```
@@ -24,35 +23,13 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Write as _;
-use std::path::{Path, PathBuf};
 
 use jiter::JsonValue;
-use serde::Deserialize;
 use serde_json::Value as SerdeValue;
 
-/// One entry of `cases.json`. The index also records the error serde_json gave when it was
-/// written; that is ignored here, this test runs its own copy of serde_json instead.
-#[derive(Deserialize)]
-struct Case {
-    /// absolute path, valid only in the checkout that generated the index
-    path: String,
-    /// the top level directory under `cases/`
-    category: String,
-    /// the other files holding this same document in a different spelling, recorded on one member
-    /// of each group so that following it from every entry visits each group once
-    #[serde(default)]
-    similar: Vec<String>,
-}
+mod corpus;
 
-/// A case with its content read, and its paths re-rooted at this checkout.
-struct Loaded {
-    /// path relative to the corpus root, doubling as the name to report the case by
-    name: String,
-    json_data: Vec<u8>,
-    category: String,
-    /// the `name`s of the other members of this case's group, see [`Case::similar`]
-    similar: Vec<String>,
-}
+use corpus::{Loaded, corpus_root, load_cases};
 
 /// How jiter and serde_json disagreed about one document.
 #[derive(Debug)]
@@ -141,48 +118,6 @@ fn without_position(error: &str) -> &str {
 
 fn starts_with_msg(error: &str, msg: &str) -> bool {
     without_position(error) == msg
-}
-
-/// The `json-cases` checkout, or `None` if it hasn't been cloned and built.
-fn corpus_root() -> Option<PathBuf> {
-    let root = match std::env::var_os("JSON_CASES") {
-        Some(dir) => PathBuf::from(dir),
-        None => Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../json-cases"),
-    };
-    root.join("cases.json").is_file().then_some(root)
-}
-
-/// `cases.json` holds absolute paths, valid only in the checkout that generated it, so re-root
-/// them; the result doubles as the name to report a case by.
-fn relative(root: &Path, path: &str) -> String {
-    if let Ok(rel) = Path::new(path).strip_prefix(root) {
-        return rel.to_string_lossy().into_owned();
-    }
-    match path.find("/cases/") {
-        Some(index) => path[index + 1..].to_string(),
-        None => path.to_string(),
-    }
-}
-
-fn load_cases(root: &Path) -> Vec<Loaded> {
-    let index = std::fs::read(root.join("cases.json")).unwrap();
-    let cases: Vec<Case> = serde_json::from_slice(&index).unwrap();
-    assert!(!cases.is_empty(), "cases.json is empty, run `make build` in the corpus");
-    cases
-        .into_iter()
-        .map(|case| {
-            let name = relative(root, &case.path);
-            let json_data = std::fs::read(root.join(&name))
-                .unwrap_or_else(|e| panic!("{name}: {e}, run `make build` in the corpus"));
-            let similar = case.similar.iter().map(|path| relative(root, path)).collect();
-            Loaded {
-                name,
-                json_data,
-                category: case.category,
-                similar,
-            }
-        })
-        .collect()
 }
 
 /// Parse `json_data` with both parsers, returning how they disagreed, if they did.
@@ -301,10 +236,8 @@ fn numbers_equal(jiter_value: &JsonValue, serde_number: &str, detail: &mut Strin
 #[test]
 fn compare_to_serde_json() {
     let Some(root) = corpus_root() else {
-        println!("json-cases corpus not found, skipping (see the module docs)");
         return;
     };
-
     let mut unexpected: Vec<String> = Vec::new();
     let mut known: HashMap<&'static str, usize> = HashMap::new();
     let cases = load_cases(&root);
@@ -341,10 +274,8 @@ fn compare_to_serde_json() {
 #[test]
 fn inf_nan_extension() {
     let Some(root) = corpus_root() else {
-        println!("json-cases corpus not found, skipping (see the module docs)");
         return;
     };
-
     let mut extra: Vec<String> = Vec::new();
     let mut unexpected: Vec<String> = Vec::new();
     let cases = load_cases(&root);
@@ -437,10 +368,8 @@ fn jiter_values_equal(v1: &JsonValue, v2: &JsonValue, detail: &mut String) -> bo
 #[test]
 fn similar_cases_agree() {
     let Some(root) = corpus_root() else {
-        println!("json-cases corpus not found, skipping (see the module docs)");
         return;
     };
-
     let cases = load_cases(&root);
     let by_name: HashMap<&str, &Loaded> = cases.iter().map(|case| (case.name.as_str(), case)).collect();
     let mut failures: Vec<String> = Vec::new();
