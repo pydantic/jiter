@@ -2,6 +2,7 @@ use std::ops::Range;
 use std::str::{from_utf8, from_utf8_unchecked};
 
 use crate::errors::{JsonErrorType, JsonResult, json_err, json_error};
+use crate::simd::decode_string_chunk;
 
 pub type Tape = Vec<u8>;
 
@@ -120,7 +121,7 @@ where
     ) -> JsonResult<(Self::Output, usize)> {
         let start = index + 1;
 
-        match decode_chunk(data, start, true, allow_partial)? {
+        match decode_string_chunk(data, start, true, allow_partial)? {
             (StringChunk::StringEnd, ascii_only, index) => {
                 let s = to_str(&data[start..index], ascii_only, start, allow_partial)?;
                 Ok((unsafe { StringOutput::data(s, ascii_only) }, index + 1))
@@ -179,7 +180,7 @@ fn decode_to_tape<'t, 'j>(
             return json_err!(EofWhileParsingString, index);
         }
 
-        match decode_chunk(data, index, ascii_only, allow_partial)? {
+        match decode_string_chunk(data, index, ascii_only, allow_partial)? {
             (StringChunk::StringEnd, ascii_only, new_index) => {
                 tape.extend_from_slice(&data[index..new_index]);
                 index = new_index + 1;
@@ -195,154 +196,10 @@ fn decode_to_tape<'t, 'j>(
     }
 }
 
-#[inline(always)]
-pub(crate) fn decode_chunk(
-    data: &[u8],
-    index: usize,
-    ascii_only: bool,
-    allow_partial: bool,
-) -> JsonResult<(StringChunk, bool, usize)> {
-    // TODO x86_64: use simd
-
-    #[cfg(target_arch = "aarch64")]
-    {
-        crate::simd_aarch64::decode_string_chunk(data, index, ascii_only, allow_partial)
-    }
-    #[cfg(not(target_arch = "aarch64"))]
-    {
-        StringChunk::decode_fallback(data, index, ascii_only, allow_partial)
-    }
-}
-
 pub(crate) enum StringChunk {
     StringEnd,
     Backslash,
 }
-
-impl StringChunk {
-    #[inline(always)]
-    pub fn decode_fallback(
-        data: &[u8],
-        mut index: usize,
-        mut ascii_only: bool,
-        allow_partial: bool,
-    ) -> JsonResult<(Self, bool, usize)> {
-        while let Some(next) = data.get(index) {
-            if !JSON_ASCII[*next as usize] {
-                match &CHAR_TYPE[*next as usize] {
-                    CharType::Quote => return Ok((Self::StringEnd, ascii_only, index)),
-                    CharType::Backslash => return Ok((Self::Backslash, ascii_only, index)),
-                    CharType::ControlChar => return json_err!(ControlCharacterWhileParsingString, index),
-                    CharType::Other => {
-                        ascii_only = false;
-                    }
-                }
-            }
-            index += 1;
-        }
-        if allow_partial {
-            Ok((Self::StringEnd, ascii_only, index))
-        } else {
-            json_err!(EofWhileParsingString, index)
-        }
-    }
-
-    /// decode an array (generally from SIMD) return the result of the chunk, or none if the non-ascii character
-    /// is just > \x7F (127)
-    #[inline(always)]
-    #[allow(dead_code)]
-    pub fn decode_array<const T: usize>(
-        data: [u8; T],
-        index: &mut usize,
-        ascii_only: bool,
-    ) -> Option<JsonResult<(Self, bool, usize)>> {
-        for u8_char in data {
-            if !JSON_ASCII[u8_char as usize] {
-                return match &CHAR_TYPE[u8_char as usize] {
-                    CharType::Quote => Some(Ok((Self::StringEnd, ascii_only, *index))),
-                    CharType::Backslash => Some(Ok((Self::Backslash, ascii_only, *index))),
-                    CharType::ControlChar => Some(json_err!(ControlCharacterWhileParsingString, *index)),
-                    CharType::Other => {
-                        *index += 1;
-                        None
-                    }
-                };
-            }
-            *index += 1;
-        }
-        unreachable!("error decoding SIMD string chunk")
-    }
-}
-
-// taken serde-rs/json but altered
-// https://github.com/serde-rs/json/blob/ebaf61709aba7a3f2429a5d95a694514f180f565/src/read.rs#L787-L811
-// this helps the fast path by telling us if something is ascii or not, it also simplifies
-// CharType below by only requiring 4 options in that enum
-static JSON_ASCII: [bool; 256] = {
-    const CT: bool = false; // control character \x00..=\x1F
-    const QU: bool = false; // quote \x22
-    const BS: bool = false; // backslash \x5C
-    const __: bool = true; // simple ascii
-    const HI: bool = false; // > \x7F (127)
-    [
-        //   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
-        CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, // 0
-        CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, // 1
-        __, __, QU, __, __, __, __, __, __, __, __, __, __, __, __, __, // 2
-        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 3
-        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 4
-        __, __, __, __, __, __, __, __, __, __, __, __, BS, __, __, __, // 5
-        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 6
-        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 7
-        HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, // 8
-        HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, // 9
-        HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, // A
-        HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, // B
-        HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, // C
-        HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, // D
-        HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, // E
-        HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, HI, // F
-    ]
-};
-
-enum CharType {
-    // control character \x00..=\x1F
-    ControlChar,
-    // quote \x22
-    Quote,
-    // backslash \x5C
-    Backslash,
-    // all other characters. In reality this will only be > \x7F (127) after the JSON_ASCII check
-    Other,
-}
-
-// Lookup table of bytes that must be escaped. A value of true at index i means
-// that byte i requires an escape sequence in the input.
-static CHAR_TYPE: [CharType; 256] = {
-    const CT: CharType = CharType::ControlChar;
-    const QU: CharType = CharType::Quote;
-    const BS: CharType = CharType::Backslash;
-    const __: CharType = CharType::Other;
-    [
-        //   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
-        CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, // 0
-        CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, // 1
-        __, __, QU, __, __, __, __, __, __, __, __, __, __, __, __, __, // 2
-        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 3
-        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 4
-        __, __, __, __, __, __, __, __, __, __, __, __, BS, __, __, __, // 5
-        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 6
-        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 7
-        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 8
-        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 9
-        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // A
-        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // B
-        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // C
-        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // D
-        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // E
-        __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // F
-    ]
-};
 
 fn to_str(bytes: &[u8], ascii_only: bool, start: usize, allow_partial: bool) -> JsonResult<&str> {
     if ascii_only {
@@ -437,7 +294,7 @@ where
         let start = index;
 
         loop {
-            index = match decode_chunk(data, index, true, allow_partial)? {
+            index = match decode_string_chunk(data, index, true, allow_partial)? {
                 (StringChunk::StringEnd, _, index) => {
                     let r = start..index;
                     return Ok((r, index + 1));

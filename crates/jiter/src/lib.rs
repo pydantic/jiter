@@ -160,8 +160,7 @@ mod py_string_cache;
 mod python;
 #[cfg(feature = "serde")]
 pub mod serde;
-#[cfg(target_arch = "aarch64")]
-mod simd_aarch64;
+mod simd;
 mod string_decoder;
 mod value;
 

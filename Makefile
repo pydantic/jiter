@@ -15,6 +15,8 @@ format:
 lint:
 	@cargo clippy --version
 	cargo clippy -- -D warnings
+	# build without any simd arch active
+	cargo clippy --target wasm32-wasip1 -p jiter -- -D warnings
 	cargo doc
 
 .PHONY: lint-python
