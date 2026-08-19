@@ -3,6 +3,11 @@
 //! and, when it is, on the value it decodes to. The handful of places they legitimately differ are
 //! listed in [`known_difference`]; any other divergence fails the test.
 //!
+//! The corpus also groups documents that are one another's re-spellings — the same document
+//! indented, or with its strings escaped differently — under the `similar` key of `cases.json`;
+//! [`similar_cases_agree`] holds jiter to what that promises, that every member of a group decodes
+//! to the same value, or that they are all rejected.
+//!
 //! `json-cases` is a separate checkout whose `cases/` directory is a build artifact, so these tests
 //! skip themselves when the corpus is not there. `../json-cases` next to this repository is used by
 //! default, `JSON_CASES` overrides it:
@@ -33,6 +38,20 @@ struct Case {
     path: String,
     /// the top level directory under `cases/`
     category: String,
+    /// the other files holding this same document in a different spelling, recorded on one member
+    /// of each group so that following it from every entry visits each group once
+    #[serde(default)]
+    similar: Vec<String>,
+}
+
+/// A case with its content read, and its paths re-rooted at this checkout.
+struct Loaded {
+    /// path relative to the corpus root, doubling as the name to report the case by
+    name: String,
+    json_data: Vec<u8>,
+    category: String,
+    /// the `name`s of the other members of this case's group, see [`Case::similar`]
+    similar: Vec<String>,
 }
 
 /// How jiter and serde_json disagreed about one document.
@@ -145,17 +164,23 @@ fn relative(root: &Path, path: &str) -> String {
     }
 }
 
-fn load_cases(root: &Path) -> Vec<(String, Vec<u8>, String)> {
+fn load_cases(root: &Path) -> Vec<Loaded> {
     let index = std::fs::read(root.join("cases.json")).unwrap();
     let cases: Vec<Case> = serde_json::from_slice(&index).unwrap();
     assert!(!cases.is_empty(), "cases.json is empty, run `make build` in the corpus");
     cases
         .into_iter()
         .map(|case| {
-            let rel = relative(root, &case.path);
-            let json_data =
-                std::fs::read(root.join(&rel)).unwrap_or_else(|e| panic!("{rel}: {e}, run `make build` in the corpus"));
-            (rel, json_data, case.category)
+            let name = relative(root, &case.path);
+            let json_data = std::fs::read(root.join(&name))
+                .unwrap_or_else(|e| panic!("{name}: {e}, run `make build` in the corpus"));
+            let similar = case.similar.iter().map(|path| relative(root, path)).collect();
+            Loaded {
+                name,
+                json_data,
+                category: case.category,
+                similar,
+            }
         })
         .collect()
 }
@@ -283,13 +308,13 @@ fn compare_to_serde_json() {
     let mut unexpected: Vec<String> = Vec::new();
     let mut known: HashMap<&'static str, usize> = HashMap::new();
     let cases = load_cases(&root);
-    for (rel, json_data, _) in &cases {
+    for case in &cases {
         // `allow_inf_nan` is off so that jiter is asked for the same language serde_json parses;
         // `inf_nan_extension` below covers what turning it on adds
-        if let Some(mismatch) = compare(json_data, false) {
+        if let Some(mismatch) = compare(&case.json_data, false) {
             match known_difference(&mismatch) {
                 Some(reason) => *known.entry(reason).or_default() += 1,
-                None => unexpected.push(format!("{rel}: {mismatch}")),
+                None => unexpected.push(format!("{}: {mismatch}", case.name)),
             }
         }
     }
@@ -323,25 +348,28 @@ fn inf_nan_extension() {
     let mut extra: Vec<String> = Vec::new();
     let mut unexpected: Vec<String> = Vec::new();
     let cases = load_cases(&root);
-    let inf_nan = cases.iter().filter(|(_, _, category)| category == "python-inf-nan");
-    for (rel, json_data, _) in inf_nan {
-        match compare(json_data, true) {
+    let inf_nan = cases.iter().filter(|case| case.category == "python-inf-nan");
+    for case in inf_nan {
+        match compare(&case.json_data, true) {
             Some(Mismatch::JiterOnly { .. }) => {
                 // the only documents jiter may accept and serde_json reject are the ones this
                 // directory exists for
-                let text = String::from_utf8_lossy(json_data);
+                let text = String::from_utf8_lossy(&case.json_data);
                 assert!(
                     text.contains("NaN") || text.contains("Infinity"),
-                    "{rel}: accepted with allow_inf_nan but holds no NaN/Infinity"
+                    "{}: accepted with allow_inf_nan but holds no NaN/Infinity",
+                    case.name
                 );
-                extra.push(rel.clone());
+                extra.push(case.name.clone());
             }
             // both rejected it: jiter reads further into a malformed `NaN`/`Infinity` token
             // before giving up than serde_json does, so only the verdict has to agree here
             Some(Mismatch::Error { .. }) | None => (),
             // jiter must not reject, or decode differently, anything serde_json accepts, unless
             // it is one of the differences the corpus-wide test already allows
-            Some(mismatch) if known_difference(&mismatch).is_none() => unexpected.push(format!("{rel}: {mismatch}")),
+            Some(mismatch) if known_difference(&mismatch).is_none() => {
+                unexpected.push(format!("{}: {mismatch}", case.name));
+            }
             Some(_) => (),
         }
     }
@@ -352,4 +380,123 @@ fn inf_nan_extension() {
         "no NaN/Infinity documents were accepted, is the corpus complete?"
     );
     println!("{} NaN/Infinity documents accepted with allow_inf_nan", extra.len());
+}
+
+/// Compare two values jiter decoded, describing where they first differ in `detail`. Members of a
+/// group hold the same numbers written the same way and the same keys in the same order, so this
+/// is exact, structural equality; `NaN`, which is not equal to itself, is the one special case.
+fn jiter_values_equal(v1: &JsonValue, v2: &JsonValue, detail: &mut String) -> bool {
+    match (v1, v2) {
+        (JsonValue::Float(f1), JsonValue::Float(f2)) if f1.is_nan() && f2.is_nan() => true,
+        (JsonValue::Array(a1), JsonValue::Array(a2)) => {
+            if a1.len() != a2.len() {
+                let _ = write!(detail, "array has {} elements, the other has {}", a1.len(), a2.len());
+                return false;
+            }
+            for (index, (e1, e2)) in a1.iter().zip(a2.iter()).enumerate() {
+                if !jiter_values_equal(e1, e2, detail) {
+                    detail.insert_str(0, &format!("[{index}]"));
+                    return false;
+                }
+            }
+            true
+        }
+        // jiter doesn't deduplicate keys, and neither does the corpus: a group repeats the same
+        // key the same number of times, so the members are compared as written
+        (JsonValue::Object(o1), JsonValue::Object(o2)) => {
+            if o1.len() != o2.len() {
+                let _ = write!(detail, "object has {} keys, the other has {}", o1.len(), o2.len());
+                return false;
+            }
+            for ((k1, e1), (k2, e2)) in o1.iter().zip(o2.iter()) {
+                if k1 != k2 {
+                    let _ = write!(detail, "key {k1:?}, the other has {k2:?}");
+                    return false;
+                }
+                if !jiter_values_equal(e1, e2, detail) {
+                    detail.insert_str(0, &format!("[{k1:?}]"));
+                    return false;
+                }
+            }
+            true
+        }
+        _ => {
+            if v1 == v2 {
+                return true;
+            }
+            let _ = write!(detail, "{v1:?}, the other has {v2:?}");
+            false
+        }
+    }
+}
+
+/// The members of a `similar` group are one document written several ways — re-indented, or with
+/// its strings escaped differently — so jiter must decode them all to the same value, or, where
+/// the document is malformed, reject them all. Only *where* the error is reported may vary within
+/// a rejected group, the spellings put the same mistake in different places.
+#[test]
+fn similar_cases_agree() {
+    let Some(root) = corpus_root() else {
+        println!("json-cases corpus not found, skipping (see the module docs)");
+        return;
+    };
+
+    let cases = load_cases(&root);
+    let by_name: HashMap<&str, &Loaded> = cases.iter().map(|case| (case.name.as_str(), case)).collect();
+    let mut failures: Vec<String> = Vec::new();
+    let mut groups = 0;
+    let mut documents = 0;
+
+    for case in cases.iter().filter(|case| !case.similar.is_empty()) {
+        groups += 1;
+        documents += case.similar.len() + 1;
+        // what a group promises is a property of the document, not of how jiter is configured, so
+        // it has to hold either way; `allow_inf_nan` is also what makes the `python-inf-nan`
+        // groups compare values at all rather than agree on rejecting them
+        for allow_inf_nan in [false, true] {
+            let first = JsonValue::parse(&case.json_data, allow_inf_nan);
+            for name in &case.similar {
+                let other = by_name
+                    .get(name.as_str())
+                    .unwrap_or_else(|| panic!("{name}: listed as similar but missing from cases.json"));
+                match (&first, JsonValue::parse(&other.json_data, allow_inf_nan)) {
+                    (Ok(value), Ok(other_value)) => {
+                        let mut detail = String::new();
+                        if !jiter_values_equal(value, &other_value, &mut detail) {
+                            failures.push(format!(
+                                "{} and {} (allow_inf_nan={allow_inf_nan}) decoded differently: {detail}",
+                                case.name, other.name
+                            ));
+                        }
+                    }
+                    // both rejected, which is all a group of malformed documents promises
+                    (Err(_), Err(_)) => (),
+                    (Ok(_), Err(error)) => failures.push(format!(
+                        "{} parsed (allow_inf_nan={allow_inf_nan}), {} was rejected: {}",
+                        case.name,
+                        other.name,
+                        error.description(&other.json_data)
+                    )),
+                    (Err(error), Ok(_)) => failures.push(format!(
+                        "{} was rejected (allow_inf_nan={allow_inf_nan}): {}, {} parsed",
+                        case.name,
+                        error.description(&case.json_data),
+                        other.name
+                    )),
+                }
+            }
+        }
+    }
+
+    assert!(
+        groups > 0,
+        "cases.json holds no `similar` groups, is the corpus complete?"
+    );
+    assert!(
+        failures.is_empty(),
+        "{} comparisons across {groups} similar groups disagreed:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+    println!("{groups} similar groups, {documents} documents");
 }
