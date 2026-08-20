@@ -1,0 +1,25 @@
+crates/jiter/benches/main.rs
+  s_f02311aad44b55::t_ebfc6f14e8edf5 9-11,225-228,242-245
+crates/jiter/benches/json_cases.rs
+  s_f02311aad44b55::t_ebfc6f14e8edf5 13,36-37,79
+crates/jiter/Cargo.toml
+  s_f02311aad44b55::t_ebfc6f14e8edf5 71-74
+crates/jiter/benches/README.md
+  s_f02311aad44b55::t_ae38378213354b 40-43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "5f0b0bf3dc01fdc061c28d2868433dfe7e5c52e1",
+  "prompts": {},
+  "sessions": {
+    "s_f02311aad44b55": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3a82af73-2baa-449b-aa80-c03e77e0caf8",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Samuel Colvin <s@muelcolvin.com>"
+    }
+  }
+}
