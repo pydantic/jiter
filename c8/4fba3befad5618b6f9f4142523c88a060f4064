@@ -1,0 +1,26 @@
+crates/jiter/src/simd/fallback_string.rs
+  s_36b19fe1c85841::t_1f213307b409f6 35,62,75
+crates/jiter/src/simd/aarch64.rs
+  s_36b19fe1c85841::t_e2cff7ec47a296 48
+  s_36b19fe1c85841::t_5505a40753e0dc 222-224
+  s_36b19fe1c85841::t_ea63bf4ff7b29d 217-221,225-245,249,273-279,281-282
+  s_36b19fe1c85841::t_74bf9a3259db02 18-22,42,87-88,93-94,246,280,283-284,288-295
+crates/jiter/tests/main.rs
+  s_36b19fe1c85841::t_74bf9a3259db02 1708-1733
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "c84fba3befad5618b6f9f4142523c88a060f4064",
+  "prompts": {},
+  "sessions": {
+    "s_36b19fe1c85841": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "007c782f-d7c7-43bb-8c64-b9bb592bbd3a",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Samuel Colvin <s@muelcolvin.com>"
+    }
+  }
+}
