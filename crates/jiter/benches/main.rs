@@ -6,6 +6,9 @@ use std::io::Read;
 use std::path::Path;
 
 use jiter::{Jiter, JsonValue, PartialMode, Peek};
+// serde_json is the local comparison baseline; CodSpeed tracks jiter's own history, so the serde
+// benchmarks are left out of it, as monty leaves its CPython benchmarks out of CI
+#[cfg(not(codspeed))]
 use serde_json::Value;
 
 fn read_title(path: &str) -> String {
@@ -219,6 +222,10 @@ fn jiter_string(path: &str, c: &mut Criterion) {
     });
 }
 
+#[cfg(codspeed)]
+fn serde_value(_path: &str, _c: &mut Criterion) {}
+
+#[cfg(not(codspeed))]
 fn serde_value(path: &str, c: &mut Criterion) {
     let title = read_title(path) + "_serde_value";
     let json = read_file(path);
@@ -232,6 +239,10 @@ fn serde_value(path: &str, c: &mut Criterion) {
     });
 }
 
+#[cfg(codspeed)]
+fn serde_str(_path: &str, _c: &mut Criterion) {}
+
+#[cfg(not(codspeed))]
 fn serde_str(path: &str, c: &mut Criterion) {
     let title = read_title(path) + "_serde_iter";
     let json = read_file(path);

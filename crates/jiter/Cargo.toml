@@ -56,6 +56,10 @@ name = "main"
 harness = false
 
 [[bench]]
+name = "json_cases"
+harness = false
+
+[[bench]]
 name = "python"
 required-features = ["python"]
 harness = false
@@ -63,6 +67,10 @@ harness = false
 # get docs.rs to include python docs
 [package.metadata.docs.rs]
 all-features = true
+
+[lints.rust]
+# set by cargo-codspeed; the serde benchmarks are compiled out under it
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(codspeed)'] }
 
 [lints.clippy]
 dbg_macro = "deny"
