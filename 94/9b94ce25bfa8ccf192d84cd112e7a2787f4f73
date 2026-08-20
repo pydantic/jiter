@@ -1,0 +1,24 @@
+crates/jiter/src/value.rs
+  s_f02311aad44b55::t_c3fc0313addd86 327-328
+  s_f02311aad44b55::t_d9eec604aad4e2 309,311-314,316-320,322,457,557,582,603
+  s_f02311aad44b55::t_90369367cfb7ff 255,275-278,324-325,346-353,369,381,396-399,428,433,442,445-446,450,453,460,472,487-490,519,527,542,545-546,550,553,572-573,576,584-585,591
+  s_f02311aad44b55::t_c743954e57257d 310,315,394-395,400,485-486,491
+crates/jiter/examples/alloc_count.rs
+  s_f02311aad44b55::t_de579bcc83cca9 66-96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "949b94ce25bfa8ccf192d84cd112e7a2787f4f73",
+  "prompts": {},
+  "sessions": {
+    "s_f02311aad44b55": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3a82af73-2baa-449b-aa80-c03e77e0caf8",
+        "model": "claude-opus-5"
+      },
+      "human_author": null
+    }
+  }
+}
