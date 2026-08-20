@@ -115,6 +115,11 @@ jobs:
         env:
           RUST_BACKTRACE: 1
 
+        # since not all benchmarks are run with codspeed, we test them all there
+      - run: cargo bench -p jiter -- --test
+        env:
+          RUST_BACKTRACE: 1
+
       - uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
         with:
           env_vars: RUNS_ON,RUST_VERSION
