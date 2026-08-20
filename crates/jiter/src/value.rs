@@ -252,7 +252,7 @@ fn take_value<'j, 's>(
             };
             take_value_recursive(
                 peek_first,
-                RecursedValue::new_array(),
+                RecursedValue::new_array(parser.index, DEFAULT_CAPACITY),
                 parser,
                 tape,
                 recursion_limit,
@@ -272,7 +272,7 @@ fn take_value<'j, 's>(
             match parser.peek() {
                 Ok(peek) => take_value_recursive(
                     peek,
-                    RecursedValue::new_object(first_key),
+                    RecursedValue::new_object(first_key, parser.index, DEFAULT_CAPACITY),
                     parser,
                     tape,
                     recursion_limit,
@@ -303,25 +303,65 @@ fn take_value<'j, 's>(
     }
 }
 
+/// What the first array or object of a document starts with, and the floor for every guess after.
+const DEFAULT_CAPACITY: usize = 8;
+
 enum RecursedValue<'s> {
-    Array(Vec<JsonValue<'s>>),
+    Array {
+        array: Vec<JsonValue<'s>>,
+        /// index the first element started at, see [`reserve_for_rest`]
+        start: usize,
+    },
     Object {
         partial: Vec<(Cow<'s, str>, JsonValue<'s>)>,
         next_key: Cow<'s, str>,
+        /// index the first member started at, see [`reserve_for_rest`]
+        start: usize,
     },
 }
 
 impl<'s> RecursedValue<'s> {
-    fn new_array() -> Self {
-        RecursedValue::Array(Vec::with_capacity(8))
-    }
-
-    fn new_object(next_key: Cow<'s, str>) -> Self {
-        RecursedValue::Object {
-            partial: Vec::with_capacity(8),
-            next_key,
+    fn new_array(start: usize, capacity: usize) -> Self {
+        RecursedValue::Array {
+            array: Vec::with_capacity(capacity),
+            start,
         }
     }
+
+    fn new_object(next_key: Cow<'s, str>, start: usize, capacity: usize) -> Self {
+        RecursedValue::Object {
+            partial: Vec::with_capacity(capacity),
+            next_key,
+            start,
+        }
+    }
+}
+
+/// What a container of `len` elements suggests for the next one of its kind: never below the
+/// default, and capped so that one big container doesn't make every later one expensive.
+#[inline]
+fn capacity_guess(len: usize) -> usize {
+    len.clamp(DEFAULT_CAPACITY, 512)
+}
+
+/// Give a full container room for what is probably left of it, instead of letting it double.
+///
+/// Elements of one container tend to be the same size, so the bytes it has taken for the elements
+/// it holds predict how many more the rest of the document can hold. The estimate is wrong for a
+/// container followed by a lot of unrelated document — it sees bytes that aren't its own — so it
+/// is capped at eight times the current length, and never asks for less than the doubling it
+/// replaces.
+#[inline]
+fn reserve_for_rest<T>(items: &mut Vec<T>, start: usize, parser: &Parser<'_>) {
+    let len = items.len();
+    if items.capacity() != DEFAULT_CAPACITY {
+        // the capacity came from a sibling, which knows more than this estimate does; double
+        items.reserve(len);
+        return;
+    }
+    let consumed = parser.index.saturating_sub(start).max(len);
+    let estimate = parser.remaining() / (consumed / len);
+    items.reserve(estimate.clamp(len, len * 8));
 }
 
 #[inline(never)] // this is an iterative algo called only from take_value, no point in inlining
@@ -340,6 +380,10 @@ fn take_value_recursive<'j, 's>(
     let recursion_limit: usize = recursion_limit.into();
 
     let mut recursion_stack: SmallVec<[RecursedValue; 8]> = SmallVec::new();
+    // documents are usually uniform, so the container just finished is the best guess at the size
+    // of the next one of its kind; the first of each gets DEFAULT_CAPACITY
+    let mut last_array_len = DEFAULT_CAPACITY;
+    let mut last_object_len = DEFAULT_CAPACITY;
     let partial_active = allow_partial.is_active();
 
     macro_rules! push_recursion {
@@ -354,7 +398,7 @@ fn take_value_recursive<'j, 's>(
 
     'recursion: loop {
         let mut value = match &mut current_recursion {
-            RecursedValue::Array(array) => {
+            RecursedValue::Array { array, start } => {
                 loop {
                     let result = match peek {
                         Peek::True => parser.consume_true().map(|()| JsonValue::Bool(true)),
@@ -366,7 +410,7 @@ fn take_value_recursive<'j, 's>(
                         Peek::Array => {
                             match parser.array_first() {
                                 Ok(Some(first_peek)) => {
-                                    push_recursion!(first_peek, RecursedValue::new_array());
+                                    push_recursion!(first_peek, RecursedValue::new_array(parser.index, last_array_len));
                                     // immediately jump to process the first value in the array
                                     continue 'recursion;
                                 }
@@ -379,7 +423,14 @@ fn take_value_recursive<'j, 's>(
                             match parser.object_first::<StringDecoder>(tape) {
                                 Ok(Some(first_key)) => match parser.peek() {
                                     Ok(peek) => {
-                                        push_recursion!(peek, RecursedValue::new_object(create_cow(first_key)));
+                                        push_recursion!(
+                                            peek,
+                                            RecursedValue::new_object(
+                                                create_cow(first_key),
+                                                parser.index,
+                                                last_object_len
+                                            )
+                                        );
                                         continue 'recursion;
                                     }
                                     Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
@@ -412,6 +463,9 @@ fn take_value_recursive<'j, 's>(
                             // now try to advance position in the current array
                             match parser.array_step() {
                                 Ok(Some(next_peek)) => {
+                                    if array.len() == array.capacity() {
+                                        reserve_for_rest(array, *start, parser);
+                                    }
                                     array.push(value);
                                     peek = next_peek;
                                     // array continuing
@@ -421,7 +475,7 @@ fn take_value_recursive<'j, 's>(
                                 _ => (),
                             }
 
-                            let RecursedValue::Array(mut array) = current_recursion else {
+                            let RecursedValue::Array { mut array, .. } = current_recursion else {
                                 unreachable!("known to be in array recursion");
                             };
                             array.push(value);
@@ -429,17 +483,22 @@ fn take_value_recursive<'j, 's>(
                         }
                         Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
                         _ => {
-                            let RecursedValue::Array(array) = current_recursion else {
+                            let RecursedValue::Array { array, .. } = current_recursion else {
                                 unreachable!("known to be in array recursion");
                             };
                             array
                         }
                     };
 
+                    last_array_len = capacity_guess(array.len());
                     break JsonValue::Array(Arc::new(array));
                 }
             }
-            RecursedValue::Object { partial, next_key } => {
+            RecursedValue::Object {
+                partial,
+                next_key,
+                start,
+            } => {
                 loop {
                     let result = match peek {
                         Peek::True => parser.consume_true().map(|()| JsonValue::Bool(true)),
@@ -451,7 +510,7 @@ fn take_value_recursive<'j, 's>(
                         Peek::Array => {
                             match parser.array_first() {
                                 Ok(Some(first_peek)) => {
-                                    push_recursion!(first_peek, RecursedValue::new_array());
+                                    push_recursion!(first_peek, RecursedValue::new_array(parser.index, last_array_len));
                                     // immediately jump to process the first value in the array
                                     continue 'recursion;
                                 }
@@ -464,7 +523,14 @@ fn take_value_recursive<'j, 's>(
                             match parser.object_first::<StringDecoder>(tape) {
                                 Ok(Some(first_key)) => match parser.peek() {
                                     Ok(peek) => {
-                                        push_recursion!(peek, RecursedValue::new_object(create_cow(first_key)));
+                                        push_recursion!(
+                                            peek,
+                                            RecursedValue::new_object(
+                                                create_cow(first_key),
+                                                parser.index,
+                                                last_object_len
+                                            )
+                                        );
                                         continue 'recursion;
                                     }
                                     Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
@@ -500,6 +566,9 @@ fn take_value_recursive<'j, 's>(
                                     match parser.peek() {
                                         Ok(next_peek) => {
                                             // object continuing
+                                            if partial.len() == partial.capacity() {
+                                                reserve_for_rest(partial, *start, parser);
+                                            }
                                             partial.push((
                                                 std::mem::replace(next_key, create_cow(yet_another_key)),
                                                 value,
@@ -515,7 +584,10 @@ fn take_value_recursive<'j, 's>(
                                 _ => (),
                             }
 
-                            let RecursedValue::Object { mut partial, next_key } = current_recursion else {
+                            let RecursedValue::Object {
+                                mut partial, next_key, ..
+                            } = current_recursion
+                            else {
                                 unreachable!("known to be in object recursion");
                             };
                             partial.push((next_key, value));
@@ -530,6 +602,7 @@ fn take_value_recursive<'j, 's>(
                         }
                     };
 
+                    last_object_len = capacity_guess(object.len());
                     break JsonValue::Object(Arc::new(object));
                 }
             }
@@ -545,19 +618,30 @@ fn take_value_recursive<'j, 's>(
             }
 
             value = match current_recursion {
-                RecursedValue::Array(mut array) => {
+                RecursedValue::Array { mut array, start } => {
+                    if array.len() == array.capacity() {
+                        reserve_for_rest(&mut array, start, parser);
+                    }
                     array.push(value);
                     match parser.array_step() {
                         Ok(Some(next_peek)) => {
-                            current_recursion = RecursedValue::Array(array);
+                            current_recursion = RecursedValue::Array { array, start };
                             break next_peek;
                         }
                         Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
                         _ => (),
                     }
+                    last_array_len = capacity_guess(array.len());
                     JsonValue::Array(Arc::new(array))
                 }
-                RecursedValue::Object { mut partial, next_key } => {
+                RecursedValue::Object {
+                    mut partial,
+                    next_key,
+                    start,
+                } => {
+                    if partial.len() == partial.capacity() {
+                        reserve_for_rest(&mut partial, start, parser);
+                    }
                     partial.push((next_key, value));
 
                     match parser.object_step::<StringDecoder>(tape) {
@@ -566,6 +650,7 @@ fn take_value_recursive<'j, 's>(
                                 current_recursion = RecursedValue::Object {
                                     partial,
                                     next_key: create_cow(next_key),
+                                    start,
                                 };
                                 break next_peek;
                             }
@@ -576,6 +661,7 @@ fn take_value_recursive<'j, 's>(
                         _ => (),
                     }
 
+                    last_object_len = capacity_guess(partial.len());
                     JsonValue::Object(Arc::new(partial))
                 }
             }

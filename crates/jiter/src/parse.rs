@@ -69,6 +69,11 @@ impl<'j> Parser<'j> {
         Self { data, index: 0 }
     }
 
+    /// Bytes of the document not consumed yet, which bounds what is left of any container in it.
+    pub fn remaining(&self) -> usize {
+        self.data.len().saturating_sub(self.index)
+    }
+
     #[allow(dead_code)]
     pub fn slice(&self, range: Range<usize>) -> Option<&[u8]> {
         self.data.get(range)
