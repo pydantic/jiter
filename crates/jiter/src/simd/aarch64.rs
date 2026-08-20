@@ -15,6 +15,11 @@ use std::arch::aarch64::{
     vcltq_u8 as simd_lt_16,
     vorrq_u8 as simd_or_16,
     vceqq_u8 as simd_eq_16,
+    // mask narrowing: 16x8-bit mask -> u64 of 16 nibbles
+    vreinterpretq_u16_u8 as simd_cast_u16_8,
+    vshrn_n_u16 as simd_shift_narrow_u16_8,
+    vreinterpret_u64_u8 as simd_cast_u64_1,
+    vget_lane_u64 as simd_get_lane_u64,
     vextq_u8 as combine_vecs_16,
     vsubq_u8 as simd_sub_16,
     vmulq_u8 as simd_mul_16,
@@ -34,12 +39,13 @@ use std::arch::aarch64::{
     vmul_u32 as simd_mul_u32_2,
     vpaddl_u32 as simd_add_u32_2,
 };
-use crate::JsonResult;
+use crate::errors::{JsonResult, json_err};
 
 use crate::number_decoder::IntChunk;
 use crate::string_decoder::StringChunk;
 
 use super::fallback_int::decode_int_chunk;
+use super::fallback_string::{CHAR_TYPE, CharType, JSON_ASCII};
 
 type SimdVecu8_16 = uint8x16_t;
 type SimdVecu16_8 = uint16x8_t;
@@ -78,14 +84,14 @@ pub(crate) fn decode_int_chunk_big(data: &[u8], index: usize) -> (IntChunk, usiz
     if let Some(byte_chunk) = data.get(index..index + SIMD_STEP) {
         let byte_vec = load_slice(byte_chunk);
 
-        let digit_mask = get_digit_mask(byte_vec);
-        if is_zero(digit_mask) {
+        let digit_mask = mask_to_u64(get_digit_mask(byte_vec));
+        if digit_mask == 0 {
             // all lanes are digits, parse the full vector
             let value = unsafe { full_calc(byte_vec, 16) };
             (IntChunk::Ongoing(value), index + SIMD_STEP)
         } else {
-            // some lanes are not digits, transmute to a pair of u64 and find the first non-digit
-            let last_digit = find_end(digit_mask);
+            // some lanes are not digits, find the first non-digit
+            let last_digit = digit_mask.trailing_zeros() / 4;
             let index = index + last_digit as usize;
             if next_is_float(data, index) {
                 (IntChunk::Float, index)
@@ -208,20 +214,39 @@ pub(crate) fn decode_string_chunk(
     while let Some(byte_chunk) = data.get(index..index + SIMD_STEP) {
         let byte_vec = load_slice(byte_chunk);
 
-        let ascii_mask = string_ascii_mask(byte_vec);
-        if is_zero(ascii_mask) {
-            // this chunk is just ascii, continue to the next chunk
-            index += SIMD_STEP;
-        } else {
-            // this chunk contains either a stop character or a non-ascii character
-            let a: [u8; 16] = unsafe { transmute(byte_vec) };
-            #[allow(clippy::redundant_else)]
-            if let Some(r) = super::fallback_string::decode_array(a, &mut index, ascii_only) {
-                return r;
-            } else {
-                ascii_only = false;
+        if mask_to_u64(string_ascii_mask(byte_vec)) != 0 {
+            // this chunk contains a special character, classify the first one with a scalar scan.
+            // this looks like it defeats the point of SIMD, but the byte-by-byte scan branches
+            // are predictable and crucially keep the returned index off the (slow) vector->general
+            // register transfer path, unlike computing the position from the mask
+            for (pos, next) in byte_chunk.iter().enumerate() {
+                if !JSON_ASCII[*next as usize] {
+                    match &CHAR_TYPE[*next as usize] {
+                        CharType::Quote => return Ok((StringChunk::StringEnd, ascii_only, index + pos)),
+                        CharType::Backslash => return Ok((StringChunk::Backslash, ascii_only, index + pos)),
+                        CharType::ControlChar => return json_err!(ControlCharacterWhileParsingString, index + pos),
+                        CharType::Other => {
+                            // non-ascii character: use the mask to jump over the rest of the
+                            // chunk instead of scanning it byte-by-byte
+                            ascii_only = false;
+                            let stop_mask = mask_to_u64(string_stop_mask(byte_vec));
+                            if stop_mask != 0 {
+                                let stop_pos = (stop_mask.trailing_zeros() / 4) as usize;
+                                index += stop_pos;
+                                return match byte_chunk[stop_pos] {
+                                    b'"' => Ok((StringChunk::StringEnd, false, index)),
+                                    b'\\' => Ok((StringChunk::Backslash, false, index)),
+                                    _ => json_err!(ControlCharacterWhileParsingString, index),
+                                };
+                            }
+                            // no stop character in this chunk, continue to the next chunk
+                            break;
+                        }
+                    }
+                }
             }
         }
+        index += SIMD_STEP;
     }
     // we got near the end of the string, fall back to the slow path
     super::fallback_string::decode_string_chunk(data, index, ascii_only, allow_partial)
@@ -245,20 +270,29 @@ fn string_ascii_mask(byte_vec: SimdVecu8_16) -> SimdVecu8_16 {
     }
 }
 
-fn find_end(digit_mask: SimdVecu8_16) -> u32 {
-    let t: [u64; 2] = unsafe { transmute(digit_mask) };
-    if t[0] != 0 {
-        // non-digit in the first 8 bytes
-        t[0].trailing_zeros() / 8
-    } else {
-        t[1].trailing_zeros() / 8 + 8
+#[rustfmt::skip]
+/// returns a mask where any non-zero byte is a character that stops the string scan: either
+/// a quote, backslash, or control character
+fn string_stop_mask(byte_vec: SimdVecu8_16) -> SimdVecu8_16 {
+    unsafe {
+        simd_or_16(
+            simd_eq_16(byte_vec, QUOTE_16),
+            simd_or_16(
+                simd_eq_16(byte_vec, BACKSLASH_16),
+                simd_lt_16(byte_vec, CONTROL_16),
+            )
+        )
     }
 }
 
-/// return true if all bytes are zero
-fn is_zero(vec: SimdVecu8_16) -> bool {
-    let t: [u64; 2] = unsafe { transmute(vec) };
-    t[0] == 0 && t[1] == 0
+/// narrow a 16x8-bit comparison mask (each lane 0x00 or 0xFF) to a u64 where each byte becomes
+/// a 0x0 or 0xF nibble - this only needs a single vector->general register transfer, unlike
+/// transmuting to `[u64; 2]`
+fn mask_to_u64(mask: SimdVecu8_16) -> u64 {
+    unsafe {
+        let nibble_mask = simd_shift_narrow_u16_8::<4>(simd_cast_u16_8(mask));
+        simd_get_lane_u64::<0>(simd_cast_u64_1(nibble_mask))
+    }
 }
 
 fn load_slice(bytes: &[u8]) -> SimdVecu8_16 {
