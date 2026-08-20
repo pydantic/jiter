@@ -1,0 +1,19 @@
+Cargo.toml
+  s_f02311aad44b55::t_ccf83814df09e0 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "4c83652c0c9053ea18bbdcde9b8fd8a58e0b4748",
+  "prompts": {},
+  "sessions": {
+    "s_f02311aad44b55": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3a82af73-2baa-449b-aa80-c03e77e0caf8",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Samuel Colvin <s@muelcolvin.com>"
+    }
+  }
+}
