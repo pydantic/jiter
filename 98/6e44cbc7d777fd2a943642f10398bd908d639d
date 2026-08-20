@@ -1,0 +1,21 @@
+crates/jiter/tests/corpus/mod.rs
+  s_f02311aad44b55::t_c1468244e9ffbc 4-5
+crates/jiter/benches/json_cases.rs
+  s_f02311aad44b55::t_0ecf8e94e305d1 1-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "986e44cbc7d777fd2a943642f10398bd908d639d",
+  "prompts": {},
+  "sessions": {
+    "s_f02311aad44b55": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3a82af73-2baa-449b-aa80-c03e77e0caf8",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Samuel Colvin <s@muelcolvin.com>"
+    }
+  }
+}
