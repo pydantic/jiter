@@ -82,6 +82,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: samuelcolvin/json-cases
+          ref: fa6c17fbabf775b8099a0ed5f32cfc733700cedc # 2026-08-19, `size` and `tags` in cases.json
           path: json-cases
           persist-credentials: false
 
