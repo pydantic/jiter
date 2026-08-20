@@ -1,21 +1,8 @@
-//! Compare `jiter` with `serde_json` over the [`json-cases`](https://github.com/samuelcolvin/json-cases)
-//! corpus: every document is parsed by both, and the two must agree on whether it is valid JSON
-//! and, when it is, on the value it decodes to. The handful of places they legitimately differ are
-//! listed in [`known_difference`]; any other divergence fails the test.
-//!
-//! The corpus also groups documents that are one another's re-spellings — the same document
-//! indented, or with its strings escaped differently — under the `similar` key of `cases.json`;
-//! [`similar_cases_agree`] holds jiter to what that promises, that every member of a group decodes
-//! to the same value, or that they are all rejected.
-//!
-//! The corpus is a separate checkout, loaded by [`corpus`]; these tests skip themselves when it is
-//! not there:
-//!
-//! ```bash
-//! git clone https://github.com/samuelcolvin/json-cases ../json-cases
-//! make -C ../json-cases build              # writes cases/ and cases.json
-//! cargo test --test json_cases             # or JSON_CASES=/path/to/json-cases cargo test ...
-//! ```
+//! Compare `jiter` with `serde_json` over the json-cases corpus: the two must agree on whether
+//! each document is valid JSON and on the value it decodes to, bar the differences
+//! [`known_difference`] lists. [`similar_cases_agree`] separately holds jiter to the corpus's
+//! `similar` groups, one document spelled several ways: every member decodes to the same value, or
+//! they are all rejected. See [`corpus`] for the checkout these need.
 // floats are compared exactly on purpose, see `numbers_equal`
 #![allow(clippy::float_cmp, clippy::print_stdout)]
 

@@ -1,27 +1,8 @@
-//! Parse the [`json-cases`](https://github.com/samuelcolvin/json-cases) corpus, the same documents
-//! the `json_cases` test compares against serde_json. Every file is read into memory first, then
-//! one iteration parses a whole set of them into values and swallows the errors, so unlike the
-//! benchmarks in `main.rs` — each a single well formed document of one shape — this measures a
-//! mixed workload of many documents, most of them small, over half of them malformed. It is the
-//! only benchmark here that exercises the error paths.
-//!
-//! The corpus is timed once as a whole and then once per [`TAGS`] tag, which is what says roughly
-//! where a change landed: `strings` and `escapes` move with the string scanner, `ints`/`floats`
-//! with number decoding, `deep` with the recursion, `whitespace` with the between-token loop, and
-//! `error` with the failure path. A document carries several tags, so the sets overlap and add up
-//! to more than the corpus.
-//!
-//! The corpus is a separate checkout, see [`corpus`]; when it isn't there this registers no
-//! benchmarks at all and `cargo bench` just runs the rest.
-//!
-//! ```bash
-//! git clone https://github.com/samuelcolvin/json-cases ../json-cases
-//! make -C ../json-cases build              # writes cases/ and cases.json
-//! cargo bench -p jiter --bench json_cases  # or JSON_CASES=/path/to/json-cases cargo bench ...
-//! ```
-//!
-//! `cases/` is generated, so these numbers are only comparable between runs over the same revision
-//! of the corpus: regenerating it with a different `json-cases` changes the workload itself.
+//! Parse the json-cases corpus, once as a whole and once per [`TAGS`] tag — which is what says
+//! roughly where a change landed, `strings` with the string scanner, `deep` with the recursion,
+//! `error` with the failure path. Documents carry several tags, so the sets overlap. See
+//! [`corpus`] for the checkout, which this skips entirely when it isn't there; the numbers only
+//! compare between runs over the same revision of it, `cases/` being generated.
 #![allow(clippy::print_stdout)]
 
 use std::hint::black_box;

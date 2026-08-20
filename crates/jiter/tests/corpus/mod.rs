@@ -1,17 +1,8 @@
 //! Loading the [`json-cases`](https://github.com/samuelcolvin/json-cases) corpus, shared by the
-//! `json_cases` test and the `json_cases` benchmark — each uses a subset of what is here.
-//!
-//! The corpus is a separate checkout whose `cases/` directory is a build artifact.
-//! `../json-cases` next to this repository is used by default, `JSON_CASES` overrides it:
-//!
-//! ```bash
-//! git clone https://github.com/samuelcolvin/json-cases ../json-cases
-//! make -C ../json-cases build              # writes cases/ and cases.json
-//! ```
-//!
-//! The tests require it: a corpus that isn't there fails them rather than skipping them, so that a
-//! checkout without it can't quietly pass the suite. `JSON_CASES_SKIP` is the way to opt out where
-//! building the corpus isn't worth it — CI sets it on the job that resolves fresh dependencies.
+//! `json_cases` test and benchmark. `cases/` is a build artifact, so a checkout has to be built
+//! with `make build`; `../json-cases` is used by default, `JSON_CASES` overrides it. The tests
+//! require it, failing rather than skipping when it is absent so a checkout without it can't
+//! quietly pass; `JSON_CASES_SKIP` opts out, as CI does where building it isn't worth it.
 #![allow(dead_code, clippy::print_stdout)]
 
 use std::path::{Path, PathBuf};
