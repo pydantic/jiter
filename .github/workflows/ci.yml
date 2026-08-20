@@ -115,6 +115,8 @@ jobs:
         env:
           RUST_BACKTRACE: 1
 
+      - run: uv run crates/jiter/benches/generate_big.py
+
         # since not all benchmarks are run with codspeed, we test them all there
       - run: cargo bench -p jiter -- --test
         env:
