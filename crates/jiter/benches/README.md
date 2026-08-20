@@ -37,6 +37,10 @@ string bytes for `escapes` and `non-ascii`), so the sets are the documents a par
 spend that time on; documents carry several tags, so the sets overlap and add up to more than the
 corpus.
 
+Every benchmark is paired with serde_json for local comparison, but those halves are compiled out
+under `cfg(codspeed)`: CodSpeed tracks jiter's own history, and serde_json is pinned in
+`Cargo.lock`, so timing it there costs instrumentation time for a line that doesn't move.
+
 `cases/` is generated, so the numbers are only comparable between runs over the same revision of the
 corpus — regenerating it with a different `json-cases` changes the workload itself. CI therefore
 pins the corpus (`JSON_CASES_REF` in `.github/workflows/ci.yml`) for the CodSpeed run; bumping that
