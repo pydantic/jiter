@@ -38,5 +38,6 @@ spend that time on; documents carry several tags, so the sets overlap and add up
 corpus.
 
 `cases/` is generated, so the numbers are only comparable between runs over the same revision of the
-corpus — regenerating it with a different `json-cases` changes the workload itself, which is also
-why this isn't part of the CodSpeed run in CI.
+corpus — regenerating it with a different `json-cases` changes the workload itself. CI therefore
+pins the corpus (`JSON_CASES_REF` in `.github/workflows/ci.yml`) for the CodSpeed run; bumping that
+pin moves every `json_cases_*` number at once, independently of anything jiter did.

@@ -10,6 +10,11 @@ on:
 
 permissions: {}
 
+env:
+  # the json-cases corpus the json_cases test and benchmark run over; pinned so that a commit there
+  # can't turn this repository's CI red, and so the benchmark numbers stay comparable between runs
+  JSON_CASES_REF: fa6c17fbabf775b8099a0ed5f32cfc733700cedc # 2026-08-19, `size` and `tags` in cases.json
+
 jobs:
   resolve:
     runs-on: ubuntu-latest
@@ -82,7 +87,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: samuelcolvin/json-cases
-          ref: fa6c17fbabf775b8099a0ed5f32cfc733700cedc # 2026-08-19, `size` and `tags` in cases.json
+          ref: ${{ env.JSON_CASES_REF }}
           path: json-cases
           persist-credentials: false
 
@@ -179,6 +184,12 @@ jobs:
 
   bench:
     runs-on: ubuntu-latest
+
+    env:
+      # the corpus the json_cases benchmarks run over, checked out and built below; without it they
+      # register nothing and CodSpeed sees only the benchmarks in main.rs
+      JSON_CASES: ${{ github.workspace }}/json-cases
+
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -189,6 +200,14 @@ jobs:
           python-version: '3.13'
           enable-cache: true # zizmor: ignore[cache-poisoning] -- Job does not produce release artifacts and does not have sensitive permissions
 
+      - name: check out the json-cases corpus
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: samuelcolvin/json-cases
+          ref: ${{ env.JSON_CASES_REF }}
+          path: json-cases
+          persist-credentials: false
+
       - uses: moonrepo/setup-rust@abb2d32350334249b178c401e5ec5836e0cd88d3 # v1.3.0
         with:
           channel: stable
@@ -196,6 +215,10 @@ jobs:
           bins: cargo-codspeed
 
       - run: uv run crates/jiter/benches/generate_big.py
+
+      # cases/ and cases.json are gitignored build artifacts, so a fresh checkout has to build them
+      - name: build the json-cases corpus
+        run: make -C json-cases build
 
       - run: cargo codspeed build -F python -p jiter
 
@@ -227,8 +250,6 @@ jobs:
       # project; every other job builds against the committed Cargo.lock
       - run: rm Cargo.lock
 
-      # this job is about resolving dependencies fresh, which the json_cases tests say nothing
-      # about, so they are skipped here rather than building the corpus again
       - run: cargo test -F python
         env:
           RUST_BACKTRACE: 1
