@@ -1,13 +1,13 @@
-from concurrent.futures import ThreadPoolExecutor
 import json
-from decimal import Decimal
-from pathlib import Path
 import sys
+from concurrent.futures import ThreadPoolExecutor
+from decimal import Decimal
+from math import inf
+from pathlib import Path
 from typing import Any
 
 import jiter
 import pytest
-from math import inf
 from dirty_equals import IsFloatNan
 
 JITER_BENCH_DIR = Path(__file__).parent.parent.parent / 'jiter' / 'benches'
@@ -263,7 +263,7 @@ def test_python_cache_usage_none():
 
 
 def test_use_tape():
-    json = '  "foo\\nbar"  '.encode()
+    json = b'  "foo\\nbar"  '
     jiter.cache_clear()
     parsed = jiter.from_json(json, cache_mode=False)
     assert parsed == 'foo\nbar'

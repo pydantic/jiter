@@ -23,6 +23,11 @@ lint-python: .uv
 	uv run ruff check $(python_sources)
 	uv run ruff format --check $(python_sources)
 
+.PHONY: format-python
+format-python: .uv
+	uv run ruff format $(python_sources)
+	uv run ruff check --fix --fix-only $(python_sources)
+
 .PHONY: test
 test:
 	cargo test

@@ -61,8 +61,3 @@ class LosslessFloat:
 
     def __bytes__(self) -> bytes:
         """Return the JSON bytes slice as bytes"""
-
-    def __str__(self) -> str:
-        """Return the JSON bytes slice as a string"""
-
-    def __repr__(self) -> str: ...

@@ -1,12 +1,11 @@
 import argparse
+import json
 import timeit
 from pathlib import Path
 
-import json
-
 CASES = {
     'array_short_strings': '[{}]'.format(', '.join('"123"' for _ in range(100_000))),
-    'object_short_strings': '{%s}'
+    'object_short_strings': '{%s}'  # noqa UP031
     % ', '.join(f'"{i}": "{i}x"' for i in range(100_000)),
     'array_short_arrays': '[{}]'.format(
         ', '.join('["a", "b", "c", "d"]' for _ in range(10_000))
@@ -104,7 +103,7 @@ def main():
         print(f'{"-" * 13}|{"-" * 12}|{"-" * 9}')
         for name, time in times:
             print(f'{name:>12} | {time * 1_000_000:10.2f} | {time / best:8.2f}')
-        print('')
+        print()
 
 
 if __name__ == '__main__':
