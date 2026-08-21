@@ -6,10 +6,17 @@ use std::io::Read;
 use std::path::Path;
 
 use jiter::{Jiter, JsonValue, PartialMode, Peek};
-// serde_json is the local comparison baseline; CodSpeed tracks jiter's own history, so the serde
-// benchmarks are left out of it, as monty leaves its CPython benchmarks out of CI
-#[cfg(not(codspeed))]
 use serde_json::Value;
+
+/// serde_json is the local comparison baseline; CodSpeed tracks jiter's own history, so the serde
+/// benchmarks are left out of it, as monty leaves its CPython benchmarks out of CI.
+///
+/// This is a runtime check rather than `cfg(codspeed)`: `cargo-codspeed` only sets that cfg for
+/// instrumentation builds, so under the walltime mode CI runs in it would leave the serde
+/// benchmarks in, and they are several times slower than the jiter ones they compare against.
+fn skip_under_codspeed() -> bool {
+    std::env::var_os("CODSPEED_ENV").is_some()
+}
 
 fn read_title(path: &str) -> String {
     let path = Path::new(path);
@@ -222,11 +229,10 @@ fn jiter_string(path: &str, c: &mut Criterion) {
     });
 }
 
-#[cfg(codspeed)]
-fn serde_value(_path: &str, _c: &mut Criterion) {}
-
-#[cfg(not(codspeed))]
 fn serde_value(path: &str, c: &mut Criterion) {
+    if skip_under_codspeed() {
+        return;
+    }
     let title = read_title(path) + "_serde_value";
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
@@ -239,11 +245,10 @@ fn serde_value(path: &str, c: &mut Criterion) {
     });
 }
 
-#[cfg(codspeed)]
-fn serde_str(_path: &str, _c: &mut Criterion) {}
-
-#[cfg(not(codspeed))]
 fn serde_str(path: &str, c: &mut Criterion) {
+    if skip_under_codspeed() {
+        return;
+    }
     let title = read_title(path) + "_serde_iter";
     let json = read_file(path);
     let json_data = black_box(json.as_bytes());
@@ -287,10 +292,6 @@ macro_rules! test_cases {
                     jiter_string(&file_path, c);
                 }
             }
-            fn [< $file_name _jiter_skip >](c: &mut Criterion) {
-                let file_path = format!("./benches/{}.json", stringify!($file_name));
-                jiter_skip(&file_path, c);
-            }
 
             fn [< $file_name _serde_value >](c: &mut Criterion) {
                 let file_path = format!("./benches/{}.json", stringify!($file_name));
@@ -299,6 +300,27 @@ macro_rules! test_cases {
         }
     };
 }
+
+/// `next_skip` is one code path that decodes neither numbers nor strings, so it is benchmarked
+/// over a few shapes rather than over every file `test_cases!` covers: `big` for a large mixed
+/// document, `pass1`/`pass2` for a shallow grab-bag and a deep nest, and `string_array` and
+/// `unicode_dense` for the ASCII and non-ASCII string scanners it does still run.
+macro_rules! skip_case {
+    ($file_name:ident) => {
+        paste::item! {
+            fn [< $file_name _jiter_skip >](c: &mut Criterion) {
+                let file_path = format!("./benches/{}.json", stringify!($file_name));
+                jiter_skip(&file_path, c);
+            }
+        }
+    };
+}
+
+skip_case!(big);
+skip_case!(pass1);
+skip_case!(pass2);
+skip_case!(string_array);
+skip_case!(unicode_dense);
 
 // https://json.org/JSON_checker/test/pass1.json
 // see https://github.com/python/cpython/blob/main/Lib/test/test_json/test_pass1.py
@@ -357,33 +379,26 @@ criterion_group!(
     big_jiter_value,
     big_serde_value,
     bigints_array_jiter_iter,
-    bigints_array_jiter_skip,
     bigints_array_jiter_value,
     bigints_array_serde_value,
     floats_array_jiter_iter,
-    floats_array_jiter_skip,
     floats_array_jiter_value,
     floats_array_serde_value,
     massive_ints_array_jiter_iter,
-    massive_ints_array_jiter_skip,
     massive_ints_array_jiter_value,
     massive_ints_array_serde_value,
     medium_response_jiter_iter,
-    medium_response_jiter_skip,
     medium_response_jiter_value,
     medium_response_jiter_value_owned,
     medium_response_serde_value,
     x100_jiter_iter,
-    x100_jiter_skip,
     x100_jiter_value,
     x100_serde_iter,
     x100_serde_value,
     sentence_jiter_iter,
-    sentence_jiter_skip,
     sentence_jiter_value,
     sentence_serde_value,
     unicode_jiter_iter,
-    unicode_jiter_skip,
     unicode_jiter_value,
     unicode_serde_value,
     unicode_dense_jiter_iter,
@@ -404,15 +419,12 @@ criterion_group!(
     string_array_jiter_value_owned,
     string_array_serde_value,
     true_array_jiter_iter,
-    true_array_jiter_skip,
     true_array_jiter_value,
     true_array_serde_value,
     true_object_jiter_iter,
-    true_object_jiter_skip,
     true_object_jiter_value,
     true_object_serde_value,
     short_numbers_jiter_iter,
-    short_numbers_jiter_skip,
     short_numbers_jiter_value,
     short_numbers_serde_value,
 );

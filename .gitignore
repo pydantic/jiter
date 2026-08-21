@@ -9,3 +9,4 @@ env*/
 
 profile.json
 __pycache__
+/worktrees/

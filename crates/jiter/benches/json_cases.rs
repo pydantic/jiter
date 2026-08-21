@@ -10,7 +10,6 @@ use std::hint::black_box;
 use codspeed_criterion_compat::{Criterion, criterion_group, criterion_main};
 
 use jiter::JsonValue;
-#[cfg(not(codspeed))]
 use serde_json::Value as SerdeValue;
 
 #[path = "../tests/corpus/mod.rs"]
@@ -33,8 +32,8 @@ fn jiter_value(documents: &[&[u8]]) -> usize {
 
 /// The same with serde_json, for comparison. Note that this crate's dev-dependency on serde_json
 /// turns on `arbitrary_precision`, `preserve_order` and `float_roundtrip`, as the benchmarks in
-/// `main.rs` do. CodSpeed tracks jiter's own history, so this is left out of it.
-#[cfg(not(codspeed))]
+/// `main.rs` do. CodSpeed tracks jiter's own history, so this is left out of it, see
+/// [`skip_under_codspeed`].
 fn serde_value(documents: &[&[u8]]) -> usize {
     let mut parsed = 0;
     for json_data in documents {
@@ -44,6 +43,11 @@ fn serde_value(documents: &[&[u8]]) -> usize {
         }
     }
     parsed
+}
+
+/// Whether to leave the serde comparison out, see `main.rs` for why this is a runtime check.
+fn skip_under_codspeed() -> bool {
+    std::env::var_os("CODSPEED_ENV").is_some()
 }
 
 fn corpus_benches(c: &mut Criterion) {
@@ -76,10 +80,11 @@ fn corpus_benches(c: &mut Criterion) {
         c.bench_function(&format!("json_cases_{name}_jiter_value"), |bench| {
             bench.iter(|| black_box(jiter_value(documents)));
         });
-        #[cfg(not(codspeed))]
-        c.bench_function(&format!("json_cases_{name}_serde_value"), |bench| {
-            bench.iter(|| black_box(serde_value(documents)));
-        });
+        if !skip_under_codspeed() {
+            c.bench_function(&format!("json_cases_{name}_serde_value"), |bench| {
+                bench.iter(|| black_box(serde_value(documents)));
+            });
+        }
     }
 }
 
