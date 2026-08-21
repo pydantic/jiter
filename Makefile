@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := all
-python_sources = crates/jiter/benches/generate_big.py crates/jiter-python/bench.py crates/jiter-python/jiter.pyi crates/jiter-python/tests/test_jiter.py
+python_sources = crates/jiter/benches/generate_big.py crates/jiter/benches/criterion_table.py crates/jiter-python/bench.py crates/jiter-python/jiter.pyi crates/jiter-python/tests/test_jiter.py
 
 
 .PHONY: .uv
@@ -51,6 +51,10 @@ python-bench: python-dev-release
 .PHONY: bench
 bench:
 	cargo bench -p jiter -F python
+
+.PHONY: bench-table
+bench-table: bench
+	@python3 crates/jiter/benches/criterion_table.py
 
 .PHONY: fuzz
 fuzz:
