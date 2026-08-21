@@ -1,0 +1,11 @@
+crates/jiter/benches/criterion_table.py
+  ai_agent 4-8,88-89
+Makefile
+  ai_agent 55-56,58-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "4439993689bbd208ef90ba1f4a51e1db1ee10a27",
+  "prompts": {}
+}
