@@ -190,7 +190,7 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
 
   bench:
-    runs-on: ubuntu-latest
+    runs-on: codspeed-macro
 
     env:
       # the corpus the json_cases benchmarks run over, checked out and built below; without it they
