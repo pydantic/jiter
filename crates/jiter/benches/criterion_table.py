@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """Convert criterion benchmark results into a markdown table for the README.
 
-Reads estimates straight from criterion's data directory (`target/criterion`),
-so run `cargo bench` first, then:
-
-    python3 crates/jiter/benches/criterion_table.py
-
-and paste the printed table into the README.
+Reads estimates straight from criterion's data directory (`target/criterion`). criterion never
+removes results, so a directory that has seen more than one revision of the benchmarks still holds
+the ones since renamed or deleted, and they would get rows in the table as though they still ran.
+`make bench-table` clears the directory before benchmarking for that reason; run it rather than
+calling this directly, and paste the printed table into the README.
 """
 
 from __future__ import annotations
@@ -85,42 +84,17 @@ def parse_name(name: str) -> tuple[str, str] | None:
     return None
 
 
-# criterion never removes results, so `target/criterion` also holds benchmarks that have since been
-# renamed or deleted, and reading the directory blind puts rows in the table for benchmarks that no
-# longer run. Anything this much older than the newest result did not come from the latest run.
-STALE_AFTER_SECONDS = 6 * 60 * 60
-
-
 def load_results(criterion_dir: Path) -> dict[str, dict[str, float]]:
-    """Return {fixture: {suffix: nanoseconds}}, ignoring results left over from an earlier run."""
-    found: list[tuple[str, str, Path, float]] = []
+    """Return {fixture: {suffix: nanoseconds}}."""
+    results: dict[str, dict[str, float]] = {}
     for estimates_path in sorted(criterion_dir.glob('*/new/estimates.json')):
         parsed = parse_name(estimates_path.parent.parent.name)
         if parsed is None:
             continue
         fixture, suffix = parsed
-        found.append((fixture, suffix, estimates_path, estimates_path.stat().st_mtime))
-    if not found:
-        return {}
-
-    newest = max(mtime for *_, mtime in found)
-    results: dict[str, dict[str, float]] = {}
-    stale = set()
-    for fixture, suffix, estimates_path, mtime in found:
-        if newest - mtime > STALE_AFTER_SECONDS:
-            stale.add(fixture)
-            continue
         estimates = json.loads(estimates_path.read_text())
         estimate = estimates.get('slope') or estimates['mean']
         results.setdefault(fixture, {})[suffix] = estimate['point_estimate']
-
-    stale -= set(results)
-    if stale:
-        print(
-            f'ignoring {len(stale)} fixture(s) left over from an earlier run: '
-            f'{", ".join(sorted(stale))}',
-            file=sys.stderr,
-        )
     return results
 
 

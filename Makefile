@@ -1,7 +1,6 @@
 .DEFAULT_GOAL := all
 python_sources = crates/jiter/benches/generate_big.py crates/jiter/benches/criterion_table.py crates/jiter-python/bench.py crates/jiter-python/jiter.pyi crates/jiter-python/tests/test_jiter.py
 
-
 .PHONY: .uv
 .uv:
 	@uv -V || echo 'Please install uv: https://docs.astral.sh/uv/getting-started/installation/'
@@ -52,9 +51,15 @@ python-bench: python-dev-release
 bench:
 	cargo bench -p jiter -F python
 
+.PHONY: bench-table-display
+bench-table-display:
+	uv run crates/jiter/benches/criterion_table.py
+
 .PHONY: bench-table
-bench-table: bench
-	@python3 crates/jiter/benches/criterion_table.py
+bench-table:
+	rm -rf target/criterion
+	$(MAKE) bench
+	$(MAKE) bench-table-display
 
 .PHONY: fuzz
 fuzz:
