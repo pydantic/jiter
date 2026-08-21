@@ -1,0 +1,26 @@
+.github/workflows/ci.yml
+  s_b3dc74e4d6a7d7::t_0fb2014320d719 232
+crates/jiter/benches/json_cases.rs
+  s_b3dc74e4d6a7d7::t_2f863725a28d26 35-36,48-52,83-87
+crates/jiter/benches/main.rs
+  s_b3dc74e4d6a7d7::t_b82235baaeb158 304-323
+  s_b3dc74e4d6a7d7::t_0957666b094ce6 11-20,233-235,249-251
+Cargo.lock
+  ai_agent 40-53,105-114,121-126,181,183,185-186,188-189,191,194,199,201,203,207,212,214,239,241,243,306,315-320,380-385,433,532-543,856,930-935,948-957,1002,1122
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "8122ea7595a4768b9d8ee707f38ae38bf3dc1830",
+  "prompts": {},
+  "sessions": {
+    "s_b3dc74e4d6a7d7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a1fc2f76-5fdb-4c3c-84f2-af1b4796236b",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Samuel Colvin <s@muelcolvin.com>"
+    }
+  }
+}
