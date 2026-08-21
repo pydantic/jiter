@@ -1,0 +1,34 @@
+crates/jiter/benches/criterion_table.py
+  s_b3dc74e4d6a7d7::t_74284e8b4deca5 88-93,95-96,102-112,116-123
+  s_36b19fe1c85841::t_8f3aff2bf77a93 157,162-165,172-174
+  s_b3dc74e4d6a7d7::t_112c676ff420a7 19-22,26-36,40-51,53-66,148
+  s_36b19fe1c85841::t_65b28e444f887f 1-18,23,67-69,78-87,94,97-101,113-115,124-143,147,149-156,158-161,166-171,175-183,187-189,196-206
+  s_36b19fe1c85841::t_d0384bc5d31243 24-25,37-39,52,70-77,144-146,184-186,190-195
+Makefile
+  s_36b19fe1c85841::t_2cc1215c4d752f 55-58
+  s_36b19fe1c85841::t_6b7810fe9cfc63 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "bd51cd6669e92dd5bb0dc9f7d6d41a5406eeb075",
+  "prompts": {},
+  "sessions": {
+    "s_36b19fe1c85841": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "007c782f-d7c7-43bb-8c64-b9bb592bbd3a",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Samuel Colvin <s@muelcolvin.com>"
+    },
+    "s_b3dc74e4d6a7d7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a1fc2f76-5fdb-4c3c-84f2-af1b4796236b",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Samuel Colvin <s@muelcolvin.com>"
+    }
+  }
+}
