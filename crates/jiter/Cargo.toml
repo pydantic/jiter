@@ -37,7 +37,7 @@ serde_json = { version = "1.0.87", features = [
 ] }
 serde = { version = "1.0.147", features = ["derive"] }
 pyo3 = { workspace = true, features = ["auto-initialize"] }
-codspeed-criterion-compat = "2.7.2"
+codspeed-criterion-compat = "5.0.1"
 proptest = "1.4.0"
 
 [build-dependencies]
@@ -67,10 +67,6 @@ harness = false
 # get docs.rs to include python docs
 [package.metadata.docs.rs]
 all-features = true
-
-[lints.rust]
-# set by cargo-codspeed; the serde benchmarks are compiled out under it
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(codspeed)'] }
 
 [lints.clippy]
 dbg_macro = "deny"

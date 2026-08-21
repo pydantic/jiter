@@ -229,7 +229,7 @@ jobs:
 
       - run: cargo codspeed build -F python -p jiter
 
-      - uses: CodSpeedHQ/action@d872884a306dd4853acf0f584f4b706cf0cc72a2 # v4.13.0
+      - uses: CodSpeedHQ/action@4296e51e7041e24dadb86d1d6e8b9320d223dbe8 # v5.0.3
         with:
           run: cargo codspeed run
           mode: walltime
