@@ -1,0 +1,19 @@
+crates/jiter/tests/main.rs
+  s_08237b15e627ad::t_387f0f6f83af5c 1735-1779
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "24eeea6f17c11cd865e7b5e10f099ad1b9f37173",
+  "prompts": {},
+  "sessions": {
+    "s_08237b15e627ad": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "25057288-7c1b-4dad-abd2-63fc184885c6",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Samuel Colvin <s@muelcolvin.com>"
+    }
+  }
+}
