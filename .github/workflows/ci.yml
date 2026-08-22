@@ -11,9 +11,9 @@ on:
 permissions: {}
 
 env:
-  # the json-cases corpus the json_cases test and benchmark run over; pinned so that a commit there
+  # the json-cases corpus that tests and benchmarks run over; pinned so that a commit there
   # can't turn this repository's CI red, and so the benchmark numbers stay comparable between runs
-  JSON_CASES_REF: fa6c17fbabf775b8099a0ed5f32cfc733700cedc # 2026-08-19, `size` and `tags` in cases.json
+  JSON_CASES_REF: 12caaa624f399d603db09dd634ae866425f737f0 # 2026-08-22
 
 jobs:
   resolve:
