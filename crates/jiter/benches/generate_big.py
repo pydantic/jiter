@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import json
-from random import random
 from pathlib import Path
+from random import random
 
 THIS_DIR = Path(__file__).parent
 
