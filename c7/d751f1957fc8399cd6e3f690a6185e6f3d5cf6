@@ -1,0 +1,19 @@
+crates/jiter/src/simd/aarch64.rs
+  s_08237b15e627ad::t_0ef631e457752b 243
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "c7d751f1957fc8399cd6e3f690a6185e6f3d5cf6",
+  "prompts": {},
+  "sessions": {
+    "s_08237b15e627ad": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "25057288-7c1b-4dad-abd2-63fc184885c6",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Samuel Colvin <s@muelcolvin.com>"
+    }
+  }
+}
