@@ -45,7 +45,7 @@ use crate::number_decoder::IntChunk;
 use crate::string_decoder::StringChunk;
 
 use super::fallback_int::decode_int_chunk;
-use super::fallback_string::{CHAR_TYPE, CharType, JSON_ASCII};
+use super::fallback_string::{CHAR_TYPE, CharType};
 
 type SimdVecu8_16 = uint8x16_t;
 type SimdVecu16_8 = uint16x8_t;
@@ -214,39 +214,36 @@ pub(crate) fn decode_string_chunk(
     while let Some(byte_chunk) = data.get(index..index + SIMD_STEP) {
         let byte_vec = load_slice(byte_chunk);
 
-        if mask_to_u64(string_ascii_mask(byte_vec)) != 0 {
-            // this chunk contains a special character, classify the first one with a scalar scan.
-            // this looks like it defeats the point of SIMD, but the byte-by-byte scan branches
-            // are predictable and crucially keep the returned index off the (slow) vector->general
-            // register transfer path, unlike computing the position from the mask
-            for (pos, next) in byte_chunk.iter().enumerate() {
-                if !JSON_ASCII[*next as usize] {
-                    match &CHAR_TYPE[*next as usize] {
-                        CharType::Quote => return Ok((StringChunk::StringEnd, ascii_only, index + pos)),
-                        CharType::Backslash => return Ok((StringChunk::Backslash, ascii_only, index + pos)),
-                        CharType::ControlChar => return json_err!(ControlCharacterWhileParsingString, index + pos),
-                        CharType::Other => {
-                            // non-ascii character: use the mask to jump over the rest of the
-                            // chunk instead of scanning it byte-by-byte
-                            ascii_only = false;
-                            let stop_mask = mask_to_u64(string_stop_mask(byte_vec));
-                            if stop_mask != 0 {
-                                let stop_pos = (stop_mask.trailing_zeros() / 4) as usize;
-                                index += stop_pos;
-                                return match byte_chunk[stop_pos] {
-                                    b'"' => Ok((StringChunk::StringEnd, false, index)),
-                                    b'\\' => Ok((StringChunk::Backslash, false, index)),
-                                    _ => json_err!(ControlCharacterWhileParsingString, index),
-                                };
-                            }
-                            // no stop character in this chunk, continue to the next chunk
-                            break;
-                        }
+        let ascii_mask = mask_to_u64(string_ascii_mask(byte_vec));
+        if ascii_mask == 0 {
+            index += SIMD_STEP;
+        } else {
+            // this chunk contains a special character
+            let pos = (ascii_mask.trailing_zeros() / 4) as usize;
+            let next = unsafe { data.get_unchecked(index + pos) };
+            match &CHAR_TYPE[*next as usize] {
+                CharType::Quote => return Ok((StringChunk::StringEnd, ascii_only, index + pos)),
+                CharType::Backslash => return Ok((StringChunk::Backslash, ascii_only, index + pos)),
+                CharType::ControlChar => return json_err!(ControlCharacterWhileParsingString, index + pos),
+                CharType::Other => {
+                    // non-ascii character: use the mask to jump over the rest of the
+                    // chunk instead of scanning it byte-by-byte
+                    ascii_only = false;
+                    let stop_mask = mask_to_u64(string_stop_mask(byte_vec));
+                    if stop_mask != 0 {
+                        let stop_pos = (stop_mask.trailing_zeros() / 4) as usize;
+                        index += stop_pos;
+                        return match byte_chunk[stop_pos] {
+                            b'"' => Ok((StringChunk::StringEnd, false, index)),
+                            b'\\' => Ok((StringChunk::Backslash, false, index)),
+                            _ => json_err!(ControlCharacterWhileParsingString, index),
+                        };
                     }
+                    // no stop character in this chunk, continue to the next chunk
+                    index += SIMD_STEP;
                 }
             }
         }
-        index += SIMD_STEP;
     }
     // we got near the end of the string, fall back to the slow path
     super::fallback_string::decode_string_chunk(data, index, ascii_only, allow_partial)

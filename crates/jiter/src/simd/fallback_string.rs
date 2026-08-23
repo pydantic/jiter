@@ -32,7 +32,7 @@ pub(crate) fn decode_string_chunk(
 // https://github.com/serde-rs/json/blob/ebaf61709aba7a3f2429a5d95a694514f180f565/src/read.rs#L787-L811
 // this helps the fast path by telling us if something is ascii or not, it also simplifies
 // CharType below by only requiring 4 options in that enum
-pub(crate) static JSON_ASCII: [bool; 256] = {
+static JSON_ASCII: [bool; 256] = {
     const CT: bool = false; // control character \x00..=\x1F
     const QU: bool = false; // quote \x22
     const BS: bool = false; // backslash \x5C
