@@ -74,6 +74,7 @@ fn test_cache_into() {
 fn test_pystring_ascii_new() {
     let json = "100abc";
     Python::attach(|py| {
+        // SAFETY: `json` contains only ASCII characters.
         let s = unsafe { pystring_ascii_new(py, json) };
         assert_eq!(s.to_string(), "100abc");
     });

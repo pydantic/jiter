@@ -188,10 +188,12 @@ impl<StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: MaybeP
 
     fn parse_object<'py>(&mut self, py: Python<'py>, dict: &Bound<'py, PyDict>) -> JsonResult<()> {
         let set_item = |key: Bound<'py, PyString>, value: Bound<'py, PyAny>| {
+            // SAFETY: all pointers come from live `Bound` objects, the GIL is held, and
+            // `PyDict_SetItem` does not steal references to the key or value.
             let r = unsafe { ffi::PyDict_SetItem(dict.as_ptr(), key.as_ptr(), value.as_ptr()) };
-            // AFAIK this shouldn't happen since the key will always be a string  which is hashable
-            // we panic here rather than returning a result and using `?` below as it's up to 14% faster
-            // presumably because there are fewer branches
+            // The key is always a hashable string, so this can only realistically fail on allocation.
+            // We panic rather than returning a result and using `?` below as it's up to 14% faster,
+            // presumably because there are fewer branches.
             assert_ne!(r, -1, "PyDict_SetItem failed");
         };
         let mut check_keys = KeyCheck::default();
