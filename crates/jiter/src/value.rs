@@ -138,6 +138,123 @@ impl<'j> JsonValue<'j> {
         static EMPTY_OBJECT: OnceLock<JsonObject<'static>> = OnceLock::new();
         JsonValue::Object(EMPTY_OBJECT.get_or_init(|| Arc::new(Vec::new())).clone())
     }
+
+    /// Returns `true` if the `JsonValue` is `Null`.
+    #[inline]
+    pub fn is_null(&self) -> bool {
+        matches!(self, Self::Null)
+    }
+
+    /// Returns `true` if the `JsonValue` is a `Bool`.
+    #[inline]
+    pub fn is_boolean(&self) -> bool {
+        matches!(self, Self::Bool(_))
+    }
+
+    /// If the `JsonValue` is a `Bool`, returns the associated `bool`.
+    #[inline]
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            Self::Bool(b) => Some(*b),
+            _ => None,
+        }
+    }
+
+    /// Returns `true` if the `JsonValue` is an `Int`, `BigInt`, or `Float`.
+    #[inline]
+    pub fn is_number(&self) -> bool {
+        match self {
+            Self::Int(_) | Self::Float(_) => true,
+            #[cfg(feature = "num-bigint")]
+            Self::BigInt(_) => true,
+            _ => false,
+        }
+    }
+
+    /// Returns `true` if the `JsonValue` is an `Int`.
+    #[inline]
+    pub fn is_int(&self) -> bool {
+        matches!(self, Self::Int(_))
+    }
+
+    /// If the `JsonValue` is an `Int`, returns the associated `i64`.
+    #[inline]
+    pub fn as_i64(&self) -> Option<i64> {
+        match self {
+            Self::Int(i) => Some(*i),
+            _ => None,
+        }
+    }
+
+    /// Returns `true` if the `JsonValue` is a `Float`.
+    #[inline]
+    pub fn is_float(&self) -> bool {
+        matches!(self, Self::Float(_))
+    }
+
+    /// If the `JsonValue` is a `Float` or `Int`, returns the numeric value as an `f64`.
+    #[inline]
+    pub fn as_f64(&self) -> Option<f64> {
+        match self {
+            Self::Float(f) => Some(*f),
+            Self::Int(i) => Some(*i as f64),
+            _ => None,
+        }
+    }
+
+    /// Returns `true` if the `JsonValue` is a `Str`.
+    #[inline]
+    pub fn is_string(&self) -> bool {
+        matches!(self, Self::Str(_))
+    }
+
+    /// If the `JsonValue` is a `Str`, returns the associated string slice.
+    #[inline]
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            Self::Str(s) => Some(s.as_ref()),
+            _ => None,
+        }
+    }
+
+    /// Returns `true` if the `JsonValue` is an `Array`.
+    #[inline]
+    pub fn is_array(&self) -> bool {
+        matches!(self, Self::Array(_))
+    }
+
+    /// If the `JsonValue` is an `Array`, returns a reference to the `JsonArray`.
+    #[inline]
+    pub fn as_array(&self) -> Option<&JsonArray<'j>> {
+        match self {
+            Self::Array(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    /// Returns `true` if the `JsonValue` is an `Object`.
+    #[inline]
+    pub fn is_object(&self) -> bool {
+        matches!(self, Self::Object(_))
+    }
+
+    /// If the `JsonValue` is an `Object`, returns a reference to the `JsonObject`.
+    #[inline]
+    pub fn as_object(&self) -> Option<&JsonObject<'j>> {
+        match self {
+            Self::Object(o) => Some(o),
+            _ => None,
+        }
+    }
+
+    /// If the `JsonValue` is an `Object`, returns a reference to the value corresponding to the key.
+    #[inline]
+    pub fn get(&self, key: &str) -> Option<&JsonValue<'j>> {
+        match self {
+            Self::Object(o) => o.iter().find(|(k, _)| k == key).map(|(_, v)| v),
+            _ => None,
+        }
+    }
 }
 
 fn value_static(v: JsonValue<'_>) -> JsonValue<'static> {
