@@ -6,6 +6,8 @@ Before running benchmarks, make sure to generate `big.json`:
 python3 ./crates/jiter/benches/generate_big.py
 ```
 
+Set `JITER_BENCH_SEED` to reproduce the generated data. If it is unset, each invocation generates a new dataset.
+
 To run benchmarks, run:
 
 ```shell
