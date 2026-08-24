@@ -37,7 +37,7 @@ serde_json = { version = "1.0.87", features = [
 ] }
 serde = { version = "1.0.147", features = ["derive"] }
 pyo3 = { workspace = true, features = ["auto-initialize"] }
-codspeed-criterion-compat = "2.7.2"
+codspeed-criterion-compat = "5.0.1"
 proptest = "1.4.0"
 
 [build-dependencies]
@@ -53,6 +53,10 @@ required-features = ["serde"]
 
 [[bench]]
 name = "main"
+harness = false
+
+[[bench]]
+name = "json_cases"
 harness = false
 
 [[bench]]

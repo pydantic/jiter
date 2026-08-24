@@ -36,8 +36,10 @@ use std::arch::aarch64::{
 };
 use crate::JsonResult;
 
-use crate::number_decoder::{IntChunk, decode_int_chunk_fallback};
+use crate::number_decoder::IntChunk;
 use crate::string_decoder::StringChunk;
+
+use super::fallback_int::decode_int_chunk;
 
 type SimdVecu8_16 = uint8x16_t;
 type SimdVecu16_8 = uint16x8_t;
@@ -72,7 +74,7 @@ const ALT_MUL_U16_8: SimdVecu16_8 = simd_const!([100u16, 1u16, 100u16, 1u16, 100
 const ALT_MUL_U32_4: SimdVecu32_4 = simd_const!([10000u32, 1u32, 10000u32, 1u32]);
 
 #[inline(always)]
-pub(crate) fn decode_int_chunk(data: &[u8], index: usize) -> (IntChunk, usize) {
+pub(crate) fn decode_int_chunk_big(data: &[u8], index: usize) -> (IntChunk, usize) {
     if let Some(byte_chunk) = data.get(index..index + SIMD_STEP) {
         let byte_vec = load_slice(byte_chunk);
 
@@ -99,7 +101,7 @@ pub(crate) fn decode_int_chunk(data: &[u8], index: usize) -> (IntChunk, usize) {
         }
     } else {
         // we got near the end of the string, fall back to the slow path
-        decode_int_chunk_fallback(data, index, 0)
+        decode_int_chunk(data, index, 0)
     }
 }
 
@@ -214,7 +216,7 @@ pub(crate) fn decode_string_chunk(
             // this chunk contains either a stop character or a non-ascii character
             let a: [u8; 16] = unsafe { transmute(byte_vec) };
             #[allow(clippy::redundant_else)]
-            if let Some(r) = StringChunk::decode_array(a, &mut index, ascii_only) {
+            if let Some(r) = super::fallback_string::decode_array(a, &mut index, ascii_only) {
                 return r;
             } else {
                 ascii_only = false;
@@ -222,7 +224,7 @@ pub(crate) fn decode_string_chunk(
         }
     }
     // we got near the end of the string, fall back to the slow path
-    StringChunk::decode_fallback(data, index, ascii_only, allow_partial)
+    super::fallback_string::decode_string_chunk(data, index, ascii_only, allow_partial)
 }
 
 #[rustfmt::skip]

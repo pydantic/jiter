@@ -1,6 +1,5 @@
 .DEFAULT_GOAL := all
-python_sources = crates/jiter/benches/generate_big.py crates/jiter-python/bench.py crates/jiter-python/jiter.pyi crates/jiter-python/tests/test_jiter.py
-
+python_sources = crates/jiter/benches/generate_big.py crates/jiter/benches/criterion_table.py crates/jiter-python/bench.py crates/jiter-python/jiter.pyi crates/jiter-python/tests/test_jiter.py
 
 .PHONY: .uv
 .uv:
@@ -15,12 +14,19 @@ format:
 lint:
 	@cargo clippy --version
 	cargo clippy -- -D warnings
+	# build without any simd arch active
+	cargo clippy --target wasm32-wasip1 -p jiter -- -D warnings
 	cargo doc
 
 .PHONY: lint-python
 lint-python: .uv
 	uv run ruff check $(python_sources)
 	uv run ruff format --check $(python_sources)
+
+.PHONY: format-python
+format-python: .uv
+	uv run ruff format $(python_sources)
+	uv run ruff check --fix --fix-only $(python_sources)
 
 .PHONY: test
 test:
@@ -49,6 +55,16 @@ python-bench: python-dev-release
 .PHONY: bench
 bench:
 	cargo bench -p jiter -F python
+
+.PHONY: bench-table-display
+bench-table-display:
+	uv run crates/jiter/benches/criterion_table.py
+
+.PHONY: bench-table
+bench-table:
+	rm -rf target/criterion
+	$(MAKE) bench
+	$(MAKE) bench-table-display
 
 .PHONY: fuzz
 fuzz:

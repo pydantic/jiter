@@ -9,7 +9,10 @@ use std::ops::Range;
 
 use lexical_parse_float::{FromLexicalWithOptions, Options as ParseFloatOptions, format as lexical_format};
 
-use crate::errors::{JsonError, JsonResult, json_err, json_error};
+use crate::{
+    errors::{JsonError, JsonResult, json_err, json_error},
+    simd::{decode_int_chunk_big, decode_int_chunk_small},
+};
 
 const MAX_INT_DIGITS: usize = 4300;
 
@@ -341,44 +344,13 @@ pub(crate) enum IntChunk {
 impl IntChunk {
     #[inline(always)]
     fn parse_small(data: &[u8], index: usize, value: u64) -> (Self, usize) {
-        decode_int_chunk_fallback(data, index, value)
+        decode_int_chunk_small(data, index, value)
     }
 
     #[inline(always)]
     fn parse_big(data: &[u8], index: usize) -> (Self, usize) {
-        // TODO x86_64: use simd
-
-        #[cfg(target_arch = "aarch64")]
-        {
-            crate::simd_aarch64::decode_int_chunk(data, index)
-        }
-        #[cfg(not(target_arch = "aarch64"))]
-        {
-            decode_int_chunk_fallback(data, index, 0)
-        }
+        decode_int_chunk_big(data, index)
     }
-}
-
-/// Turns out this is faster than fancy bit manipulation, see
-/// https://github.com/Alexhuszagh/rust-lexical/blob/main/lexical-parse-integer/docs/Algorithm.md
-/// for some context
-#[inline(always)]
-pub(crate) fn decode_int_chunk_fallback(data: &[u8], mut index: usize, mut value: u64) -> (IntChunk, usize) {
-    // i64::MAX = 9223372036854775807 (19 chars) - so 18 chars is always valid as an i64
-    for _ in 0..18 {
-        if let Some(digit) = data.get(index) {
-            if INT_CHAR_MAP[*digit as usize] {
-                // we use wrapping add to avoid branching - we know the value cannot wrap
-                value = value.wrapping_mul(10).wrapping_add((digit & 0x0f) as u64);
-                index += 1;
-                continue;
-            } else if matches!(digit, b'.' | b'e' | b'E') {
-                return (IntChunk::Float, index);
-            }
-        }
-        return (IntChunk::Done(value), index);
-    }
-    (IntChunk::Ongoing(value), index)
 }
 
 pub(crate) static INT_CHAR_MAP: [bool; 256] = {

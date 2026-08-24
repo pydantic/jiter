@@ -10,6 +10,11 @@ on:
 
 permissions: {}
 
+env:
+  # the json-cases corpus the json_cases test and benchmark run over; pinned so that a commit there
+  # can't turn this repository's CI red, and so the benchmark numbers stay comparable between runs
+  JSON_CASES_REF: fa6c17fbabf775b8099a0ed5f32cfc733700cedc # 2026-08-19, `size` and `tags` in cases.json
+
 jobs:
   resolve:
     runs-on: ubuntu-latest
@@ -47,6 +52,8 @@ jobs:
     env:
       RUNS_ON: ${{ matrix.runs-on }}-latest
       RUST_VERSION: ${{ matrix.rust-version }}
+      # the corpus the json_cases tests run over, checked out and built below
+      JSON_CASES: ${{ github.workspace }}/json-cases
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -72,13 +79,32 @@ jobs:
         with:
           lookup-only: false # zizmor: ignore[cache-poisoning] -- Job does not produce release artifacts and does not have sensitive permissions
 
-      - uses: taiki-e/install-action@1ed3272338f573e042a2e6bca3893aa19f43b47a # v2.71.3
+      - uses: taiki-e/install-action@5b4d68e2e660441203ab128a23676f1e4faf1532 # v2.86.3
         with:
           tool: cargo-llvm-cov
 
+      - name: check out the json-cases corpus
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: samuelcolvin/json-cases
+          ref: ${{ env.JSON_CASES_REF }}
+          path: json-cases
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v8.0.0
+        with:
+          enable-cache: false # the corpus generator has no dependencies, there is nothing to cache
+
+      # cases/ and cases.json are gitignored build artifacts, so a fresh checkout has to build
+      # them; the indexer is a separate crate, built with stable rather than this job's toolchain
+      - name: build the json-cases corpus
+        run: make -C json-cases build
+        env:
+          RUSTUP_TOOLCHAIN: stable
+
       - name: install cargo-careful
         if: matrix.rust-version == 'nightly'
-        uses: taiki-e/install-action@1ed3272338f573e042a2e6bca3893aa19f43b47a # v2.71.3
+        uses: taiki-e/install-action@5b4d68e2e660441203ab128a23676f1e4faf1532 # v2.86.3
         with:
           tool: cargo-careful
 
@@ -86,6 +112,13 @@ jobs:
         run: cargo careful t -F python
 
       - run: cargo llvm-cov -F python --codecov --output-path codecov.json
+        env:
+          RUST_BACKTRACE: 1
+
+      - run: uv run crates/jiter/benches/generate_big.py
+
+        # since not all benchmarks are run with codspeed, we test them all there
+      - run: cargo bench -p jiter -- --test
         env:
           RUST_BACKTRACE: 1
 
@@ -128,7 +161,7 @@ jobs:
         with:
           lookup-only: false # zizmor: ignore[cache-poisoning] -- Job does not produce release artifacts and does not have sensitive permissions
 
-      - uses: taiki-e/install-action@1ed3272338f573e042a2e6bca3893aa19f43b47a # v2.71.3
+      - uses: taiki-e/install-action@5b4d68e2e660441203ab128a23676f1e4faf1532 # v2.86.3
         with:
           tool: cargo-llvm-cov
 
@@ -157,7 +190,13 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
 
   bench:
-    runs-on: ubuntu-latest
+    runs-on: codspeed-macro
+
+    env:
+      # the corpus the json_cases benchmarks run over, checked out and built below; without it they
+      # register nothing and CodSpeed sees only the benchmarks in main.rs
+      JSON_CASES: ${{ github.workspace }}/json-cases
+
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -168,6 +207,14 @@ jobs:
           python-version: '3.13'
           enable-cache: true # zizmor: ignore[cache-poisoning] -- Job does not produce release artifacts and does not have sensitive permissions
 
+      - name: check out the json-cases corpus
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: samuelcolvin/json-cases
+          ref: ${{ env.JSON_CASES_REF }}
+          path: json-cases
+          persist-credentials: false
+
       - uses: moonrepo/setup-rust@abb2d32350334249b178c401e5ec5836e0cd88d3 # v1.3.0
         with:
           channel: stable
@@ -176,13 +223,44 @@ jobs:
 
       - run: uv run crates/jiter/benches/generate_big.py
 
+      # cases/ and cases.json are gitignored build artifacts, so a fresh checkout has to build them
+      - name: build the json-cases corpus
+        run: make -C json-cases build
+
       - run: cargo codspeed build -F python -p jiter
 
-      - uses: CodSpeedHQ/action@d872884a306dd4853acf0f584f4b706cf0cc72a2 # v4.13.0
+      - uses: CodSpeedHQ/action@4296e51e7041e24dadb86d1d6e8b9320d223dbe8 # v5.0.3
         with:
           run: cargo codspeed run
-          mode: simulation
+          mode: walltime
           token: ${{ secrets.CODSPEED_TOKEN }}
+
+  test-latest-deps:
+    name: test with latest dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: set up python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.13'
+
+      # no release versioning, see https://github.com/dtolnay/rust-toolchain/issues/180
+      - uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9
+        with:
+          toolchain: stable
+
+      # resolve dependencies fresh, as they are for anyone adding jiter to their
+      # project; every other job builds against the committed Cargo.lock
+      - run: rm Cargo.lock
+
+      - run: cargo test -F python
+        env:
+          RUST_BACKTRACE: 1
+          JSON_CASES_SKIP: '1'
 
   fuzz:
     name: fuzz on ${{ matrix.runs-on }}
@@ -365,7 +443,7 @@ jobs:
           # 3.9 can't be run on the arm hardware for PGO
           - os: macos
             target: x86_64
-            interpreter: 3.9 3.10 3.11 3.12 3.13 3.14 graalpy3.11 graalpy3.12
+            interpreter: 3.9 3.10 3.11 3.12 3.13 3.14 3.15 graalpy3.11 graalpy3.12
           - os: macos
             target: aarch64
             interpreter: 3.9 graalpy3.11 graalpy3.12
@@ -374,7 +452,7 @@ jobs:
           - os: windows
             target: aarch64
             runs-on: windows-11-arm
-            interpreter: '3.11 3.12 3.13 3.14 3.14t'
+            interpreter: '3.11 3.12 3.13 3.14 3.14t 3.15 3.15t'
 
     runs-on: ${{ matrix.runs-on || format('{0}-latest', (matrix.os == 'linux' && 'ubuntu') || matrix.os)  }}
     steps:
@@ -397,7 +475,7 @@ jobs:
         with:
           target: ${{ matrix.target }}
           manylinux: ${{ matrix.manylinux }}
-          args: --release --out dist --interpreter ${{ matrix.interpreter || '3.9 3.10 3.11 3.12 3.13 3.14 3.14t' }}
+          args: --release --out dist --interpreter ${{ matrix.interpreter || '3.9 3.10 3.11 3.12 3.13 3.14 3.14t 3.15 3.15t' }}
           rust-toolchain: stable
           working-directory: crates/jiter-python
 
@@ -420,7 +498,7 @@ jobs:
       fail-fast: false
       matrix:
         platform: [{os: linux, runs-on: ubuntu-latest}, {os: linux_aarch64, runs-on: ubuntu-24.04-arm}, {os: windows, runs-on: windows-latest}, {os: macos, runs-on: macos-latest}]
-        interpreter: ['3.9', '3.10', '3.11', '3.12', '3.13', '3.14', '3.14t']
+        interpreter: ['3.9', '3.10', '3.11', '3.12', '3.13', '3.14', '3.14t', '3.15', '3.15t']
         exclude:
           # macos arm only supported from 3.10 and up
           - platform:
@@ -625,7 +703,7 @@ jobs:
         id: setup-python
         uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v8.0.0
         with:
-          python-version: '3.13'
+          python-version: '3.14'
           enable-cache: true # zizmor: ignore[cache-poisoning] -- Job does not produce release artifacts and does not have sensitive permissions
 
       - name: get dist artifacts
@@ -684,7 +762,7 @@ jobs:
   # https://github.com/marketplace/actions/alls-green#why used for branch protection checks
   check:
     if: always()
-    needs: [test, test-python, bench, fuzz, fuzz-skip, lint]
+    needs: [test, test-latest-deps, test-python, bench, fuzz, fuzz-skip, lint]
     runs-on: ubuntu-latest
     steps:
       - name: Decide whether the needed jobs succeeded or failed
@@ -719,7 +797,7 @@ jobs:
       - test-builds-arch
       - test-builds-os
       - build-sdist
-      - build-wasm-emscripten
+      - test-pyemscripten
     if: success() && startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     environment: release-python
