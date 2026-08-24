@@ -6,7 +6,7 @@ from random import Random
 
 THIS_DIR = Path(__file__).parent
 
-random = Random(os.environ.get("JITER_BENCH_SEED")).random
+random = Random(os.environ.get('JITER_BENCH_SEED')).random
 
 data = []
 no_strings = True
