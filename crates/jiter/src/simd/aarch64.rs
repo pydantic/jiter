@@ -203,36 +203,20 @@ const BACKSLASH_16: SimdVecu8_16 = simd_const!([b'\\'; 16]);
 const CONTROL_16: SimdVecu8_16 = simd_const!([32u8; 16]);
 const ASCII_MAX_16: SimdVecu8_16 = simd_const!([127u8; 16]);
 
+#[inline(always)]
 pub(crate) fn decode_string_chunk(
-    data: &[u8],
-    index: usize,
-    ascii_only: bool,
-    allow_partial: bool,
-) -> JsonResult<(StringChunk, bool, usize)> {
-    #[cfg(target_arch = "aarch64")]
-    {
-        // SAFETY: all supported aarch64 targets support neon intrinsics
-        unsafe { decode_string_chunk_fast(data, index, ascii_only, allow_partial) }
-    }
-    #[cfg(not(target_arch = "aarch64"))]
-    {
-        super::fallback_string::decode_string_chunk(data, index, ascii_only, allow_partial)
-    }
-}
-
-#[target_feature(enable = "neon")]
-fn decode_string_chunk_fast(
     data: &[u8],
     mut index: usize,
     mut ascii_only: bool,
     allow_partial: bool,
 ) -> JsonResult<(StringChunk, bool, usize)> {
-    #[cfg(target_feature = "neon")]
+    #[cfg(target_arch = "aarch64")]
     while let Some(byte_chunk) = data.get(index..index + SIMD_STEP) {
         let byte_chunk: &[u8; SIMD_STEP] = byte_chunk.try_into().unwrap();
         let byte_vec = load_slice(byte_chunk);
 
-        let ascii_mask = string_ascii_mask(byte_vec);
+        // SAFETY: all supported aarch64 targets support neon intrinsics
+        let ascii_mask = unsafe { string_ascii_mask(byte_vec) };
         if is_zero(ascii_mask) {
             // this chunk is just ascii, continue to the next chunk
             index += SIMD_STEP;

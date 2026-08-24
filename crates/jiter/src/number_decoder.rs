@@ -248,7 +248,7 @@ impl IntParse {
         };
 
         index += 1;
-        let (chunk, new_index) = IntChunk::parse_small(data, index, first_value);
+        let (chunk, new_index) = decode_int_chunk_small(data, index, first_value);
 
         let ongoing: u64 = match chunk {
             IntChunk::Ongoing(value) => value,
@@ -306,7 +306,7 @@ impl IntParse {
             index = new_index;
 
             loop {
-                let (chunk, new_index) = IntChunk::parse_big(data, index);
+                let (chunk, new_index) = decode_int_chunk_big(data, index);
                 if (new_index - start) > 4300 {
                     return json_err!(NumberOutOfRange, start + 4301);
                 }
@@ -335,18 +335,6 @@ pub(crate) enum IntChunk {
     Ongoing(u64),
     Done(u64),
     Float,
-}
-
-impl IntChunk {
-    #[inline(always)]
-    fn parse_small(data: &[u8], index: usize, value: u64) -> (Self, usize) {
-        decode_int_chunk_small(data, index, value)
-    }
-
-    #[inline(always)]
-    fn parse_big(data: &[u8], index: usize) -> (Self, usize) {
-        decode_int_chunk_big(data, index)
-    }
 }
 
 pub(crate) static INT_CHAR_MAP: [bool; 256] = {
@@ -460,7 +448,7 @@ impl AbstractNumberDecoder for NumberRange {
             return Ok((Self::int(start..index), index));
         }
         loop {
-            let (chunk, new_index) = IntChunk::parse_big(data, index);
+            let (chunk, new_index) = decode_int_chunk_big(data, index);
             if (new_index - start) > 4300 {
                 return json_err!(NumberOutOfRange, start + 4301);
             }
