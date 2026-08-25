@@ -85,20 +85,13 @@ pub(crate) fn decode_int_chunk_big(data: &[u8], index: usize) -> (IntChunk, usiz
         let byte_vec = load_slice(byte_chunk);
 
         let digit_mask = get_digit_mask(byte_vec);
-        let digit_mask_array: [u64; 2] = unsafe { transmute(digit_mask) };
-        if digit_mask_array[0] == 0 && digit_mask_array[1] == 0 {
+        if is_zero(digit_mask) {
             // all lanes are digits, parse the full vector
             let value = unsafe { full_calc(byte_vec, 16) };
             (IntChunk::Ongoing(value), index + SIMD_STEP)
         } else {
             // some lanes are not digits, transmute to a pair of u64 and find the first non-digit
-            let last_digit = if digit_mask_array[0] != 0 {
-                // non-digit in the first 8 bytes
-                digit_mask_array[0].trailing_zeros() / 8
-            } else {
-                digit_mask_array[1].trailing_zeros() / 8 + 8
-            };
-
+            let last_digit = find_end(digit_mask);
             let index = index + last_digit as usize;
             if next_is_float(data, index) {
                 (IntChunk::Float, index)
@@ -290,6 +283,22 @@ fn string_stop_mask(byte_vec: SimdVecu8_16) -> SimdVecu8_16 {
             )
         )
     }
+}
+
+fn find_end(digit_mask: SimdVecu8_16) -> u32 {
+    let t: [u64; 2] = unsafe { transmute(digit_mask) };
+    if t[0] != 0 {
+        // non-digit in the first 8 bytes
+        t[0].trailing_zeros() / 8
+    } else {
+        t[1].trailing_zeros() / 8 + 8
+    }
+}
+
+/// return true if all bytes are zero
+fn is_zero(vec: SimdVecu8_16) -> bool {
+    let t: [u64; 2] = unsafe { transmute(vec) };
+    t[0] == 0 && t[1] == 0
 }
 
 /// narrow a 16x8-bit comparison mask (each lane 0x00 or 0xFF) to a u64 where each byte becomes
