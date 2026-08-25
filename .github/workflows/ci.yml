@@ -11,6 +11,7 @@ on:
 permissions: {}
 
 env:
+  JITER_BENCH_SEED: '0'
   # the json-cases corpus the json_cases test and benchmark run over; pinned so that a commit there
   # can't turn this repository's CI red, and so the benchmark numbers stay comparable between runs
   JSON_CASES_REF: fa6c17fbabf775b8099a0ed5f32cfc733700cedc # 2026-08-19, `size` and `tags` in cases.json
