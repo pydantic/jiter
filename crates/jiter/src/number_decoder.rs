@@ -274,10 +274,10 @@ impl IntParse {
 
         #[cfg(feature = "num-bigint")]
         {
-            #[cfg(target_arch = "aarch64")]
-            // in aarch64 we use a 128 bit registers - 16 bytes
+            #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
+            // with simd we use 128 bit registers - 16 bytes
             const ONGOING_CHUNK_MULTIPLIER: u64 = 10u64.pow(16);
-            #[cfg(not(target_arch = "aarch64"))]
+            #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
             // decode_int_chunk_fallback - we parse 18 bytes when the number is ongoing
             const ONGOING_CHUNK_MULTIPLIER: u64 = 10u64.pow(18);
 
