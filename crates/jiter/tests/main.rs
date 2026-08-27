@@ -1009,17 +1009,36 @@ number_bytes! {
 
 #[cfg(feature = "num-bigint")]
 #[test]
-fn test_4300_int() {
-    let json = (0..4300).map(|_| "9".to_string()).collect::<String>();
-    let bytes = json.as_bytes();
-    let value = JsonValue::parse(bytes, false).unwrap();
-    let expected_big_int = BigInt::from_str(&json).unwrap();
-    match value {
-        JsonValue::BigInt(v) => {
-            assert_eq!(v, expected_big_int);
+fn test_int_digit_limit() {
+    for sign in ["", "-"] {
+        let json = format!("{sign}{}", "9".repeat(4300));
+        let bytes = json.as_bytes();
+        let value = JsonValue::parse(bytes, false).unwrap();
+        let expected_big_int = BigInt::from_str(&json).unwrap();
+        match value {
+            JsonValue::BigInt(v) => {
+                assert_eq!(v, expected_big_int);
+            }
+            _ => panic!("expected big int, got {value:?}"),
         }
-        _ => panic!("expected array, got {value:?}"),
+
+        let mut jiter = Jiter::new(bytes);
+        assert_eq!(jiter.next_number_bytes().unwrap(), bytes);
+        jiter.finish().unwrap();
     }
+
+    let rejected = format!("-{}", "9".repeat(4301));
+    let error = JsonValue::parse(rejected.as_bytes(), false).unwrap_err();
+    assert_eq!(error.error_type, JsonErrorType::NumberOutOfRange);
+    assert_eq!(error.index, 4302);
+
+    let mut jiter = Jiter::new(rejected.as_bytes());
+    let error = jiter.next_number_bytes().unwrap_err();
+    assert_eq!(
+        error.error_type,
+        JiterErrorType::JsonError(JsonErrorType::NumberOutOfRange)
+    );
+    assert_eq!(error.index, 4302);
 }
 
 #[cfg(feature = "num-bigint")]

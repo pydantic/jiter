@@ -14,6 +14,8 @@ use crate::{
     simd::{decode_int_chunk_big, decode_int_chunk_small},
 };
 
+const MAX_INT_DIGITS: usize = 4300;
+
 pub trait AbstractNumberDecoder: Sized {
     fn decode(data: &[u8], index: usize, first: u8, allow_inf_nan: bool) -> JsonResult<(Self, usize)>;
 }
@@ -307,8 +309,10 @@ impl IntParse {
 
             loop {
                 let (chunk, new_index) = IntChunk::parse_big(data, index);
-                if (new_index - start) > 4300 {
-                    return json_err!(NumberOutOfRange, start + 4301);
+                let consumed_len = new_index - start;
+                if consumed_len > MAX_INT_DIGITS && (positive || consumed_len > MAX_INT_DIGITS + 1) {
+                    let error_index = start + MAX_INT_DIGITS + if positive { 1 } else { 2 };
+                    return json_err!(NumberOutOfRange, error_index);
                 }
                 match chunk {
                     IntChunk::Ongoing(value) => {
@@ -461,8 +465,10 @@ impl AbstractNumberDecoder for NumberRange {
         }
         loop {
             let (chunk, new_index) = IntChunk::parse_big(data, index);
-            if (new_index - start) > 4300 {
-                return json_err!(NumberOutOfRange, start + 4301);
+            let consumed_len = new_index - start;
+            if consumed_len > MAX_INT_DIGITS && (positive || consumed_len > MAX_INT_DIGITS + 1) {
+                let error_index = start + MAX_INT_DIGITS + if positive { 1 } else { 2 };
+                return json_err!(NumberOutOfRange, error_index);
             }
             #[allow(clippy::single_match_else)]
             match chunk {
