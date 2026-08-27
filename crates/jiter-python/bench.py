@@ -1,5 +1,6 @@
 import argparse
 import json
+import math
 import timeit
 from pathlib import Path
 
@@ -86,6 +87,7 @@ def main():
 
     parsers = [*PARSERS.keys()] if 'all' in args.parsers else args.parsers
     cases = [*CASES.keys()] if args.case == 'all' else [args.case]
+    slowdowns: dict[str, list[float]] = {parser: [] for parser in parsers}
 
     for name in cases:
         print(f'Case: {name}')
@@ -103,7 +105,30 @@ def main():
         print(f'{"-" * 13}|{"-" * 12}|{"-" * 9}')
         for name, time in times:
             print(f'{name:>12} | {time * 1_000_000:10.2f} | {time / best:8.2f}')
+            slowdowns[name].append(time / best)
         print()
+
+    if len(cases) > 1:
+        print_summary(slowdowns)
+
+
+def print_summary(slowdowns: dict[str, list[float]]) -> None:
+    rows = []
+    for parser, ratios in slowdowns.items():
+        geomean = math.exp(sum(map(math.log, ratios)) / len(ratios))
+        rows.append((parser, geomean, max(ratios), sum(r == 1 for r in ratios)))
+    rows.sort(key=lambda r: r[1])
+    best = rows[0][1]
+
+    print('Summary (slowdown relative to the fastest package in each case):')
+    print(
+        f'{"rank":>4} | {"package":>12} | {"geomean":>8} | {"vs best":>8} | {"worst":>8} | {"wins":>4}'
+    )
+    print(f'{"-" * 5}|{"-" * 14}|{"-" * 10}|{"-" * 10}|{"-" * 10}|{"-" * 5}')
+    for rank, (parser, geomean, worst, wins) in enumerate(rows, start=1):
+        print(
+            f'{rank:>4} | {parser:>12} | {geomean:8.2f} | {geomean / best:8.2f} | {worst:8.2f} | {wins:>4}'
+        )
 
 
 if __name__ == '__main__':
