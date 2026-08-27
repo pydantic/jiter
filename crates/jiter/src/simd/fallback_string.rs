@@ -28,37 +28,11 @@ pub(crate) fn decode_string_chunk(
     }
 }
 
-/// decode an array (generally from SIMD) return the result of the chunk, or none if the non-ascii character
-/// is just > \x7F (127)
-#[cfg(target_arch = "aarch64")]
-#[inline(always)]
-pub(crate) fn decode_array<const T: usize>(
-    data: [u8; T],
-    index: &mut usize,
-    ascii_only: bool,
-) -> Option<JsonResult<(StringChunk, bool, usize)>> {
-    for u8_char in data {
-        if !JSON_ASCII[u8_char as usize] {
-            return match &CHAR_TYPE[u8_char as usize] {
-                CharType::Quote => Some(Ok((StringChunk::StringEnd, ascii_only, *index))),
-                CharType::Backslash => Some(Ok((StringChunk::Backslash, ascii_only, *index))),
-                CharType::ControlChar => Some(json_err!(ControlCharacterWhileParsingString, *index)),
-                CharType::Other => {
-                    *index += 1;
-                    None
-                }
-            };
-        }
-        *index += 1;
-    }
-    unreachable!("error decoding SIMD string chunk")
-}
-
 // taken serde-rs/json but altered
 // https://github.com/serde-rs/json/blob/ebaf61709aba7a3f2429a5d95a694514f180f565/src/read.rs#L787-L811
 // this helps the fast path by telling us if something is ascii or not, it also simplifies
 // CharType below by only requiring 4 options in that enum
-static JSON_ASCII: [bool; 256] = {
+pub(crate) static JSON_ASCII: [bool; 256] = {
     const CT: bool = false; // control character \x00..=\x1F
     const QU: bool = false; // quote \x22
     const BS: bool = false; // backslash \x5C
@@ -85,7 +59,7 @@ static JSON_ASCII: [bool; 256] = {
     ]
 };
 
-enum CharType {
+pub(crate) enum CharType {
     // control character \x00..=\x1F
     ControlChar,
     // quote \x22
@@ -98,7 +72,7 @@ enum CharType {
 
 // Lookup table of bytes that must be escaped. A value of true at index i means
 // that byte i requires an escape sequence in the input.
-static CHAR_TYPE: [CharType; 256] = {
+pub(crate) static CHAR_TYPE: [CharType; 256] = {
     const CT: CharType = CharType::ControlChar;
     const QU: CharType = CharType::Quote;
     const BS: CharType = CharType::Backslash;

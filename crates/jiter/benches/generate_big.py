@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 import json
+import os
 from pathlib import Path
-from random import random
+from random import Random
 
 THIS_DIR = Path(__file__).parent
+
+random = Random(os.environ.get('JITER_BENCH_SEED')).random
 
 data = []
 no_strings = True

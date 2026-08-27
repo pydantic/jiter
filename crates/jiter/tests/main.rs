@@ -1705,6 +1705,79 @@ fn test_unicode_roundtrip() {
 }
 
 #[test]
+fn test_string_simd_chunks_all_offsets() {
+    // exercise the SIMD string decoder: place non-ascii characters, escapes and the string end
+    // at every offset relative to the 16-byte SIMD chunks
+    for pad in 0..40 {
+        let prefix = "a".repeat(pad);
+        for insert in ["é", "±", "中", "💩", "中中中中", r"\n", r#"\""#, r"中", ""] {
+            for suffix_len in [0, 1, 20] {
+                let suffix = "b".repeat(suffix_len);
+                let json = format!("\"{prefix}{insert}{suffix}\"");
+                let expected: String = serde_json::from_str(&json).unwrap();
+                let value = JsonValue::parse(json.as_bytes(), false).unwrap();
+                let JsonValue::Str(s) = value else {
+                    panic!("expected string, got {value:?}")
+                };
+                assert_eq!(s.as_ref(), expected, "json: {json}");
+            }
+        }
+        // a control character should error at the right position, whatever the offset
+        let mut json_bytes = format!("\"{prefix}").into_bytes();
+        json_bytes.extend(*b"\x07a\"");
+        let err = JsonValue::parse(&json_bytes, false).unwrap_err();
+        assert_eq!(err.error_type, JsonErrorType::ControlCharacterWhileParsingString);
+        assert_eq!(err.index, pad + 1);
+    }
+}
+
+#[test]
+fn test_string_simd_chunks_partial() {
+    // the same as above in partial mode, truncating at every byte: the SIMD non-ascii branch
+    // skips a whole chunk at a time, so the tail it leaves to the fallback varies with the offset
+    for pad in 0..40 {
+        let prefix = "a".repeat(pad);
+        for insert in ["é", "中", "💩", "中中中中", r"\n"] {
+            let json = format!("\"{prefix}{insert}{}\"", "b".repeat(20));
+            let full: String = serde_json::from_str(&json).unwrap();
+            for cut in 1..=json.len() {
+                let value =
+                    JsonValue::parse_with_config(&json.as_bytes()[..cut], false, PartialMode::TrailingStrings).unwrap();
+                let JsonValue::Str(s) = value else {
+                    panic!("expected string, got {value:?}")
+                };
+                assert!(full.starts_with(s.as_ref()), "cut {cut} of {json}");
+            }
+        }
+    }
+}
+
+#[test]
+fn test_string_simd_stop_char_after_non_ascii() {
+    // a stop character sharing a SIMD chunk with a preceding non-ascii character, which the
+    // scan reaches via the mask rather than the byte-by-byte loop
+    for pad in 0..24 {
+        for lead in ["é", "中", "💩"] {
+            let prefix = lead.repeat(pad);
+
+            let json = format!("\"{prefix}\\n\"");
+            let expected: String = serde_json::from_str(&json).unwrap();
+            let value = JsonValue::parse(json.as_bytes(), false).unwrap();
+            let JsonValue::Str(s) = value else {
+                panic!("expected string, got {value:?}")
+            };
+            assert_eq!(s.as_ref(), expected, "json: {json}");
+
+            let mut json_bytes = format!("\"{prefix}").into_bytes();
+            json_bytes.extend(*b"\x07\"");
+            let err = JsonValue::parse(&json_bytes, false).unwrap_err();
+            assert_eq!(err.error_type, JsonErrorType::ControlCharacterWhileParsingString);
+            assert_eq!(err.index, prefix.len() + 1);
+        }
+    }
+}
+
+#[test]
 fn test_value_partial_array_on() {
     let json_bytes = br#"["string", true, null, 1, "foo"#;
     let value = JsonValue::parse_with_config(json_bytes, false, PartialMode::On).unwrap();
