@@ -12,7 +12,9 @@ use crate::errors::{DEFAULT_RECURSION_LIMIT, JsonError, JsonResult, json_err, js
 use crate::number_decoder::{AbstractNumberDecoder, NumberAny, NumberRange};
 use crate::parse::{Parser, Peek};
 use crate::py_lossless_float::{FloatMode, get_decimal_type};
-use crate::py_string_cache::{StringCacheAll, StringCacheKeys, StringCacheMode, StringMaybeCache, StringNoCache};
+use crate::py_string_cache::{
+    StringCacheAll, StringCacheGuard, StringCacheKeys, StringCacheMode, StringMaybeCache, StringNoCache,
+};
 use crate::string_decoder::{StringDecoder, Tape};
 use crate::{JsonErrorType, LosslessFloat, PartialMode};
 
@@ -87,6 +89,7 @@ struct PythonParser<'j, StringCache, KeyCheck, ParseNumber> {
     _parse_number: PhantomData<ParseNumber>,
     parser: Parser<'j>,
     tape: Tape,
+    string_cache: StringCacheGuard,
     recursion_limit: u8,
     allow_inf_nan: bool,
     partial_mode: PartialMode,
@@ -107,6 +110,7 @@ impl<StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: MaybeP
             _parse_number: PhantomData::<ParseNumber>,
             parser: Parser::new(json_data),
             tape: Tape::default(),
+            string_cache: StringCache::acquire(),
             recursion_limit: DEFAULT_RECURSION_LIMIT,
             allow_inf_nan,
             partial_mode,
@@ -138,7 +142,7 @@ impl<StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: MaybeP
                 let s = self
                     .parser
                     .consume_string::<StringDecoder>(&mut self.tape, self.partial_mode.allow_trailing_str())?;
-                Ok(StringCache::get_value(py, s).into_any())
+                Ok(StringCache::get_value(py, &mut self.string_cache, s).into_any())
             }
             Peek::Array => {
                 let peek_first = match self.parser.array_first() {
@@ -200,14 +204,14 @@ impl<StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: MaybeP
         if let Some(first_key) = self.parser.object_first::<StringDecoder>(&mut self.tape)? {
             let first_key_s = first_key.as_str();
             check_keys.check(first_key_s, self.parser.index)?;
-            let first_key = StringCache::get_key(py, first_key);
+            let first_key = StringCache::get_key(py, &mut self.string_cache, first_key);
             let peek = self.parser.peek()?;
             let first_value = self.check_take_value(py, peek)?;
             set_item(first_key, first_value);
             while let Some(key) = self.parser.object_step::<StringDecoder>(&mut self.tape)? {
                 let key_s = key.as_str();
                 check_keys.check(key_s, self.parser.index)?;
-                let key = StringCache::get_key(py, key);
+                let key = StringCache::get_key(py, &mut self.string_cache, key);
                 let peek = self.parser.peek()?;
                 let value = self.check_take_value(py, peek)?;
                 set_item(key, value);
