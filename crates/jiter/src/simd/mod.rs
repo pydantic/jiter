@@ -15,7 +15,8 @@ use crate::number_decoder::IntChunk;
 pub(crate) fn decode_int_chunk_big(data: &[u8], index: usize) -> (IntChunk, usize) {
     #[cfg(target_arch = "aarch64")]
     {
-        aarch64::decode_int_chunk_big(data, index)
+        // SAFETY: all supported aarch64 targets support neon intrinsics
+        unsafe { aarch64::decode_int_chunk_big(data, index) }
     }
     #[cfg(not(target_arch = "aarch64"))]
     {

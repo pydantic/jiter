@@ -75,7 +75,7 @@ mod string_output {
     {
         /// # Safety
         ///
-        /// `accii_only` must only be set to true if the string is ascii only
+        /// `ascii_only` must only be set to true if the string is ASCII only
         pub unsafe fn tape(data: &'t str, ascii_only: bool) -> Self {
             StringOutput {
                 data: StringOutputType::Tape(data),
@@ -85,7 +85,7 @@ mod string_output {
 
         /// # Safety
         ///
-        /// `accii_only` must only be set to true if the string is ascii only
+        /// `ascii_only` must only be set to true if the string is ASCII only
         pub unsafe fn data(data: &'j str, ascii_only: bool) -> Self {
             StringOutput {
                 data: StringOutputType::Data(data),
@@ -124,6 +124,7 @@ where
         match decode_string_chunk(data, start, true, allow_partial)? {
             (StringChunk::StringEnd, ascii_only, index) => {
                 let s = to_str(&data[start..index], ascii_only, start, allow_partial)?;
+                // SAFETY: `ascii_only` tracks whether the decoded string contains only ASCII.
                 Ok((unsafe { StringOutput::data(s, ascii_only) }, index + 1))
             }
             (StringChunk::Backslash, ascii_only, index) => {
@@ -164,6 +165,7 @@ fn decode_to_tape<'t, 'j>(
                     Err(e) => {
                         if allow_partial && e.error_type == JsonErrorType::EofWhileParsingString {
                             let s = to_str(tape, ascii_only, start, allow_partial)?;
+                            // SAFETY: `ascii_only` tracks whether the decoded string contains only ASCII.
                             return Ok((unsafe { StringOutput::tape(s, ascii_only) }, e.index));
                         }
                         return Err(e);
@@ -175,6 +177,7 @@ fn decode_to_tape<'t, 'j>(
         } else {
             if allow_partial {
                 let s = to_str(tape, ascii_only, start, allow_partial)?;
+                // SAFETY: `ascii_only` tracks whether the decoded string contains only ASCII.
                 return Ok((unsafe { StringOutput::tape(s, ascii_only) }, index));
             }
             return json_err!(EofWhileParsingString, index);
@@ -185,6 +188,7 @@ fn decode_to_tape<'t, 'j>(
                 tape.extend_from_slice(&data[index..new_index]);
                 index = new_index + 1;
                 let s = to_str(tape, ascii_only, start, allow_partial)?;
+                // SAFETY: `ascii_only` tracks whether the decoded string contains only ASCII.
                 return Ok((unsafe { StringOutput::tape(s, ascii_only) }, index));
             }
             (StringChunk::Backslash, ascii_only_new, index_new) => {
