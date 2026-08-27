@@ -95,57 +95,40 @@ to a string.
 
 For more details, see [the benchmarks](https://github.com/pydantic/jiter/tree/main/crates/jiter/benches).
 
-```text
-running 48 tests
-test big_jiter_iter                    ... bench:   3,662,616 ns/iter (+/- 88,878)
-test big_jiter_value                   ... bench:   6,998,605 ns/iter (+/- 292,383)
-test big_serde_value                   ... bench:  29,793,191 ns/iter (+/- 576,173)
-test bigints_array_jiter_iter          ... bench:      11,836 ns/iter (+/- 414)
-test bigints_array_jiter_value         ... bench:      28,979 ns/iter (+/- 938)
-test bigints_array_serde_value         ... bench:     129,797 ns/iter (+/- 5,096)
-test floats_array_jiter_iter           ... bench:      19,302 ns/iter (+/- 631)
-test floats_array_jiter_value          ... bench:      31,083 ns/iter (+/- 921)
-test floats_array_serde_value          ... bench:     208,932 ns/iter (+/- 6,167)
-test lazy_map_lookup_1_10              ... bench:         615 ns/iter (+/- 15)
-test lazy_map_lookup_2_20              ... bench:       1,776 ns/iter (+/- 36)
-test lazy_map_lookup_3_50              ... bench:       4,291 ns/iter (+/- 77)
-test massive_ints_array_jiter_iter     ... bench:      62,244 ns/iter (+/- 1,616)
-test massive_ints_array_jiter_value    ... bench:      82,889 ns/iter (+/- 1,916)
-test massive_ints_array_serde_value    ... bench:     498,650 ns/iter (+/- 47,759)
-test medium_response_jiter_iter        ... bench:           0 ns/iter (+/- 0)
-test medium_response_jiter_value       ... bench:       3,521 ns/iter (+/- 101)
-test medium_response_jiter_value_owned ... bench:       6,088 ns/iter (+/- 180)
-test medium_response_serde_value       ... bench:       9,383 ns/iter (+/- 342)
-test pass1_jiter_iter                  ... bench:           0 ns/iter (+/- 0)
-test pass1_jiter_value                 ... bench:       3,048 ns/iter (+/- 79)
-test pass1_serde_value                 ... bench:       6,588 ns/iter (+/- 232)
-test pass2_jiter_iter                  ... bench:         384 ns/iter (+/- 9)
-test pass2_jiter_value                 ... bench:       1,259 ns/iter (+/- 44)
-test pass2_serde_value                 ... bench:       1,237 ns/iter (+/- 38)
-test sentence_jiter_iter               ... bench:         283 ns/iter (+/- 10)
-test sentence_jiter_value              ... bench:         357 ns/iter (+/- 15)
-test sentence_serde_value              ... bench:         428 ns/iter (+/- 9)
-test short_numbers_jiter_iter          ... bench:           0 ns/iter (+/- 0)
-test short_numbers_jiter_value         ... bench:      18,085 ns/iter (+/- 613)
-test short_numbers_serde_value         ... bench:      87,253 ns/iter (+/- 1,506)
-test string_array_jiter_iter           ... bench:         615 ns/iter (+/- 18)
-test string_array_jiter_value          ... bench:       1,410 ns/iter (+/- 44)
-test string_array_jiter_value_owned    ... bench:       2,863 ns/iter (+/- 151)
-test string_array_serde_value          ... bench:       3,467 ns/iter (+/- 60)
-test true_array_jiter_iter             ... bench:         299 ns/iter (+/- 8)
-test true_array_jiter_value            ... bench:         995 ns/iter (+/- 29)
-test true_array_serde_value            ... bench:       1,207 ns/iter (+/- 36)
-test true_object_jiter_iter            ... bench:       2,482 ns/iter (+/- 84)
-test true_object_jiter_value           ... bench:       2,058 ns/iter (+/- 45)
-test true_object_serde_value           ... bench:       7,991 ns/iter (+/- 370)
-test unicode_jiter_iter                ... bench:         315 ns/iter (+/- 7)
-test unicode_jiter_value               ... bench:         389 ns/iter (+/- 6)
-test unicode_serde_value               ... bench:         445 ns/iter (+/- 6)
-test x100_jiter_iter                   ... bench:          12 ns/iter (+/- 0)
-test x100_jiter_value                  ... bench:          20 ns/iter (+/- 1)
-test x100_serde_iter                   ... bench:          72 ns/iter (+/- 3)
-test x100_serde_value                  ... bench:          83 ns/iter (+/- 3)
-```
+| benchmark | `jiter` iter | `jiter` value | `serde` value | `serde`/`jiter` |
+| --- | ---: | ---: | ---: | ---: |
+| **strings** | | | | |
+| x100 | 10ns | 11ns | 37ns | 3.2x |
+| sentence | 234ns | 278ns | 296ns | 1.1x |
+| unicode | 291ns | 307ns | 322ns | 1.1x |
+| unicode_dense | 150ns | 152ns | 177ns | 1.2x |
+| string_array | 470ns | 954ns | 3.0µs | 3.2x |
+| json_cases_strings | - | 18.85ms | 59.62ms | 3.2x |
+| json_cases_escapes | - | 1.70ms | 2.52ms | 1.5x |
+| json_cases_non-ascii | - | 830.0µs | 1.16ms | 1.4x |
+| **numbers** | | | | |
+| short_numbers | - | 9.1µs | 37.6µs | 4.1x |
+| floats_array | 15.6µs | 23.9µs | 117.9µs | 4.9x |
+| bigints_array | 10.4µs | 16.4µs | 69.4µs | 4.2x |
+| massive_ints_array | 74.1µs | 79.2µs | 279.9µs | 3.5x |
+| big | 3.04ms | 4.37ms | 20.73ms | 4.7x |
+| json_cases_numbers | - | 11.29ms | 54.53ms | 4.8x |
+| json_cases_ints | - | 11.13ms | 50.96ms | 4.6x |
+| json_cases_floats | - | 3.43ms | 15.90ms | 4.6x |
+| **constants** | | | | |
+| true_array | 196ns | 637ns | 1.1µs | 1.7x |
+| true_object | 2.2µs | 1.5µs | 5.7µs | 3.8x |
+| json_cases_constants | - | 27.4µs | 58.7µs | 2.1x |
+| **documents** | | | | |
+| pass1 | - | 2.2µs | 5.4µs | 2.5x |
+| pass2 | 314ns | 759ns | 574ns | 0.8x |
+| medium_response | - | 2.4µs | 6.9µs | 2.9x |
+| json_cases_all | - | 26.74ms | 90.50ms | 3.4x |
+| json_cases_arrays | - | 11.13ms | 47.00ms | 4.2x |
+| json_cases_objects | - | 17.17ms | 53.85ms | 3.1x |
+| json_cases_deep | - | 5.81ms | 12.97ms | 2.2x |
+| json_cases_whitespace | - | 6.90ms | 16.51ms | 2.4x |
+| json_cases_error | - | 2.73ms | 11.91ms | 4.4x |
 
 ## Part of the Pydantic Stack
 
