@@ -15,6 +15,12 @@ pub(crate) use x86_64::decode_string_chunk;
 
 use crate::number_decoder::IntChunk;
 
+/// the number of digits consumed per `IntChunk::Ongoing` chunk from `decode_int_chunk_big`
+#[cfg(all(feature = "num-bigint", any(target_arch = "aarch64", target_arch = "x86_64")))]
+pub(crate) const ONGOING_CHUNK_MULTIPLIER: u64 = 10u64.pow(16);
+#[cfg(all(feature = "num-bigint", not(any(target_arch = "aarch64", target_arch = "x86_64"))))]
+pub(crate) const ONGOING_CHUNK_MULTIPLIER: u64 = 10u64.pow(18);
+
 #[inline(always)]
 pub(crate) fn decode_int_chunk_big(data: &[u8], index: usize) -> (IntChunk, usize) {
     #[cfg(target_arch = "aarch64")]
