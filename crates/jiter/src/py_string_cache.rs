@@ -331,6 +331,9 @@ pub unsafe fn pystring_ascii_new<'py>(py: Python<'py>, s: &str) -> Bound<'py, Py
     unsafe {
         #[cfg(not(any(PyPy, GraalPy, Py_LIMITED_API)))]
         {
+            if s.len() == 1 {
+                return PyString::new(py, s);
+            }
             // SAFETY: `PyUnicode_New` returns a new owned reference or null. Converting it to a
             // `Bound` immediately ensures an allocation failure is handled before dereferencing it.
             let py_string = Bound::from_owned_ptr(py, pyo3::ffi::PyUnicode_New(s.len() as isize, 127));
