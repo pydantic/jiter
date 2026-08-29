@@ -1,0 +1,21 @@
+crates/jiter/tests/main.rs
+  s_ab9e1c8d90cba8::t_f10cd98c2b633c 1908-1914
+  s_ab9e1c8d90cba8::t_14a66f5a2b5711 1944-1945,1950-1954
+  s_ab9e1c8d90cba8::t_b1c51548a81a21 1875-1907,1915-1943,1946-1949,1955-1975
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "fb3a036cc5651767db5e8f780216c1b902ffb7f3",
+  "prompts": {},
+  "sessions": {
+    "s_ab9e1c8d90cba8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea32d063-0649-4c95-8423-fbe012f10053",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Samuel Colvin <s@muelcolvin.com>"
+    }
+  }
+}
