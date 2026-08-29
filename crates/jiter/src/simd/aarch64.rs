@@ -103,12 +103,11 @@ pub(crate) fn decode_int_chunk_big(data: &[u8], index: usize) -> (IntChunk, usiz
                 // SAFETY: `last_digit` is in 9..=15 and all preceding lanes are digits.
                 full_calc(byte_vec, last_digit)
             };
-            let chunk = if next_is_float(data, index) {
-                IntChunk::Float(value)
+            if next_is_float(data, index) {
+                (IntChunk::Float(value), index)
             } else {
-                IntChunk::Done(value)
-            };
-            (chunk, index)
+                (IntChunk::Done(value), index)
+            }
         }
     } else {
         // we got near the end of the string, fall back to the slow path

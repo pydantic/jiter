@@ -207,7 +207,6 @@ fn parse_float_dot(data: &[u8], start: usize, dot_index: usize) -> Option<(f64, 
 
     let is_negative = data.get(start) == Some(&b'-');
     let int_start = start + usize::from(is_negative);
-    // rescan the integer part, it's typically very short so this is cheap
     let (int_chunk, _) = decode_int_chunk_small(data, int_start, 0);
     let IntChunk::Float(int_mantissa) = int_chunk else {
         // `Ongoing` - integer part too long for an exact u64 mantissa
@@ -217,33 +216,18 @@ fn parse_float_dot(data: &[u8], start: usize, dot_index: usize) -> Option<(f64, 
     // no significant digits
     let int_digits = if int_mantissa == 0 { 0 } else { dot_index - int_start };
 
-    let (mantissa, end) = if long_frac {
+    let (frac_chunk, end) = if long_frac {
         // 8-15 digit fraction: decode a whole chunk at once (SIMD where available)
-        let (chunk, end) = decode_int_chunk_big(data, frac_start);
-        let frac_value = match chunk {
-            IntChunk::Done(value) => value,
-            // a second dot (e.g. `1.2.3`) just ends the number, but an exponent suffix
-            // is left to the general path
-            IntChunk::Float(value) if data.get(end) == Some(&b'.') => value,
-            // `Ongoing` should be impossible after the 16-digit check above, but the chunk
-            // decoder near the end of the data may behave differently, so bail out safely
-            IntChunk::Ongoing(_) | IntChunk::Float(_) => return None,
-        };
-        (
-            int_mantissa
-                .wrapping_mul(POW_10[end - frac_start])
-                .wrapping_add(frac_value),
-            end,
-        )
+        decode_int_chunk_big(data, frac_start)
     } else {
-        // short fraction: continue accumulating onto the integer mantissa byte by byte
-        let (chunk, end) = decode_int_chunk_small(data, frac_start, int_mantissa);
-        let mantissa = match chunk {
-            IntChunk::Done(value) => value,
-            IntChunk::Float(value) if data.get(end) == Some(&b'.') => value,
-            _ => return None,
-        };
-        (mantissa, end)
+        decode_int_chunk_small(data, frac_start, 0)
+    };
+    let frac_value = match frac_chunk {
+        IntChunk::Done(value) => value,
+        // a second dot (e.g. `1.2.3`) just ends the number
+        IntChunk::Float(value) if data.get(end) == Some(&b'.') => value,
+        // `Ongoing` or an exponent suffix - left to the general path
+        _ => return None,
     };
     let frac_digits = end - frac_start;
     // 19 decimal digits always fit in a u64, so the mantissa is exact below that limit;
@@ -251,6 +235,7 @@ fn parse_float_dot(data: &[u8], start: usize, dot_index: usize) -> Option<(f64, 
     if frac_digits == 0 || int_digits + frac_digits > 19 {
         return None;
     }
+    let mantissa = int_mantissa * POW_10[frac_digits] + frac_value;
 
     let num = Number {
         exponent: -(frac_digits as i64),
@@ -318,8 +303,7 @@ impl AbstractNumberDecoder for NumberAny {
         match int_parse {
             IntParse::Int(int) => Ok((Self::Int(int), index)),
             IntParse::Float => {
-                let (value, next_index) = decode_any_float(data, start, index, allow_inf_nan)?;
-                Ok((Self::Float(value), next_index))
+                decode_any_float(data, start, index, allow_inf_nan).map(|(f, index)| (Self::Float(f), index))
             }
             IntParse::FloatInf(positive) => {
                 consume_inf_f64(data, index, positive, allow_inf_nan).map(|(f, index)| (Self::Float(f), index))
@@ -463,12 +447,10 @@ impl IntParse {
 }
 
 pub(crate) enum IntChunk {
-    /// all bytes in the chunk were digits, the number continues
     Ongoing(u64),
-    /// number ended within this chunk
     Done(u64),
-    /// number ended with a dot or exponent (the byte at the returned index), so it's a float;
-    /// the value of the digits so far is carried so the integer part isn't parsed twice
+    /// number ended with a dot or exponent at the returned index; carries the value of
+    /// the digits so far, used by [`parse_float_dot`]
     Float(u64),
 }
 
@@ -594,14 +576,17 @@ impl AbstractNumberDecoder for NumberRange {
                 }
                 IntChunk::Done(_) => return Ok((Self::int(start..new_index), new_index)),
                 IntChunk::Float(_) => {
-                    return if data.get(new_index) == Some(&b'.') {
-                        index = new_index + 1;
-                        let end = consume_decimal(data, index)?;
-                        Ok((Self::float(start..end), end))
-                    } else {
-                        index = new_index + 1;
-                        let end = consume_exponential(data, index)?;
-                        Ok((Self::float(start..end), end))
+                    return match data.get(new_index) {
+                        Some(b'.') => {
+                            index = new_index + 1;
+                            let end = consume_decimal(data, index)?;
+                            Ok((Self::float(start..end), end))
+                        }
+                        _ => {
+                            index = new_index + 1;
+                            let end = consume_exponential(data, index)?;
+                            Ok((Self::float(start..end), end))
+                        }
                     };
                 }
             }
