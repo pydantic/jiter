@@ -97,16 +97,22 @@ def main():
         times = []
         for parser in parsers:
             func = PARSERS[parser]()
-            valid = func(json_data) == expected
+            try:
+                valid = func(json_data) == expected
+            except Exception:  # noqa: BLE001
+                times.append((parser, None, False))
+                continue
             times.append((parser, run_bench(func, json_data, args.fast), valid))
 
-        times.sort(key=lambda x: (not x[2], x[1]))
+        times.sort(key=lambda x: (not x[2], x[1] or math.inf))
         best = times[0][1]
 
         print(f'{"package":>12} | {"time µs":>10} | slowdown')
         print(f'{"-" * 13}|{"-" * 12}|{"-" * 9}')
         for name, time, valid in times:
-            if valid:
+            if time is None:
+                print(f'{name:>12} | {"-":>10} | {"error":>8}')
+            elif valid:
                 print(f'{name:>12} | {time * 1_000_000:10.2f} | {time / best:8.2f}')
                 slowdowns[name].append(time / best)
             else:
@@ -120,6 +126,9 @@ def main():
 def print_summary(slowdowns: dict[str, list[float]]) -> None:
     rows = []
     for parser, ratios in slowdowns.items():
+        if not ratios:
+            print(f'{parser}: no valid results, excluded from summary')
+            continue
         geomean = math.exp(sum(map(math.log, ratios)) / len(ratios))
         rows.append((parser, geomean, max(ratios), sum(r == 1 for r in ratios)))
     rows.sort(key=lambda r: r[1])

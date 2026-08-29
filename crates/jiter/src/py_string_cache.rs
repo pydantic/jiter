@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::sync::{Mutex, MutexGuard, OnceLock, TryLockError};
 
 use ahash::random_state::RandomState;
@@ -44,11 +45,24 @@ impl From<bool> for StringCacheMode {
     }
 }
 
-pub type StringCacheGuard = Option<MutexGuard<'static, PyStringCache>>;
+thread_local! {
+    static CACHE_HELD_BY_THIS_THREAD: Cell<bool> = const { Cell::new(false) };
+}
+
+#[derive(Default)]
+pub struct StringCacheGuard(Option<MutexGuard<'static, PyStringCache>>);
+
+impl Drop for StringCacheGuard {
+    fn drop(&mut self) {
+        if self.0.is_some() {
+            CACHE_HELD_BY_THIS_THREAD.set(false);
+        }
+    }
+}
 
 pub trait StringMaybeCache {
     fn acquire() -> StringCacheGuard {
-        None
+        StringCacheGuard::default()
     }
 
     fn get_key<'py>(
@@ -78,7 +92,7 @@ unsafe fn guarded_py_string<'py>(
     let s = string_output.as_str();
     let ascii_only = string_output.ascii_only();
     unsafe {
-        match guard {
+        match &mut guard.0 {
             Some(cache) if (2..64).contains(&s.len()) => cache.get_or_insert(py, s, ascii_only),
             _ => pystring_fast_new_maybe_ascii(py, s, ascii_only),
         }
@@ -145,6 +159,10 @@ static STRING_CACHE: OnceLock<Mutex<PyStringCache>> = OnceLock::new();
 
 #[inline]
 fn get_string_cache() -> MutexGuard<'static, PyStringCache> {
+    assert!(
+        !CACHE_HELD_BY_THIS_THREAD.get(),
+        "jiter's string cache is locked by a parse in progress on this thread"
+    );
     match STRING_CACHE.get_or_init(|| Mutex::new(PyStringCache::default())).lock() {
         Ok(cache) => cache,
         Err(poisoned) => {
@@ -158,18 +176,20 @@ fn get_string_cache() -> MutexGuard<'static, PyStringCache> {
 
 #[inline]
 fn try_get_string_cache() -> StringCacheGuard {
-    match STRING_CACHE
+    let cache = match STRING_CACHE
         .get_or_init(|| Mutex::new(PyStringCache::default()))
         .try_lock()
     {
-        Ok(cache) => Some(cache),
+        Ok(cache) => cache,
         Err(TryLockError::Poisoned(poisoned)) => {
             let mut cache = poisoned.into_inner();
             cache.clear();
-            Some(cache)
+            cache
         }
-        Err(TryLockError::WouldBlock) => None,
-    }
+        Err(TryLockError::WouldBlock) => return StringCacheGuard(None),
+    };
+    CACHE_HELD_BY_THIS_THREAD.set(true);
+    StringCacheGuard(Some(cache))
 }
 
 pub fn cache_usage() -> usize {
