@@ -1,3 +1,4 @@
+import gc
 import json
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -413,3 +414,31 @@ def test_multithreaded_parsing():
 
         for result in results:
             assert result.result()
+
+
+def test_cache_clear_during_parse_does_not_deadlock():
+    # on CPython <= 3.11 a GC can run inside the parser's allocations, on newer versions it's deferred
+    # to the eval loop, so this only exercises the re-entrancy check on older versions
+    unraisable = []
+    gc_calls = []
+
+    def callback(phase, info):
+        gc_calls.append(phase)
+        jiter.cache_clear()
+
+    data = ('[' + ','.join('{"key": "value"}' for _ in range(50_000)) + ']').encode()
+    thresholds = gc.get_threshold()
+    gc.callbacks.append(callback)
+    hook = sys.unraisablehook
+    sys.unraisablehook = unraisable.append
+    try:
+        gc.set_threshold(1)
+        result = jiter.from_json(data, cache_mode=True)
+    finally:
+        sys.unraisablehook = hook
+        gc.callbacks.remove(callback)
+        gc.set_threshold(*thresholds)
+
+    assert len(result) == 50_000
+    for u in unraisable:
+        assert 'locked by a parse in progress' in str(u.exc_value)
