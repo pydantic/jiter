@@ -22,9 +22,7 @@ for p in BENCHES_DIR.glob('*.json'):
     CASES[p.stem] = p.read_bytes()
 
 
-def run_bench(func, d, fast: bool):
-    if isinstance(d, str):
-        d = d.encode()
+def run_bench(func, d: bytes, fast: bool):
     timer = timeit.Timer(
         'func(json_data)', setup='', globals={'func': func, 'json_data': d}
     )
@@ -93,19 +91,26 @@ def main():
         print(f'Case: {name}')
 
         json_data = CASES[name]
-        times = [
-            (parser, run_bench(PARSERS[parser](), json_data, args.fast))
-            for parser in parsers
-        ]
+        if isinstance(json_data, str):
+            json_data = json_data.encode()
+        expected = json.loads(json_data)
+        times = []
+        for parser in parsers:
+            func = PARSERS[parser]()
+            valid = func(json_data) == expected
+            times.append((parser, run_bench(func, json_data, args.fast), valid))
 
-        times.sort(key=lambda x: x[1])
+        times.sort(key=lambda x: (not x[2], x[1]))
         best = times[0][1]
 
         print(f'{"package":>12} | {"time µs":>10} | slowdown')
         print(f'{"-" * 13}|{"-" * 12}|{"-" * 9}')
-        for name, time in times:
-            print(f'{name:>12} | {time * 1_000_000:10.2f} | {time / best:8.2f}')
-            slowdowns[name].append(time / best)
+        for name, time, valid in times:
+            if valid:
+                print(f'{name:>12} | {time * 1_000_000:10.2f} | {time / best:8.2f}')
+                slowdowns[name].append(time / best)
+            else:
+                print(f'{name:>12} | {time * 1_000_000:10.2f} | {"invalid":>8}')
         print()
 
     if len(cases) > 1:
@@ -120,7 +125,10 @@ def print_summary(slowdowns: dict[str, list[float]]) -> None:
     rows.sort(key=lambda r: r[1])
     best = rows[0][1]
 
-    print('Summary (slowdown relative to the fastest package in each case):')
+    print(
+        'Summary (slowdown relative to the fastest package in each case, '
+        'excluding cases where the package returned the wrong result):'
+    )
     print(
         f'{"rank":>4} | {"package":>12} | {"geomean":>8} | {"vs best":>8} | {"worst":>8} | {"wins":>4}'
     )
