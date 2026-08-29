@@ -286,7 +286,11 @@ macro_rules! test_cases {
                     jiter_iter_ints_array(&file_path, c);
                 } else if file_name == "massive_ints_array" {
                     jiter_iter_ints_array(&file_path, c);
-                } else if file_name == "floats_array" {
+                } else if file_name == "floats_array"
+                    || file_name == "short_floats"
+                    || file_name == "doubles_array"
+                    || file_name == "long_significand_floats"
+                {
                     jiter_iter_floats_array(&file_path, c);
                 } else if file_name == "x100" || file_name == "sentence" || file_name == "unicode" || file_name == "unicode_dense" {
                     jiter_string(&file_path, c);
@@ -335,6 +339,11 @@ test_cases!(true_object);
 test_cases!(bigints_array);
 test_cases!(massive_ints_array);
 test_cases!(floats_array);
+// the float shapes the number decoder treats differently: short fractions, round-tripped doubles
+// (17 significant digits), and significands too long for an exact u64 mantissa
+test_cases!(short_floats);
+test_cases!(doubles_array);
+test_cases!(long_significand_floats);
 // from https://github.com/json-iterator/go-benchmark/blob/179abe5e3f72acce34fb5a16f3473b901fbdd6b9/
 // src/github.com/json-iterator/go-benchmark/benchmark.go#L30C17-L30C29
 test_cases!(medium_response);
@@ -384,6 +393,15 @@ criterion_group!(
     floats_array_jiter_iter,
     floats_array_jiter_value,
     floats_array_serde_value,
+    short_floats_jiter_iter,
+    short_floats_jiter_value,
+    short_floats_serde_value,
+    doubles_array_jiter_iter,
+    doubles_array_jiter_value,
+    doubles_array_serde_value,
+    long_significand_floats_jiter_iter,
+    long_significand_floats_jiter_value,
+    long_significand_floats_serde_value,
     massive_ints_array_jiter_iter,
     massive_ints_array_jiter_value,
     massive_ints_array_serde_value,
