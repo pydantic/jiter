@@ -132,8 +132,8 @@ fn parse_json_float(data: &[u8], start: usize, allow_inf_nan: bool) -> JsonResul
     }
 }
 
-/// Decode a float which [`IntParse`] found the end of the integer part of, `terminator_index`
-/// points at the `.`, `e` or `E` which ended it.
+/// Decode a float whose integer part [`IntParse`] already scanned.
+/// `terminator_index` points at the `.`, `e` or `E` which ended the integer part.
 ///
 /// Non-inlined so `NumberAny::decode`'s integer hot path stays small.
 #[inline(never)]
@@ -188,20 +188,16 @@ const POW_10: [u64; 18] = [
     10u64.pow(17),
 ];
 
-/// Convert a float of the form `123.456` (no exponent) to an `f64` by accumulating all the
-/// digits into a `u64` mantissa, then converting with lexical's own fast/moderate
-/// (Eisel-Lemire) algorithms, so the result is correctly rounded, identical to parsing the
-/// full string with lexical, but faster since the digits are only decoded once.
-///
-/// `dot_index` must point at the `.`. Returns `None` when the number needs the general parsing
-/// path: an exponent suffix, more significant digits than a `u64` mantissa can hold exactly,
-/// or the rare case where lexical would need its slow algorithm (which requires digit slices).
+/// Convert a float of the form `123.456` (no exponent) to an `f64`, `dot_index` points at the `.`.
+/// All digits are accumulated into a `u64` mantissa and converted with lexical's fast/moderate
+/// (Eisel-Lemire) algorithms, so the result is identical to a full lexical parse.
+/// Returns `None` when the number needs the general parsing path: an exponent suffix, more
+/// significant digits than a `u64` holds exactly, or when lexical would need its slow algorithm.
 fn parse_float_dot(data: &[u8], start: usize, dot_index: usize) -> Option<(f64, usize)> {
     let frac_start = dot_index + 1;
     let long_frac = next_8_are_digits(data, frac_start);
     if long_frac && next_8_are_digits(data, frac_start + 8) {
-        // 16 or more fraction digits: too many for an exact u64 mantissa, bail out
-        // before doing any other work
+        // 16 or more fraction digits: too many for an exact u64 mantissa
         return None;
     }
 
@@ -230,7 +226,7 @@ fn parse_float_dot(data: &[u8], start: usize, dot_index: usize) -> Option<(f64, 
         _ => return None,
     };
     let frac_digits = end - frac_start;
-    // 19 decimal digits always fit in a u64, so the mantissa is exact below that limit;
+    // any 19-digit decimal fits in a u64, so up to 19 significant digits the mantissa is exact;
     // `frac_digits == 0` (e.g. `123.`) is invalid and left to the general path to error
     if frac_digits == 0 || int_digits + frac_digits > 19 {
         return None;
@@ -260,8 +256,8 @@ fn parse_float_dot(data: &[u8], start: usize, dot_index: usize) -> Option<(f64, 
     Some((float, end))
 }
 
-/// SWAR check whether the 8 bytes at `index` are all ASCII digits, used to pick the fraction
-/// decoding strategy in [`parse_float_dot`].
+/// SWAR check whether the 8 bytes at `index` are all ASCII digits.
+/// Returns `false` when fewer than 8 bytes remain.
 fn next_8_are_digits(data: &[u8], index: usize) -> bool {
     if let Some(chunk) = data.get(index..index + 8) {
         let value = u64::from_le_bytes(chunk.try_into().unwrap());
