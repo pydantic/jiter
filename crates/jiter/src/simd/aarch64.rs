@@ -41,7 +41,7 @@ use std::arch::aarch64::{
 };
 use crate::errors::{JsonResult, json_err};
 
-use crate::number_decoder::{IntChunk, IntChunkReason};
+use crate::number_decoder::IntChunk;
 use crate::string_decoder::StringChunk;
 
 use super::fallback_int::decode_int_chunk;
@@ -95,18 +95,20 @@ pub(crate) fn decode_int_chunk_big(data: &[u8], index: usize) -> (IntChunk, usiz
             // some lanes are not digits, transmute to a pair of u64 and find the first non-digit
             let last_digit = find_end(digit_mask);
             let index = index + last_digit as usize;
-            if last_digit <= 8 {
+            let value = if last_digit <= 8 {
                 // none-digit in the first 8 bytes
-                let value = first_half_calc(byte_vec, last_digit);
-                let reason = next_is_float(data, index);
-                (IntChunk::Done { value, reason }, index)
+                first_half_calc(byte_vec, last_digit)
             } else {
                 // none-digit in the last 8 bytes
                 // SAFETY: `last_digit` is in 9..=15 and all preceding lanes are digits.
-                let value = full_calc(byte_vec, last_digit);
-                let reason = next_is_float(data, index);
-                (IntChunk::Done { value, reason }, index)
-            }
+                full_calc(byte_vec, last_digit)
+            };
+            let chunk = if next_is_float(data, index) {
+                IntChunk::Float(value)
+            } else {
+                IntChunk::Done(value)
+            };
+            (chunk, index)
         }
     } else {
         // we got near the end of the string, fall back to the slow path
@@ -197,17 +199,10 @@ fn full_calc(byte_vec: SimdVecu8_16, last_digit: u32) -> u64 {
     t[0].wrapping_mul(100_000_000).wrapping_add(t[1])
 }
 
-fn next_is_float(data: &[u8], index: usize) -> IntChunkReason {
-    // TODO does the unsafe here buy us anything???
+fn next_is_float(data: &[u8], index: usize) -> bool {
     // SAFETY: callers derive `index` from the first non-digit lane in a loaded 16-byte chunk.
     let next = unsafe { data.get_unchecked(index) };
-    if *next == b'.' {
-        IntChunkReason::Dot
-    } else if matches!(next, b'e' | b'E') {
-        IntChunkReason::Exponential
-    } else {
-        IntChunkReason::End
-    }
+    matches!(next, b'.' | b'e' | b'E')
 }
 
 const QUOTE_16: SimdVecu8_16 = simd_const!([b'"'; 16]);
