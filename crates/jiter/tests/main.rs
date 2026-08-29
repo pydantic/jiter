@@ -1872,3 +1872,104 @@ fn test_partial_medium_response() {
         assert!(matches!(value, JsonValue::Object(_)));
     }
 }
+
+/// Check `json` against Rust std's float parsing, which is guaranteed correctly rounded,
+/// through both the `NumberAny` (`next_number`) and `NumberFloat` (`next_float`) decoders.
+fn check_float_bits(json: &str) {
+    let expected: f64 = json.parse().unwrap();
+    let NumberAny::Float(any) = Jiter::new(json.as_bytes()).next_number().unwrap() else {
+        panic!("{json}: expected a float");
+    };
+    assert_eq!(
+        any.to_bits(),
+        expected.to_bits(),
+        "{json}: next_number {any} != std {expected}"
+    );
+    let float = Jiter::new(json.as_bytes()).next_float().unwrap();
+    assert_eq!(
+        float.to_bits(),
+        expected.to_bits(),
+        "{json}: next_float {float} != std {expected}"
+    );
+}
+
+#[test]
+fn test_many_floats() {
+    // xorshift, deterministic so failures are reproducible
+    let mut state = 0x853c_49e6_748f_ea9bu64;
+    let mut rand = move || {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        state
+    };
+    let digit = |value: u64| char::from(b'0' + (value % 10) as u8);
+
+    // values which a previous implementation, summing separately-parsed integer and fraction
+    // f64s, got wrong by 1 ulp
+    check_float_bits("12.12");
+    check_float_bits("13.813696130201759");
+    check_float_bits("599.01160859540181");
+    check_float_bits("195.050856528187481310935284622811025225961617");
+
+    // every exponent from far below the subnormal range (parses to 0) to far above f64::MAX
+    // (parses to inf), with mantissas of increasing digit count
+    for exp in -350..=350 {
+        for mantissa in ["1", "7.3", "2.225073858507", "1.7976931348623157"] {
+            check_float_bits(&format!("{mantissa}e{exp}"));
+            check_float_bits(&format!("-{mantissa}E{exp}"));
+        }
+    }
+
+    // every combination of integer and fraction digit counts, crossing the exact-u64-mantissa
+    // limits (19 significant digits, 16+ fraction digits, 18+ integer digits) in both directions
+    for int_len in 1..=25 {
+        for frac_len in 1..=30 {
+            let mut s = String::new();
+            if rand() % 2 == 0 {
+                s.push('-');
+            }
+            s.push(char::from(b'1' + (rand() % 9) as u8));
+            for _ in 1..int_len {
+                s.push(digit(rand()));
+            }
+            s.push('.');
+            for _ in 0..frac_len {
+                s.push(digit(rand()));
+            }
+            check_float_bits(&s);
+        }
+    }
+
+    // round-tripped doubles from random bit patterns: shortest representation and full digits;
+    // large integral doubles format without a `.` or exponent and jiter parses them as ints
+    let mut checked = 0;
+    while checked < 10_000 {
+        let f = f64::from_bits(rand());
+        if f.is_finite() {
+            for s in [format!("{f}"), format!("{f:?}")] {
+                if s.contains(['.', 'e']) {
+                    check_float_bits(&s);
+                }
+            }
+            checked += 1;
+        }
+    }
+
+    // zero integer parts with leading fraction zeros, and near-halfway values with long tails
+    for _ in 0..10_000 {
+        let mut s = String::from("0.");
+        for _ in 0..(rand() % 5) {
+            s.push('0');
+        }
+        for _ in 0..=(rand() % 25) {
+            s.push(digit(rand()));
+        }
+        check_float_bits(&s);
+        check_float_bits(&format!(
+            "{}.{:018}5",
+            rand() % 1_000_000,
+            rand() % 1_000_000_000_000_000_000
+        ));
+    }
+}
