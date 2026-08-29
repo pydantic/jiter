@@ -1,4 +1,4 @@
-use crate::number_decoder::{INT_CHAR_MAP, IntChunk};
+use crate::number_decoder::{INT_CHAR_MAP, IntChunk, IntChunkReason};
 
 /// Turns out this is faster than fancy bit manipulation, see
 /// https://github.com/Alexhuszagh/rust-lexical/blob/main/lexical-parse-integer/docs/Algorithm.md
@@ -13,11 +13,31 @@ pub(crate) fn decode_int_chunk(data: &[u8], mut index: usize, mut value: u64) ->
                 value = value.wrapping_mul(10).wrapping_add((digit & 0x0f) as u64);
                 index += 1;
                 continue;
-            } else if matches!(digit, b'.' | b'e' | b'E') {
-                return (IntChunk::Float, index);
+            } else if *digit == b'.' {
+                return (
+                    IntChunk::Done {
+                        value,
+                        reason: IntChunkReason::Dot,
+                    },
+                    index,
+                );
+            } else if matches!(digit, b'e' | b'E') {
+                return (
+                    IntChunk::Done {
+                        value,
+                        reason: IntChunkReason::Exponential,
+                    },
+                    index,
+                );
             }
         }
-        return (IntChunk::Done(value), index);
+        return (
+            IntChunk::Done {
+                value,
+                reason: IntChunkReason::End,
+            },
+            index,
+        );
     }
     (IntChunk::Ongoing(value), index)
 }
