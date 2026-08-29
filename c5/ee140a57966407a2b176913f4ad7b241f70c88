@@ -1,0 +1,20 @@
+crates/jiter-python/bench.py
+  s_41c8b5bf9fa222::t_4a8b5b70b6a1ed 25,94-95
+  s_41c8b5bf9fa222::t_1b1739ae16b900 96-103,108-113,128-131
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "c5ee140a57966407a2b176913f4ad7b241f70c88",
+  "prompts": {},
+  "sessions": {
+    "s_41c8b5bf9fa222": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "759904ab-ebb1-41c8-991b-bbb4073a1694",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Samuel Colvin <s@muelcolvin.com>"
+    }
+  }
+}
