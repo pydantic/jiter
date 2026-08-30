@@ -8,8 +8,11 @@ use pyo3::{IntoPyObject, IntoPyObjectRef};
 use std::ops::Range;
 
 use lexical_parse_float::{
-    FromLexicalWithOptions, Options as ParseFloatOptions, float::extended_to_float, format as lexical_format,
-    number::Number, parse::moderate_path,
+    FromLexicalWithOptions, Options as ParseFloatOptions,
+    float::{RawFloat, extended_to_float},
+    format as lexical_format,
+    number::Number,
+    parse::moderate_path,
 };
 
 use crate::{
@@ -107,7 +110,7 @@ impl AbstractNumberDecoder for NumberFloat {
 
         if let Some(digit) = first2 {
             if INT_CHAR_MAP[*digit as usize] {
-                let (float, next_index) = parse_json_float(data, start, allow_inf_nan)?;
+                let (float, next_index) = decode_float(data, start, index, allow_inf_nan)?;
                 Ok((Self(float), next_index))
             } else if digit == &b'I' {
                 let (f, end) = consume_inf_f64(data, index, positive, allow_inf_nan)?;
@@ -132,6 +135,20 @@ fn parse_json_float(data: &[u8], start: usize, allow_inf_nan: bool) -> JsonResul
     }
 }
 
+/// Decode a float starting at `start` whose first digit is at `int_start`, scanning the integer
+/// part to try [`parse_float_dot`] before falling back to the general path.
+fn decode_float(data: &[u8], start: usize, int_start: usize, allow_inf_nan: bool) -> JsonResult<(f64, usize)> {
+    let (chunk, terminator_index) = decode_int_chunk_small(data, int_start, 0);
+    if let IntChunk::Float(int_mantissa) = chunk
+        // a `0`-prefixed integer part like `01.2` is invalid JSON, the general path rejects it
+        && (data.get(int_start) != Some(&b'0') || terminator_index == int_start + 1)
+        && let Some(result) = parse_float_dot(data, start, terminator_index, int_mantissa)
+    {
+        return Ok(result);
+    }
+    parse_json_float(data, start, allow_inf_nan)
+}
+
 /// Decode a float whose integer part [`IntParse`] already scanned.
 /// `terminator_index` points at the `.`, `e` or `E` which ended the integer part.
 ///
@@ -141,9 +158,10 @@ fn decode_any_float(
     data: &[u8],
     start: usize,
     terminator_index: usize,
+    int_mantissa: u64,
     allow_inf_nan: bool,
 ) -> JsonResult<(f64, usize)> {
-    if let Some(result) = parse_float_dot(data, start, terminator_index) {
+    if let Some(result) = parse_float_dot(data, start, terminator_index, int_mantissa) {
         Ok(result)
     } else {
         parse_json_float(data, start, allow_inf_nan)
@@ -194,7 +212,7 @@ const POW_10: [u64; 18] = [
 /// Returns `None` when the number needs the general parsing path: an exponent instead of a dot,
 /// more significant digits than a `u64` holds exactly, or when lexical would need its slow
 /// algorithm.
-fn parse_float_dot(data: &[u8], start: usize, dot_index: usize) -> Option<(f64, usize)> {
+fn parse_float_dot(data: &[u8], start: usize, dot_index: usize, int_mantissa: u64) -> Option<(f64, usize)> {
     if data.get(dot_index) != Some(&b'.') {
         return None;
     }
@@ -207,14 +225,14 @@ fn parse_float_dot(data: &[u8], start: usize, dot_index: usize) -> Option<(f64, 
 
     let is_negative = data.get(start) == Some(&b'-');
     let int_start = start + usize::from(is_negative);
-    let (int_chunk, _) = decode_int_chunk_small(data, int_start, 0);
-    let IntChunk::Float(int_mantissa) = int_chunk else {
-        // `Ongoing` - integer part too long for an exact u64 mantissa
+    let int_digits = dot_index - int_start;
+    if int_digits > 18 {
+        // `int_mantissa` only covers 18 digits, and the mantissa couldn't be exact anyway
         return None;
-    };
+    }
     // leading zeros are invalid JSON, so a zero integer part is exactly one digit contributing
     // no significant digits
-    let int_digits = if int_mantissa == 0 { 0 } else { dot_index - int_start };
+    let int_digits = if int_mantissa == 0 { 0 } else { int_digits };
 
     let (frac_chunk, end) = if long_frac {
         // 8-15 digit fraction: decode a whole chunk at once (SIMD where available)
@@ -246,7 +264,9 @@ fn parse_float_dot(data: &[u8], start: usize, dot_index: usize) -> Option<(f64, 
         integer: &[],
         fraction: None,
     };
-    if let Some(value) = num.try_fast_path::<f64, JSON_FMT>() {
+    if mantissa <= f64::MAX_MANTISSA_FAST_PATH
+        && let Some(value) = num.try_fast_path::<f64, JSON_FMT>()
+    {
         return Some((value, end));
     }
     let fp = moderate_path::<f64, JSON_FMT>(&num, false);
@@ -302,8 +322,9 @@ impl AbstractNumberDecoder for NumberAny {
         let (int_parse, index) = IntParse::parse(data, index, first)?;
         match int_parse {
             IntParse::Int(int) => Ok((Self::Int(int), index)),
-            IntParse::Float => {
-                decode_any_float(data, start, index, allow_inf_nan).map(|(f, index)| (Self::Float(f), index))
+            IntParse::Float(int_mantissa) => {
+                let (float, next_index) = decode_any_float(data, start, index, int_mantissa, allow_inf_nan)?;
+                Ok((Self::Float(float), next_index))
             }
             IntParse::FloatInf(positive) => {
                 consume_inf_f64(data, index, positive, allow_inf_nan).map(|(f, index)| (Self::Float(f), index))
@@ -354,7 +375,9 @@ fn consume_nan(data: &[u8], index: usize, allow_inf_nan: bool) -> JsonResult<(f6
 #[derive(Debug)]
 pub(crate) enum IntParse {
     Int(NumberInt),
-    Float,
+    /// carries the integer part's value so [`parse_float_dot`] doesn't rescan it; only valid
+    /// while the integer part has 18 digits or fewer, which `parse_float_dot` checks
+    Float(u64),
     FloatInf(bool),
     FloatNaN,
 }
@@ -376,8 +399,8 @@ impl IntParse {
             Some(b'0') => {
                 index += 1;
                 return match data.get(index) {
-                    Some(b'.') => Ok((Self::Float, index)),
-                    Some(b'e' | b'E') => Ok((Self::Float, index)),
+                    Some(b'.') => Ok((Self::Float(0), index)),
+                    Some(b'e' | b'E') => Ok((Self::Float(0), index)),
                     Some(digit) if digit.is_ascii_digit() => json_err!(InvalidNumber, index),
                     _ => Ok((Self::Int(NumberInt::Int(0)), index)),
                 };
@@ -400,7 +423,7 @@ impl IntParse {
                 }
                 return Ok((Self::Int(NumberInt::Int(value_i64)), new_index));
             }
-            IntChunk::Float(_) => return Ok((Self::Float, new_index)),
+            IntChunk::Float(value) => return Ok((Self::Float(value), new_index)),
         };
 
         // number is too big for i64, we need to use a BigInt,
@@ -439,7 +462,7 @@ impl IntParse {
                         }
                         return Ok((Self::Int(NumberInt::BigInt(big_value)), new_index));
                     }
-                    IntChunk::Float(_) => return Ok((Self::Float, new_index)),
+                    IntChunk::Float(_) => return Ok((Self::Float(0), new_index)),
                 }
             }
         }
