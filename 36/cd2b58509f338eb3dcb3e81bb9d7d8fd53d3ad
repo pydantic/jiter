@@ -1,0 +1,22 @@
+crates/jiter/src/number_decoder.rs
+  s_ab9e1c8d90cba8::t_9a7d9ad3a41595 402-403
+  s_ab9e1c8d90cba8::t_e148dc9cfd29b0 426
+  s_ab9e1c8d90cba8::t_812bb742f1a22c 11-15,113,138-151,161,164,215,228-230,232,235,267-269,325-327,378-380
+  s_ab9e1c8d90cba8::t_fdf5fe0fb8777d 470
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "36cd2b58509f338eb3dcb3e81bb9d7d8fd53d3ad",
+  "prompts": {},
+  "sessions": {
+    "s_ab9e1c8d90cba8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea32d063-0649-4c95-8423-fbe012f10053",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Samuel Colvin <s@muelcolvin.com>"
+    }
+  }
+}
