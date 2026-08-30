@@ -1956,6 +1956,28 @@ fn test_many_floats() {
         }
     }
 
+    // integer-shaped input through `next_float`, which converts the scanned digits directly
+    for _ in 0..10_000 {
+        let len = rand() % 20 + 1;
+        let mut s = String::new();
+        if rand() % 2 == 0 {
+            s.push('-');
+        }
+        s.push(char::from(b'1' + (rand() % 9) as u8));
+        for _ in 1..len {
+            s.push(digit(rand()));
+        }
+        let expected: f64 = s.parse().unwrap();
+        let float = Jiter::new(s.as_bytes()).next_float().unwrap();
+        assert_eq!(
+            float.to_bits(),
+            expected.to_bits(),
+            "{s}: next_float {float} != std {expected}"
+        );
+    }
+    assert_eq!(Jiter::new(b"0").next_float().unwrap().to_bits(), 0f64.to_bits());
+    assert_eq!(Jiter::new(b"-0").next_float().unwrap().to_bits(), (-0f64).to_bits());
+
     // zero integer parts with leading fraction zeros, and near-halfway values with long tails
     for _ in 0..10_000 {
         let mut s = String::from("0.");

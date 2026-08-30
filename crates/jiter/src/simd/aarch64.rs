@@ -95,17 +95,18 @@ pub(crate) fn decode_int_chunk_big(data: &[u8], index: usize) -> (IntChunk, usiz
             // some lanes are not digits, transmute to a pair of u64 and find the first non-digit
             let last_digit = find_end(digit_mask);
             let index = index + last_digit as usize;
-            let value = if last_digit <= 8 {
+            if next_is_float(data, index) {
+                // both callers discard the value for floats ending in a big chunk, skip the
+                // vector reduction
+                (IntChunk::Float(0), index)
+            } else if last_digit <= 8 {
                 // none-digit in the first 8 bytes
-                first_half_calc(byte_vec, last_digit)
+                let value = first_half_calc(byte_vec, last_digit);
+                (IntChunk::Done(value), index)
             } else {
                 // none-digit in the last 8 bytes
                 // SAFETY: `last_digit` is in 9..=15 and all preceding lanes are digits.
-                full_calc(byte_vec, last_digit)
-            };
-            if next_is_float(data, index) {
-                (IntChunk::Float(value), index)
-            } else {
+                let value = full_calc(byte_vec, last_digit);
                 (IntChunk::Done(value), index)
             }
         }

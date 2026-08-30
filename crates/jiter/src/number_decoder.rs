@@ -139,12 +139,25 @@ fn parse_json_float(data: &[u8], start: usize, allow_inf_nan: bool) -> JsonResul
 /// part to try [`parse_float_dot`] before falling back to the general path.
 fn decode_float(data: &[u8], start: usize, int_start: usize, allow_inf_nan: bool) -> JsonResult<(f64, usize)> {
     let (chunk, terminator_index) = decode_int_chunk_small(data, int_start, 0);
-    if let IntChunk::Float(int_mantissa) = chunk
-        // a `0`-prefixed integer part like `01.2` is invalid JSON, the general path rejects it
-        && (data.get(int_start) != Some(&b'0') || terminator_index == int_start + 1)
-        && let Some(result) = parse_float_dot(data, start, terminator_index, int_mantissa)
-    {
-        return Ok(result);
+    // a `0`-prefixed integer part like `01.2` is invalid JSON, the general path rejects it
+    if data.get(int_start) != Some(&b'0') || terminator_index == int_start + 1 {
+        match chunk {
+            // an integer-shaped float like `123`: the chunk covers at most 18 digits, so the
+            // u64 -> f64 conversion is the single correctly-rounded step
+            IntChunk::Done(value) => {
+                let mut float = value as f64;
+                if data.get(start) == Some(&b'-') {
+                    float = -float;
+                }
+                return Ok((float, terminator_index));
+            }
+            IntChunk::Float(int_mantissa) => {
+                if let Some(result) = parse_float_dot(data, start, terminator_index, int_mantissa) {
+                    return Ok(result);
+                }
+            }
+            IntChunk::Ongoing(_) => (),
+        }
     }
     parse_json_float(data, start, allow_inf_nan)
 }
@@ -266,6 +279,8 @@ fn parse_float_dot(data: &[u8], start: usize, dot_index: usize, int_mantissa: u6
         integer: &[],
         fraction: None,
     };
+    // try_fast_path rechecks this, but the outer check skips an outlined call which always
+    // fails for mantissas over 2^53
     if mantissa <= f64::MAX_MANTISSA_FAST_PATH
         && let Some(value) = num.try_fast_path::<f64, JSON_FMT>()
     {
@@ -519,8 +534,9 @@ impl IntParse {
 pub(crate) enum IntChunk {
     Ongoing(u64),
     Done(u64),
-    /// number ended with a dot or exponent at the returned index; carries the value of
-    /// the digits so far, used by [`parse_float_dot`]
+    /// number ended with a dot or exponent at the returned index; from
+    /// [`decode_int_chunk_small`](crate::simd::decode_int_chunk_small) this carries the value
+    /// of the digits so far for [`parse_float_dot`], the big decoder always passes 0
     Float(u64),
 }
 
