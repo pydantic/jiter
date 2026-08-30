@@ -98,11 +98,12 @@ def main():
         for parser in parsers:
             func = PARSERS[parser]()
             try:
+                time = run_bench(func, json_data, args.fast)
                 valid = json.dumps(func(json_data)) == expected
             except Exception:  # noqa: BLE001
                 times.append((parser, None, False))
                 continue
-            times.append((parser, run_bench(func, json_data, args.fast), valid))
+            times.append((parser, time, valid))
 
         times.sort(key=lambda x: (not x[2], x[1] or math.inf))
         best = times[0][1]
@@ -131,6 +132,8 @@ def print_summary(slowdowns: dict[str, list[float]]) -> None:
             continue
         geomean = math.exp(sum(map(math.log, ratios)) / len(ratios))
         rows.append((parser, geomean, max(ratios), sum(r == 1 for r in ratios)))
+    if not rows:
+        return
     rows.sort(key=lambda r: r[1])
     best = rows[0][1]
 
