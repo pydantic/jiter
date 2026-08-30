@@ -234,19 +234,21 @@ fn parse_float_dot(data: &[u8], start: usize, dot_index: usize, int_mantissa: u6
     // no significant digits
     let int_digits = if int_mantissa == 0 { 0 } else { int_digits };
 
-    let (frac_chunk, end) = if long_frac {
-        // 8-15 digit fraction: decode a whole chunk at once (SIMD where available)
-        decode_int_chunk_big(data, frac_start)
+    let (frac_value, end) = if long_frac && data.len() >= frac_start + 16 {
+        parse_long_fraction(data, frac_start)
     } else {
-        decode_int_chunk_small(data, frac_start, 0)
+        // short fraction, or a long one at the very end of the data
+        let (chunk, end) = decode_int_chunk_small(data, frac_start, 0);
+        match chunk {
+            IntChunk::Done(value) | IntChunk::Float(value) => (value, end),
+            IntChunk::Ongoing(_) => return None,
+        }
     };
-    let frac_value = match frac_chunk {
-        IntChunk::Done(value) => value,
-        // a second dot (e.g. `1.2.3`) just ends the number
-        IntChunk::Float(value) if data.get(end) == Some(&b'.') => value,
-        // `Ongoing` or an exponent suffix - left to the general path
-        _ => return None,
-    };
+    // an exponent needs the general path; any other terminator (e.g. the second dot of
+    // `1.2.3`) just ends the number
+    if matches!(data.get(end), Some(b'e' | b'E')) {
+        return None;
+    }
     let frac_digits = end - frac_start;
     // any 19-digit decimal fits in a u64, so up to 19 significant digits the mantissa is exact;
     // `frac_digits == 0` (e.g. `123.`) is invalid and left to the general path to error
@@ -278,6 +280,51 @@ fn parse_float_dot(data: &[u8], start: usize, dot_index: usize, int_mantissa: u6
         float = -float;
     }
     Some((float, end))
+}
+
+/// Decode a fraction of 8-15 digits at `frac_start`, returning its value and the index of the
+/// byte after the last digit.
+///
+/// The caller has established that the 8 bytes at `frac_start` are digits, that the 8 after
+/// them are within `data` but not all digits, and discards the value if the total significant
+/// digits exceed an exact u64 mantissa. Pure SWAR, so unlike the SIMD chunk decoder the
+/// returned index doesn't wait on a vector->GPR transfer.
+fn parse_long_fraction(data: &[u8], frac_start: usize) -> (u64, usize) {
+    let first8 = u64::from_le_bytes(data[frac_start..frac_start + 8].try_into().unwrap());
+    let second8 = u64::from_le_bytes(data[frac_start + 8..frac_start + 16].try_into().unwrap());
+    // the same digit test as `next_8_are_digits`, kept per byte: a non-zero high nibble marks
+    // a non-digit byte
+    let x = second8 ^ 0x3030_3030_3030_3030;
+    let non_digit_mask = (x.wrapping_add(0x0606_0606_0606_0606) | x) & 0xF0F0_F0F0_F0F0_F0F0;
+    debug_assert!(
+        non_digit_mask != 0,
+        "caller must establish a non-digit in the second 8 bytes"
+    );
+    let extra_digits = (non_digit_mask.trailing_zeros() / 8) as usize;
+    let value8 = parse_8digits(first8);
+    let value = if extra_digits == 0 {
+        value8
+    } else {
+        // move the extra digits to the top bytes and fill below them with ascii zeros, so the
+        // 8-digit parse yields exactly their value
+        let padded = (second8 << (8 * (8 - extra_digits))) | (0x3030_3030_3030_3030 >> (8 * extra_digits));
+        value8 * POW_10[extra_digits] + parse_8digits(padded)
+    };
+    (value, frac_start + 8 + extra_digits)
+}
+
+/// Parse 8 ASCII digit bytes, in memory order, as a `u64`. The classic SWAR reduction, see
+/// <https://github.com/simdjson/simdjson/blob/master/src/generic/numberparsing.h>.
+fn parse_8digits(value: u64) -> u64 {
+    const MASK: u64 = 0x0000_00FF_0000_00FF;
+    const MUL1: u64 = 0x000F_4240_0000_0064;
+    const MUL2: u64 = 0x0000_2710_0000_0001;
+    let value = value.wrapping_sub(0x3030_3030_3030_3030);
+    let value = value.wrapping_mul(2561) >> 8;
+    (value & MASK)
+        .wrapping_mul(MUL1)
+        .wrapping_add(((value >> 16) & MASK).wrapping_mul(MUL2))
+        >> 32
 }
 
 /// SWAR check whether the 8 bytes at `index` are all ASCII digits.
