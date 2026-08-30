@@ -93,12 +93,12 @@ def main():
         json_data = CASES[name]
         if isinstance(json_data, str):
             json_data = json_data.encode()
-        expected = json.loads(json_data)
+        expected = json.dumps(json.loads(json_data))
         times = []
         for parser in parsers:
             func = PARSERS[parser]()
             try:
-                valid = func(json_data) == expected
+                valid = json.dumps(func(json_data)) == expected
             except Exception:  # noqa: BLE001
                 times.append((parser, None, False))
                 continue
