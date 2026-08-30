@@ -1,0 +1,21 @@
+crates/jiter/benches/exponent_floats.json
+  s_ab9e1c8d90cba8::t_acfae20c6c1095 1
+crates/jiter/benches/main.rs
+  s_ab9e1c8d90cba8::t_35db6d8e0937bb 293,348-349,408-410
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "fecfe76453f6f444743ae0ef6ed2f9a2c50978f9",
+  "prompts": {},
+  "sessions": {
+    "s_ab9e1c8d90cba8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea32d063-0649-4c95-8423-fbe012f10053",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Samuel Colvin <s@muelcolvin.com>"
+    }
+  }
+}
