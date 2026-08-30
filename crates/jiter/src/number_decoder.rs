@@ -143,12 +143,11 @@ fn decode_any_float(
     terminator_index: usize,
     allow_inf_nan: bool,
 ) -> JsonResult<(f64, usize)> {
-    if data.get(terminator_index) == Some(&b'.')
-        && let Some(result) = parse_float_dot(data, start, terminator_index)
-    {
-        return Ok(result);
+    if let Some(result) = parse_float_dot(data, start, terminator_index) {
+        Ok(result)
+    } else {
+        parse_json_float(data, start, allow_inf_nan)
     }
-    parse_json_float(data, start, allow_inf_nan)
 }
 
 /// It's impossible to work out the right error from LexicalError, so we parse again
@@ -188,12 +187,17 @@ const POW_10: [u64; 18] = [
     10u64.pow(17),
 ];
 
-/// Convert a float of the form `123.456` (no exponent) to an `f64`, `dot_index` points at the `.`.
+/// Convert a float of the form `123.456` (no exponent) to an `f64`, `dot_index` points at the
+/// byte which ended the integer part.
 /// All digits are accumulated into a `u64` mantissa and converted with lexical's fast/moderate
 /// (Eisel-Lemire) algorithms, so the result is identical to a full lexical parse.
-/// Returns `None` when the number needs the general parsing path: an exponent suffix, more
-/// significant digits than a `u64` holds exactly, or when lexical would need its slow algorithm.
+/// Returns `None` when the number needs the general parsing path: an exponent instead of a dot,
+/// more significant digits than a `u64` holds exactly, or when lexical would need its slow
+/// algorithm.
 fn parse_float_dot(data: &[u8], start: usize, dot_index: usize) -> Option<(f64, usize)> {
+    if data.get(dot_index) != Some(&b'.') {
+        return None;
+    }
     let frac_start = dot_index + 1;
     let long_frac = next_8_are_digits(data, frac_start);
     if long_frac && next_8_are_digits(data, frac_start + 8) {
