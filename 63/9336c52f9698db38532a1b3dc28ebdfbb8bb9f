@@ -1,0 +1,26 @@
+crates/jiter/src/number_decoder.rs
+  s_ab9e1c8d90cba8::t_b85192a0fbee99 142-160,282-283,542-544
+crates/jiter/tests/main.rs
+  s_ab9e1c8d90cba8::t_acfae20c6c1095 1959-1971,1977-1980
+  s_ab9e1c8d90cba8::t_35db6d8e0937bb 1972-1976
+crates/jiter/Cargo.toml
+  s_ab9e1c8d90cba8::t_b85192a0fbee99 21-23
+crates/jiter/src/simd/aarch64.rs
+  s_ab9e1c8d90cba8::t_b85192a0fbee99 98-102,104-105,109
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "639336c52f9698db38532a1b3dc28ebdfbb8bb9f",
+  "prompts": {},
+  "sessions": {
+    "s_ab9e1c8d90cba8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea32d063-0649-4c95-8423-fbe012f10053",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Samuel Colvin <s@muelcolvin.com>"
+    }
+  }
+}
