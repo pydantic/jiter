@@ -290,6 +290,7 @@ macro_rules! test_cases {
                     || file_name == "short_floats"
                     || file_name == "doubles_array"
                     || file_name == "long_significand_floats"
+                    || file_name == "exponent_floats"
                 {
                     jiter_iter_floats_array(&file_path, c);
                 } else if file_name == "x100" || file_name == "sentence" || file_name == "unicode" || file_name == "unicode_dense" {
@@ -344,6 +345,8 @@ test_cases!(floats_array);
 test_cases!(short_floats);
 test_cases!(doubles_array);
 test_cases!(long_significand_floats);
+// scientific notation like `123.456e-78`, which takes the fallback path
+test_cases!(exponent_floats);
 // from https://github.com/json-iterator/go-benchmark/blob/179abe5e3f72acce34fb5a16f3473b901fbdd6b9/
 // src/github.com/json-iterator/go-benchmark/benchmark.go#L30C17-L30C29
 test_cases!(medium_response);
@@ -402,6 +405,9 @@ criterion_group!(
     long_significand_floats_jiter_iter,
     long_significand_floats_jiter_value,
     long_significand_floats_serde_value,
+    exponent_floats_jiter_iter,
+    exponent_floats_jiter_value,
+    exponent_floats_serde_value,
     massive_ints_array_jiter_iter,
     massive_ints_array_jiter_value,
     massive_ints_array_serde_value,
