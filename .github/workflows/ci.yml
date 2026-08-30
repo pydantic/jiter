@@ -232,7 +232,8 @@ jobs:
 
       - uses: CodSpeedHQ/action@4296e51e7041e24dadb86d1d6e8b9320d223dbe8 # v5.0.3
         with:
-          # ASLR shifts the memory layout per process, moving small benches ~5-10% between runs, see https://github.com/pydantic/jiter/pull/283
+          # ASLR shifts the memory layout per process, moving small benches ~5-10% between runs,
+          # see https://github.com/pydantic/jiter/pull/284
           run: setarch $(uname -m) -R cargo codspeed run
           mode: walltime
           token: ${{ secrets.CODSPEED_TOKEN }}
