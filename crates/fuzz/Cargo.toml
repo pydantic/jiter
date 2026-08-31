@@ -1,13 +1,17 @@
 [package]
 name = "fuzz"
-publish = false
 # Internal-only crate (`publish = false`): keep version decoupled from release crates.
+publish = false
 version = "0.0.0"
 edition = "2021"
 authors = ["Samuel Colvin <samuel@pydantic.dev>"]
 
 [package.metadata]
 cargo-fuzz = true
+
+# not a member of the workspace to avoid upsetting maturin and fuzz profiles
+# empty workspace so fuzzing works from a worktree directory nested inside the main repo
+[workspace]
 
 [dependencies]
 libfuzzer-sys = "0.4.7"
