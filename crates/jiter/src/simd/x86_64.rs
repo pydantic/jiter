@@ -43,11 +43,12 @@ const TEN_U16_8: SimdVec = simd_const!([10u16; 8]);
 const ALT_MUL_U16_8: SimdVec = simd_const!([100u16, 1u16, 100u16, 1u16, 100u16, 1u16, 100u16, 1u16]);
 const ALT_MUL_U32_4: SimdVec = simd_const!([10000u32, 0u32, 10000u32, 0u32]);
 
-#[inline(always)]
+#[inline]
+#[target_feature(enable = "sse2")]
 pub(crate) fn decode_int_chunk_big(data: &[u8], index: usize) -> (IntChunk, usize) {
     if let Some(byte_chunk) = data.get(index..index + SIMD_STEP) {
         let byte_vec = load_slice(byte_chunk);
-        let digits = unsafe { simd_sub_16(byte_vec, ZERO_DIGIT_16) };
+        let digits = simd_sub_16(byte_vec, ZERO_DIGIT_16);
 
         let last_digit = first_non_digit(digits);
         if last_digit == 16 {
@@ -68,15 +69,15 @@ pub(crate) fn decode_int_chunk_big(data: &[u8], index: usize) -> (IntChunk, usiz
 }
 
 /// position of the first byte that is not a digit, 16 if all bytes are digits
+#[target_feature(enable = "sse2")]
 fn first_non_digit(digits: SimdVec) -> u32 {
-    unsafe {
-        let digit_mask = simd_eq_16(simd_min_16(digits, NINE_VAL_16), digits);
-        (!mask_to_u32(digit_mask)).trailing_zeros()
-    }
+    let digit_mask = simd_eq_16(simd_min_16(digits, NINE_VAL_16), digits);
+    (!mask_to_u32(digit_mask)).trailing_zeros()
 }
 
 // TODO: SSSE3 `_mm_maddubs_epi16` would replace the and/shift/mullo/add byte->u16 step
 // TODO: SSE4.1 `_mm_packus_epi32` could pair lanes and shorten the u32->u64 reduction
+#[target_feature(enable = "sse2")]
 unsafe fn full_calc(digits: SimdVec, last_digit: u32) -> u64 {
     unsafe {
         let digits = match last_digit {
@@ -124,7 +125,8 @@ const CONTROL_16: SimdVec = simd_const!([32u8; 16]);
 const CONTROL_MAX_16: SimdVec = simd_const!([31u8; 16]);
 
 // TODO: an AVX2 32-byte loop behind `is_x86_feature_detected!` may help long strings
-#[inline(always)]
+#[inline]
+#[target_feature(enable = "sse2")]
 pub(crate) fn decode_string_chunk(
     data: &[u8],
     mut index: usize,
@@ -176,38 +178,38 @@ pub(crate) fn decode_string_chunk(
 /// returns a mask where any non-zero byte means we don't have a simple ascii character, either
 /// quote, backslash, control character, or non-ascii (above 127). The signed comparison against
 /// 32 catches both control characters and bytes above 127, which are negative as i8
+#[target_feature(enable = "sse2")]
 fn string_ascii_mask(byte_vec: SimdVec) -> SimdVec {
-    unsafe {
+    simd_or_16(
+        simd_eq_16(byte_vec, QUOTE_16),
         simd_or_16(
-            simd_eq_16(byte_vec, QUOTE_16),
-            simd_or_16(
-                simd_eq_16(byte_vec, BACKSLASH_16),
-                simd_lt_signed_16(byte_vec, CONTROL_16),
-            )
+            simd_eq_16(byte_vec, BACKSLASH_16),
+            simd_lt_signed_16(byte_vec, CONTROL_16),
         )
-    }
+    )
 }
 
 #[rustfmt::skip]
 /// returns a mask where any non-zero byte is a character that stops the string scan: either
 /// a quote, backslash, or control character
+#[target_feature(enable = "sse2")]
 fn string_stop_mask(byte_vec: SimdVec) -> SimdVec {
-    unsafe {
+    simd_or_16(
+        simd_eq_16(byte_vec, QUOTE_16),
         simd_or_16(
-            simd_eq_16(byte_vec, QUOTE_16),
-            simd_or_16(
-                simd_eq_16(byte_vec, BACKSLASH_16),
-                simd_eq_16(simd_min_16(byte_vec, CONTROL_MAX_16), byte_vec),
-            )
+            simd_eq_16(byte_vec, BACKSLASH_16),
+            simd_eq_16(simd_min_16(byte_vec, CONTROL_MAX_16), byte_vec),
         )
-    }
+    )
 }
 
 /// one bit per byte lane, set where the comparison mask lane is 0xFF
+#[target_feature(enable = "sse2")]
 fn mask_to_u32(mask: SimdVec) -> u32 {
-    unsafe { simd_movemask_16(mask).cast_unsigned() }
+    simd_movemask_16(mask).cast_unsigned()
 }
 
+#[target_feature(enable = "sse2")]
 fn load_slice(bytes: &[u8]) -> SimdVec {
     debug_assert_eq!(bytes.len(), 16);
     unsafe { simd_load_16(bytes.as_ptr().cast()) }
