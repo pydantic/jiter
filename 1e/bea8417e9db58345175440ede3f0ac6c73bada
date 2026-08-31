@@ -1,0 +1,19 @@
+crates/fuzz/Cargo.toml
+  s_07b99a59b28f18::t_ca9f8b465bd7b2 12-13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "1ebea8417e9db58345175440ede3f0ac6c73bada",
+  "prompts": {},
+  "sessions": {
+    "s_07b99a59b28f18": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "10f78665-ea06-4e78-bc7d-fe39da1440b3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Samuel Colvin <s@muelcolvin.com>"
+    }
+  }
+}
