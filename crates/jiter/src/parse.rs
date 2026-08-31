@@ -251,6 +251,15 @@ impl<'j> Parser<'j> {
     }
 
     fn eat_whitespace(&mut self) -> Option<u8> {
+        match self.data.get(self.index) {
+            Some(b' ' | b'\r' | b'\t' | b'\n') => self.consume_whitespace(),
+            Some(next) => Some(*next),
+            None => None,
+        }
+    }
+
+    fn consume_whitespace(&mut self) -> Option<u8> {
+        self.index += 1;
         while let Some(next) = self.data.get(self.index) {
             match next {
                 b' ' | b'\r' | b'\t' | b'\n' => self.index += 1,
