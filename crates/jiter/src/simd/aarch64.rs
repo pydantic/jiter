@@ -81,6 +81,19 @@ const ALT_MUL_U16_8: SimdVecu16_8 = simd_const!([100u16, 1u16, 100u16, 1u16, 100
 const ALT_MUL_U32_4: SimdVecu32_4 = simd_const!([10000u32, 1u32, 10000u32, 1u32]);
 
 #[target_feature(enable = "neon")]
+pub(crate) fn find_digit_run_end(data: &[u8], mut index: usize) -> usize {
+    while let Some(byte_chunk) = data.get(index..index + SIMD_STEP) {
+        let byte_chunk: &[u8; SIMD_STEP] = byte_chunk.try_into().unwrap();
+        let digit_mask = get_digit_mask(load_slice(byte_chunk));
+        if !is_zero(digit_mask) {
+            return index + find_end(digit_mask) as usize;
+        }
+        index += SIMD_STEP;
+    }
+    super::fallback_int::find_digit_run_end(data, index)
+}
+
+#[target_feature(enable = "neon")]
 pub(crate) fn decode_int_chunk_big(data: &[u8], index: usize) -> (IntChunk, usize) {
     if let Some(byte_chunk) = data.get(index..index + SIMD_STEP) {
         let byte_chunk: &[u8; SIMD_STEP] = byte_chunk.try_into().unwrap();

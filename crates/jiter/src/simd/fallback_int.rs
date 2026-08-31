@@ -1,5 +1,16 @@
 use crate::number_decoder::{INT_CHAR_MAP, IntChunk};
 
+#[inline(always)]
+pub(crate) fn find_digit_run_end(data: &[u8], mut index: usize) -> usize {
+    while let Some(digit) = data.get(index) {
+        if !INT_CHAR_MAP[*digit as usize] {
+            break;
+        }
+        index += 1;
+    }
+    index
+}
+
 /// Turns out this is faster than fancy bit manipulation, see
 /// https://github.com/Alexhuszagh/rust-lexical/blob/main/lexical-parse-integer/docs/Algorithm.md
 /// for some context

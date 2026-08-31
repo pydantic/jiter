@@ -40,6 +40,24 @@ pub(crate) fn decode_string_chunk(
 }
 
 #[inline(always)]
+pub(crate) fn find_digit_run_end(data: &[u8], index: usize) -> usize {
+    #[cfg(target_arch = "aarch64")]
+    {
+        // SAFETY: all supported aarch64 targets support neon intrinsics.
+        unsafe { aarch64::find_digit_run_end(data, index) }
+    }
+    #[cfg(target_arch = "x86_64")]
+    {
+        // SAFETY: SSE2 is part of the x86_64 baseline.
+        unsafe { x86_64::find_digit_run_end(data, index) }
+    }
+    #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
+    {
+        fallback_int::find_digit_run_end(data, index)
+    }
+}
+
+#[inline(always)]
 pub(crate) fn decode_int_chunk_big(data: &[u8], index: usize) -> (IntChunk, usize) {
     #[cfg(target_arch = "aarch64")]
     {
