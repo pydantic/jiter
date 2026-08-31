@@ -20,9 +20,21 @@ pub enum JsonValue<'s> {
     #[cfg(feature = "num-bigint")]
     BigInt(BigInt),
     Float(f64),
+    /// A non-integer JSON number preserved as its original token.
+    LosslessFloat(Cow<'s, str>),
     Str(Cow<'s, str>),
     Array(JsonArray<'s>),
     Object(JsonObject<'s>),
+}
+
+/// Controls how non-integer JSON numbers are represented in [`JsonValue`].
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum JsonValueFloatMode {
+    /// Parse non-integer numbers as [`JsonValue::Float`].
+    #[default]
+    Float,
+    /// Preserve non-integer numbers as [`JsonValue::LosslessFloat`].
+    LosslessFloat,
 }
 
 /// Parsed JSON array.
@@ -48,6 +60,9 @@ impl<'py> pyo3::IntoPyObject<'py> for JsonValue<'_> {
             #[cfg(feature = "num-bigint")]
             Self::BigInt(b) => Ok(b.into_pyobject(py)?.into_any()),
             Self::Float(f) => Ok(f.into_pyobject(py)?.into_any()),
+            Self::LosslessFloat(f) => crate::LosslessFloat::new_unchecked(f.as_bytes().to_vec())
+                .into_pyobject(py)
+                .map(pyo3::Bound::into_any),
             Self::Str(s) => Ok(s.into_pyobject(py)?.into_any()),
             Self::Array(v) => Ok(pyo3::types::PyList::new(py, v.iter())?.into_any()),
             Self::Object(o) => {
@@ -76,6 +91,9 @@ impl<'py> pyo3::IntoPyObject<'py> for &'_ JsonValue<'_> {
             #[cfg(feature = "num-bigint")]
             JsonValue::BigInt(b) => Ok(b.into_pyobject(py)?.into_any()),
             JsonValue::Float(f) => Ok(f.into_pyobject(py)?.into_any()),
+            JsonValue::LosslessFloat(f) => crate::LosslessFloat::new_unchecked(f.as_bytes().to_vec())
+                .into_pyobject(py)
+                .map(pyo3::Bound::into_any),
             JsonValue::Str(s) => Ok(s.into_pyobject(py)?.into_any()),
             JsonValue::Array(v) => Ok(pyo3::types::PyList::new(py, v.iter())?.into_any()),
             JsonValue::Object(o) => {
@@ -101,6 +119,16 @@ impl<'j> JsonValue<'j> {
         allow_inf_nan: bool,
         allow_partial: PartialMode,
     ) -> Result<Self, JsonError> {
+        Self::parse_with_float_mode(data, allow_inf_nan, allow_partial, JsonValueFloatMode::Float)
+    }
+
+    /// Parse a JSON enum from a byte slice with control over how non-integer numbers are represented.
+    pub fn parse_with_float_mode(
+        data: &'j [u8],
+        allow_inf_nan: bool,
+        allow_partial: PartialMode,
+        float_mode: JsonValueFloatMode,
+    ) -> Result<Self, JsonError> {
         let mut parser = Parser::new(data);
 
         let mut tape = Tape::default();
@@ -112,6 +140,7 @@ impl<'j> JsonValue<'j> {
             DEFAULT_RECURSION_LIMIT,
             allow_inf_nan,
             allow_partial,
+            float_mode,
         )?;
         if !allow_partial.is_active() {
             parser.finish()?;
@@ -148,6 +177,7 @@ fn value_static(v: JsonValue<'_>) -> JsonValue<'static> {
         #[cfg(feature = "num-bigint")]
         JsonValue::BigInt(b) => JsonValue::BigInt(b),
         JsonValue::Float(f) => JsonValue::Float(f),
+        JsonValue::LosslessFloat(f) => JsonValue::LosslessFloat(f.into_owned().into()),
         JsonValue::Str(s) => JsonValue::Str(s.into_owned().into()),
         JsonValue::Array(v) => JsonValue::Array(Arc::new(v.iter().map(JsonValue::to_static).collect())),
         JsonValue::Object(o) => JsonValue::Object(Arc::new(
@@ -161,6 +191,16 @@ fn value_static(v: JsonValue<'_>) -> JsonValue<'static> {
 impl JsonValue<'static> {
     /// Parse a JSON enum from a byte slice, returning an owned version of the enum.
     pub fn parse_owned(data: &[u8], allow_inf_nan: bool, allow_partial: PartialMode) -> Result<Self, JsonError> {
+        Self::parse_owned_with_float_mode(data, allow_inf_nan, allow_partial, JsonValueFloatMode::Float)
+    }
+
+    /// Parse a JSON enum from a byte slice into an owned value with control over non-integer numbers.
+    pub fn parse_owned_with_float_mode(
+        data: &[u8],
+        allow_inf_nan: bool,
+        allow_partial: PartialMode,
+        float_mode: JsonValueFloatMode,
+    ) -> Result<Self, JsonError> {
         let mut parser = Parser::new(data);
 
         let mut tape = Tape::default();
@@ -172,6 +212,7 @@ impl JsonValue<'static> {
             DEFAULT_RECURSION_LIMIT,
             allow_inf_nan,
             allow_partial,
+            float_mode,
         )?;
         parser.finish()?;
         Ok(v)
@@ -185,6 +226,7 @@ pub(crate) fn take_value_borrowed<'j>(
     recursion_limit: u8,
     allow_inf_nan: bool,
     allow_partial: PartialMode,
+    float_mode: JsonValueFloatMode,
 ) -> JsonResult<JsonValue<'j>> {
     take_value(
         peek,
@@ -193,6 +235,7 @@ pub(crate) fn take_value_borrowed<'j>(
         recursion_limit,
         allow_inf_nan,
         allow_partial,
+        float_mode,
         &|s: StringOutput<'_, 'j>| s.into(),
     )
 }
@@ -204,6 +247,7 @@ pub(crate) fn take_value_owned<'j>(
     recursion_limit: u8,
     allow_inf_nan: bool,
     allow_partial: PartialMode,
+    float_mode: JsonValueFloatMode,
 ) -> JsonResult<JsonValue<'static>> {
     take_value(
         peek,
@@ -212,10 +256,12 @@ pub(crate) fn take_value_owned<'j>(
         recursion_limit,
         allow_inf_nan,
         allow_partial,
+        float_mode,
         &|s: StringOutput<'_, 'j>| Into::<String>::into(s).into(),
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn take_value<'j, 's>(
     peek: Peek,
     parser: &mut Parser<'j>,
@@ -223,6 +269,7 @@ fn take_value<'j, 's>(
     recursion_limit: u8,
     allow_inf_nan: bool,
     allow_partial: PartialMode,
+    float_mode: JsonValueFloatMode,
     create_cow: &impl Fn(StringOutput<'_, 'j>) -> Cow<'s, str>,
 ) -> JsonResult<JsonValue<'s>> {
     let partial_active = allow_partial.is_active();
@@ -258,6 +305,7 @@ fn take_value<'j, 's>(
                 recursion_limit,
                 allow_inf_nan,
                 allow_partial,
+                float_mode,
                 create_cow,
             )
         }
@@ -278,28 +326,66 @@ fn take_value<'j, 's>(
                     recursion_limit,
                     allow_inf_nan,
                     allow_partial,
+                    float_mode,
                     create_cow,
                 ),
                 Err(e) if !(partial_active && e.allowed_if_partial()) => Err(e),
                 _ => Ok(JsonValue::empty_object()),
             }
         }
-        _ => {
-            let n = parser.consume_number::<NumberAny>(peek.into_inner(), allow_inf_nan);
-            match n {
-                Ok(NumberAny::Int(NumberInt::Int(int))) => Ok(JsonValue::Int(int)),
-                #[cfg(feature = "num-bigint")]
-                Ok(NumberAny::Int(NumberInt::BigInt(big_int))) => Ok(JsonValue::BigInt(big_int)),
-                Ok(NumberAny::Float(float)) => Ok(JsonValue::Float(float)),
-                Err(e) => {
-                    if !peek.is_num() {
-                        Err(json_error!(ExpectedSomeValue, parser.index))
-                    } else {
-                        Err(e)
-                    }
-                }
+        _ => take_number(peek, parser, allow_inf_nan, float_mode, create_cow),
+    }
+}
+
+fn take_number<'j, 's>(
+    peek: Peek,
+    parser: &mut Parser<'j>,
+    allow_inf_nan: bool,
+    float_mode: JsonValueFloatMode,
+    create_cow: &impl Fn(StringOutput<'_, 'j>) -> Cow<'s, str>,
+) -> JsonResult<JsonValue<'s>> {
+    match float_mode {
+        JsonValueFloatMode::Float => {
+            let number = parser
+                .consume_number::<NumberAny>(peek.into_inner(), allow_inf_nan)
+                .map_err(|e| number_error(peek, parser, e))?;
+            Ok(json_value_from_number_any(number))
+        }
+        JsonValueFloatMode::LosslessFloat => {
+            let number_range = parser
+                .consume_number::<NumberRange>(peek.into_inner(), allow_inf_nan)
+                .map_err(|e| number_error(peek, parser, e))?;
+            let NumberRange { range, is_int } = number_range;
+            let number_bytes = parser.slice(range).unwrap();
+            if is_int {
+                let number = NumberAny::from_bytes(number_bytes, allow_inf_nan).unwrap();
+                Ok(json_value_from_number_any(number))
+            } else {
+                // SAFETY: NumberRange only accepts ASCII JSON number tokens.
+                let number_str = unsafe { std::str::from_utf8_unchecked(number_bytes) };
+                // SAFETY: number_str is an ASCII slice from the original JSON data.
+                Ok(JsonValue::LosslessFloat(create_cow(unsafe {
+                    StringOutput::data(number_str, true)
+                })))
             }
         }
+    }
+}
+
+fn json_value_from_number_any<'s>(number: NumberAny) -> JsonValue<'s> {
+    match number {
+        NumberAny::Int(NumberInt::Int(int)) => JsonValue::Int(int),
+        #[cfg(feature = "num-bigint")]
+        NumberAny::Int(NumberInt::BigInt(big_int)) => JsonValue::BigInt(big_int),
+        NumberAny::Float(float) => JsonValue::Float(float),
+    }
+}
+
+fn number_error(peek: Peek, parser: &Parser, error: JsonError) -> JsonError {
+    if peek.is_num() {
+        error
+    } else {
+        json_error!(ExpectedSomeValue, parser.index)
     }
 }
 
@@ -335,6 +421,7 @@ fn take_value_recursive<'j, 's>(
     recursion_limit: u8,
     allow_inf_nan: bool,
     allow_partial: PartialMode,
+    float_mode: JsonValueFloatMode,
     create_cow: &impl Fn(StringOutput<'_, 'j>) -> Cow<'s, str>,
 ) -> JsonResult<JsonValue<'s>> {
     let recursion_limit: usize = recursion_limit.into();
@@ -390,21 +477,7 @@ fn take_value_recursive<'j, 's>(
                             }
                             Ok(JsonValue::empty_object())
                         }
-                        _ => parser
-                            .consume_number::<NumberAny>(peek.into_inner(), allow_inf_nan)
-                            .map_err(|e| {
-                                if !peek.is_num() {
-                                    json_error!(ExpectedSomeValue, parser.index)
-                                } else {
-                                    e
-                                }
-                            })
-                            .map(|n| match n {
-                                NumberAny::Int(NumberInt::Int(int)) => JsonValue::Int(int),
-                                #[cfg(feature = "num-bigint")]
-                                NumberAny::Int(NumberInt::BigInt(big_int)) => JsonValue::BigInt(big_int),
-                                NumberAny::Float(float) => JsonValue::Float(float),
-                            }),
+                        _ => take_number(peek, parser, allow_inf_nan, float_mode, create_cow),
                     };
 
                     let array = match result {
@@ -475,21 +548,7 @@ fn take_value_recursive<'j, 's>(
                             }
                             Ok(JsonValue::empty_object())
                         }
-                        _ => parser
-                            .consume_number::<NumberAny>(peek.into_inner(), allow_inf_nan)
-                            .map_err(|e| {
-                                if !peek.is_num() {
-                                    json_error!(ExpectedSomeValue, parser.index)
-                                } else {
-                                    e
-                                }
-                            })
-                            .map(|n| match n {
-                                NumberAny::Int(NumberInt::Int(int)) => JsonValue::Int(int),
-                                #[cfg(feature = "num-bigint")]
-                                NumberAny::Int(NumberInt::BigInt(big_int)) => JsonValue::BigInt(big_int),
-                                NumberAny::Float(float) => JsonValue::Float(float),
-                            }),
+                        _ => take_number(peek, parser, allow_inf_nan, float_mode, create_cow),
                     };
 
                     let object = match result {

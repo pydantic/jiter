@@ -1,7 +1,9 @@
+use std::borrow::Cow;
+
 use pyo3::prelude::*;
 use pyo3::types::PyString;
 
-use jiter::{JsonValue, PythonParse, StringCacheMode, pystring_ascii_new};
+use jiter::{JsonValue, JsonValueFloatMode, PartialMode, PythonParse, StringCacheMode, pystring_ascii_new};
 
 #[cfg(feature = "num-bigint")]
 #[test]
@@ -32,6 +34,34 @@ fn test_to_py_object_other() {
         let python_value = value.into_pyobject(py).unwrap();
         let string = python_value.to_string();
         assert_eq!(string, "['string', '£', True, False, None, nan, inf, -inf]");
+    });
+}
+
+#[test]
+fn test_to_py_object_lossless_float() {
+    let value = JsonValue::parse_with_float_mode(
+        br#"{"float": 1.234567890123456789}"#,
+        false,
+        PartialMode::Off,
+        JsonValueFloatMode::LosslessFloat,
+    )
+    .unwrap();
+    Python::attach(|py| {
+        let python_value = value.into_pyobject(py).unwrap();
+        let string = python_value.to_string();
+        assert_eq!(string, "{'float': LosslessFloat(1.234567890123456789)}");
+    });
+}
+
+#[test]
+fn test_to_py_object_lossless_float_owned() {
+    Python::attach(|py| {
+        let value = JsonValue::LosslessFloat(Cow::Borrowed("1.234567890123456789"));
+        let python_value = pyo3::IntoPyObject::into_pyobject(value, py).unwrap();
+        assert_eq!(
+            python_value.repr().unwrap().to_string(),
+            "LosslessFloat(1.234567890123456789)"
+        );
     });
 }
 

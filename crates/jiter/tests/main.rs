@@ -10,8 +10,8 @@ use std::sync::Arc;
 use num_bigint::BigInt;
 
 use jiter::{
-    Jiter, JiterErrorType, JiterResult, JsonErrorType, JsonObject, JsonType, JsonValue, LinePosition, NumberAny,
-    NumberFloat, NumberInt, PartialMode, Peek,
+    Jiter, JiterErrorType, JiterResult, JsonErrorType, JsonObject, JsonType, JsonValue, JsonValueFloatMode,
+    LinePosition, NumberAny, NumberFloat, NumberInt, PartialMode, Peek,
 };
 
 fn json_vec(jiter: &mut Jiter, peek: Option<Peek>) -> JiterResult<Vec<String>> {
@@ -1223,6 +1223,76 @@ fn test_owned_value() {
         array,
         &Arc::new(vec![JsonValue::Int(1), JsonValue::Bool(false), JsonValue::Null])
     );
+}
+
+#[test]
+fn test_value_lossless_float_default_is_off() {
+    let value = JsonValue::parse(b"1.234567890123456789012345678901234567890", false).unwrap();
+    assert!(matches!(value, JsonValue::Float(_)));
+}
+
+#[test]
+fn test_value_lossless_float_borrowed() {
+    let json = br#"{"small": 1.2, "big": 12345678901234567890123456789012345678.9, "exp": -4.5e+67, "int": 1}"#;
+    let value =
+        JsonValue::parse_with_float_mode(json, false, PartialMode::Off, JsonValueFloatMode::LosslessFloat).unwrap();
+    let JsonValue::Object(obj) = value else {
+        panic!("expected object")
+    };
+
+    assert_eq!(
+        get_key(&obj, "small").unwrap(),
+        &JsonValue::LosslessFloat(Cow::Borrowed("1.2"))
+    );
+    assert_eq!(
+        get_key(&obj, "big").unwrap(),
+        &JsonValue::LosslessFloat(Cow::Borrowed("12345678901234567890123456789012345678.9"))
+    );
+    assert_eq!(
+        get_key(&obj, "exp").unwrap(),
+        &JsonValue::LosslessFloat(Cow::Borrowed("-4.5e+67"))
+    );
+    assert_eq!(get_key(&obj, "int").unwrap(), &JsonValue::Int(1));
+}
+
+#[test]
+fn test_value_lossless_float_into_static() {
+    let value =
+        JsonValue::parse_with_float_mode(b"1.200", false, PartialMode::Off, JsonValueFloatMode::LosslessFloat).unwrap();
+    assert_eq!(
+        value.into_static(),
+        JsonValue::LosslessFloat(Cow::Owned("1.200".to_string()))
+    );
+}
+
+#[test]
+fn test_value_lossless_float_owned() {
+    let value = JsonValue::parse_owned_with_float_mode(
+        b"[0.1234, 1e3, -0.0]",
+        false,
+        PartialMode::Off,
+        JsonValueFloatMode::LosslessFloat,
+    )
+    .unwrap();
+    assert_eq!(
+        value,
+        JsonValue::Array(Arc::new(vec![
+            JsonValue::LosslessFloat(Cow::Owned("0.1234".to_string())),
+            JsonValue::LosslessFloat(Cow::Owned("1e3".to_string())),
+            JsonValue::LosslessFloat(Cow::Owned("-0.0".to_string())),
+        ]))
+    );
+}
+
+#[test]
+fn test_value_lossless_float_invalid_numbers() {
+    let err = JsonValue::parse_with_float_mode(b"1.", false, PartialMode::Off, JsonValueFloatMode::LosslessFloat)
+        .unwrap_err();
+    assert_eq!(err.error_type, JsonErrorType::EofWhileParsingValue);
+
+    let err =
+        JsonValue::parse_with_float_mode(b"x", false, PartialMode::Off, JsonValueFloatMode::LosslessFloat).unwrap_err();
+    assert_eq!(err.error_type, JsonErrorType::ExpectedSomeValue);
 }
 
 fn value_into_static() -> JsonValue<'static> {

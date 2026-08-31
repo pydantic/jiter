@@ -70,7 +70,7 @@ impl<'j> Parser<'j> {
     }
 
     #[allow(dead_code)]
-    pub fn slice(&self, range: Range<usize>) -> Option<&[u8]> {
+    pub fn slice(&self, range: Range<usize>) -> Option<&'j [u8]> {
         self.data.get(range)
     }
 
