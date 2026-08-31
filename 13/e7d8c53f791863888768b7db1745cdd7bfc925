@@ -1,0 +1,21 @@
+crates/jiter/examples/alloc_count.rs
+  s_07b99a59b28f18::t_6dc22ed7e8452d 27,79-80,82-88
+crates/jiter/src/value.rs
+  s_07b99a59b28f18::t_6dc22ed7e8452d 323-324,354-360
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "13e7d8c53f791863888768b7db1745cdd7bfc925",
+  "prompts": {},
+  "sessions": {
+    "s_07b99a59b28f18": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "10f78665-ea06-4e78-bc7d-fe39da1440b3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Samuel Colvin <s@muelcolvin.com>"
+    }
+  }
+}
