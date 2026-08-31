@@ -306,6 +306,15 @@ fn take_value<'j, 's>(
     }
 }
 
+/// A container being parsed, as the position its contents start at in the stack shared by every
+/// container of its kind, see [`take_value_recursive`].
+enum RecursedValue<'s> {
+    /// Array in progress; its elements start at `base` in the shared `elements` stack.
+    Array { base: usize },
+    /// Object in progress; its members start at `base` in the shared `members` stack; `next_key` awaits its value.
+    Object { base: usize, next_key: Cow<'s, str> },
+}
+
 /// The contents of a container that has just closed, taken off the stack they were built on.
 ///
 /// `base` of zero means nothing else is on that stack — no enclosing container of the same kind
@@ -319,13 +328,6 @@ fn take_container<T>(stack: &mut Vec<T>, base: usize) -> Vec<T> {
     } else {
         stack.split_off(base)
     }
-}
-
-/// A container being parsed, as the position its contents start at in the stack shared by every
-/// container of its kind, see [`take_value_recursive`].
-enum RecursedValue<'s> {
-    Array { base: usize },
-    Object { base: usize, next_key: Cow<'s, str> },
 }
 
 #[inline(never)] // this is an iterative algo called only from take_value, no point in inlining
