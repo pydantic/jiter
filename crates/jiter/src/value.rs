@@ -320,7 +320,8 @@ enum RecursedValue<'s> {
 /// `base` of zero means nothing else is on that stack — no enclosing container of the same kind
 /// has anything on it yet — so the stack itself is the container and can be handed over whole.
 /// That is the whole document for the common single-container case, where copying it out would be
-/// pure overhead, and the outermost array of a big one, which is the largest copy there is.
+/// pure overhead, and the outermost array of a big one, which would otherwise be the largest
+/// copy of all.
 #[inline]
 fn take_container<T>(stack: &mut Vec<T>, base: usize) -> Vec<T> {
     if base == 0 {
@@ -350,8 +351,13 @@ fn take_value_recursive<'j, 's>(
     // are always the top of the stack, from its `base` up; closing it copies them out into an
     // allocation of exactly the right size. A `Vec` per container has to guess that size instead,
     // and pays a run of reallocations for guessing low.
-    let mut elements: Vec<JsonValue<'s>> = Vec::with_capacity(8);
-    let mut members: Vec<(Cow<'s, str>, JsonValue<'s>)> = Vec::with_capacity(8);
+    // Only the root container's stack is allocated up front; a document that never opens a
+    // container of the other kind never pays for its stack.
+    let (mut elements, mut members): (Vec<JsonValue<'s>>, Vec<(Cow<'s, str>, JsonValue<'s>)>) = match &current_recursion
+    {
+        RecursedValue::Array { .. } => (Vec::with_capacity(8), Vec::new()),
+        RecursedValue::Object { .. } => (Vec::new(), Vec::with_capacity(8)),
+    };
 
     let mut recursion_stack: SmallVec<[RecursedValue; 8]> = SmallVec::new();
     let partial_active = allow_partial.is_active();

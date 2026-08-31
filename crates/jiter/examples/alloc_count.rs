@@ -24,7 +24,7 @@ unsafe impl GlobalAlloc for Counting {
 
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
         REALLOCS.fetch_add(1, Relaxed);
-        BYTES.fetch_add(new_size.saturating_sub(layout.size()), Relaxed);
+        BYTES.fetch_add(new_size, Relaxed);
         unsafe { System.realloc(ptr, layout, new_size) }
     }
 }
@@ -76,8 +76,16 @@ fn main() {
         .unwrap()
         .iter()
         .map(|case| {
+            // cases.json holds absolute paths from the checkout that generated it; re-root them
+            // like tests/corpus does
             let path = case["path"].as_str().unwrap();
-            let rel = &path[path.find("/cases/").unwrap() + 1..];
+            let rel = match std::path::Path::new(path).strip_prefix(&root) {
+                Ok(rel) => rel.to_string_lossy().into_owned(),
+                Err(_) => match path.find("/cases/") {
+                    Some(index) => path[index + 1..].to_string(),
+                    None => path.to_string(),
+                },
+            };
             std::fs::read(root.join(rel)).unwrap()
         })
         .collect();
