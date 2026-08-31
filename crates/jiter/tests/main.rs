@@ -1279,6 +1279,18 @@ fn jiter_next_value_owned() {
     assert!(matches!(s, Cow::Owned(_)));
 }
 
+#[test]
+fn number_any_i64_boundaries() {
+    assert_eq!(
+        NumberAny::from_bytes(b"9223372036854775807", false).unwrap(),
+        NumberAny::Int(NumberInt::Int(i64::MAX))
+    );
+    assert_eq!(
+        NumberAny::from_bytes(b"-9223372036854775808", false).unwrap(),
+        NumberAny::Int(NumberInt::Int(i64::MIN))
+    );
+}
+
 #[cfg(feature = "num-bigint")]
 #[test]
 fn i64_max() {

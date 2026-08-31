@@ -45,16 +45,18 @@ const ALT_MUL_U32_4: SimdVec = simd_const!([10000u32, 0u32, 10000u32, 0u32]);
 
 #[inline]
 #[target_feature(enable = "sse2")]
-pub(crate) fn find_digit_run_end(data: &[u8], mut index: usize) -> usize {
-    while let Some(byte_chunk) = data.get(index..index + SIMD_STEP) {
+pub(crate) fn find_digit_run_end(data: &[u8], mut index: usize, limit: usize) -> Option<usize> {
+    while index + SIMD_STEP <= limit
+        && let Some(byte_chunk) = data.get(index..index + SIMD_STEP)
+    {
         let digits = simd_sub_16(load_slice(byte_chunk), ZERO_DIGIT_16);
         let last_digit = first_non_digit(digits);
         if last_digit != SIMD_STEP as u32 {
-            return index + last_digit as usize;
+            return Some(index + last_digit as usize);
         }
         index += SIMD_STEP;
     }
-    super::fallback_int::find_digit_run_end(data, index)
+    super::fallback_int::find_digit_run_end(data, index, limit)
 }
 
 #[inline]
