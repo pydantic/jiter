@@ -1693,6 +1693,29 @@ fn jiter_partial_string_escape() {
 }
 
 #[test]
+fn jiter_partial_bytes_escape() {
+    // next_bytes should agree with next_str when the input is truncated inside an escape
+    for data in [
+        br#"["foo\"#.as_slice(),
+        br#"["foo\u"#.as_slice(),
+        br#"["foo\u1"#.as_slice(),
+        br#"["foo\u12"#.as_slice(),
+        br#"["foo\u123"#.as_slice(),
+    ] {
+        let mut str_jiter = Jiter::new(data).with_allow_partial_strings();
+        assert_eq!(str_jiter.next_array().unwrap(), Some(Peek::String));
+        let s = str_jiter.next_str().unwrap();
+
+        let mut bytes_jiter = Jiter::new(data).with_allow_partial_strings();
+        assert_eq!(bytes_jiter.next_array().unwrap(), Some(Peek::String));
+        let b = bytes_jiter.next_bytes().unwrap();
+
+        assert_eq!(b, s.as_bytes(), "data: {:?}", String::from_utf8_lossy(data));
+        assert_eq!(b, b"foo", "data: {:?}", String::from_utf8_lossy(data));
+    }
+}
+
+#[test]
 fn test_unicode_roundtrip() {
     // '"中文"'
     let json_bytes = b"\"\\u4e2d\\u6587\"";
