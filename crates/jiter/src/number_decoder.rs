@@ -136,7 +136,7 @@ fn parse_json_float(data: &[u8], start: usize, allow_inf_nan: bool) -> JsonResul
 }
 
 /// Decode a float starting at `start` whose first digit is at `int_start`, scanning the integer
-/// part to try [`parse_float_dot`] before falling back to the general path.
+/// part to try [`parse_float_fast`] before falling back to the general path.
 fn decode_float(data: &[u8], start: usize, int_start: usize, allow_inf_nan: bool) -> JsonResult<(f64, usize)> {
     let (chunk, terminator_index) = decode_int_chunk_small(data, int_start, 0);
     // a `0`-prefixed integer part like `01.2` is invalid JSON, the general path rejects it
@@ -152,7 +152,7 @@ fn decode_float(data: &[u8], start: usize, int_start: usize, allow_inf_nan: bool
                 return Ok((float, terminator_index));
             }
             IntChunk::Float(int_mantissa) => {
-                if let Some(result) = parse_float_dot(data, start, terminator_index, int_mantissa) {
+                if let Some(result) = parse_float_fast(data, start, terminator_index, int_mantissa) {
                     return Ok(result);
                 }
             }
@@ -174,7 +174,7 @@ fn decode_any_float(
     int_mantissa: u64,
     allow_inf_nan: bool,
 ) -> JsonResult<(f64, usize)> {
-    if let Some(result) = parse_float_dot(data, start, terminator_index, int_mantissa) {
+    if let Some(result) = parse_float_fast(data, start, terminator_index, int_mantissa) {
         Ok(result)
     } else {
         parse_json_float(data, start, allow_inf_nan)
@@ -218,27 +218,17 @@ const POW_10: [u64; 18] = [
     10u64.pow(17),
 ];
 
-/// Convert a float of the form `123.456` (no exponent) to an `f64`, `dot_index` points at the
-/// byte which ended the integer part.
+/// Convert a float of the form `123.456`, `123e45` or `123.456e-78` to an `f64`,
+/// `terminator_index` points at the `.`, `e` or `E` which ended the integer part.
 /// All digits are accumulated into a `u64` mantissa and converted with lexical's fast/moderate
 /// (Eisel-Lemire) algorithms, so the result is identical to a full lexical parse.
-/// Returns `None` when the number needs the general parsing path: an exponent instead of a dot,
-/// more significant digits than a `u64` holds exactly, or when lexical would need its slow
-/// algorithm.
-fn parse_float_dot(data: &[u8], start: usize, dot_index: usize, int_mantissa: u64) -> Option<(f64, usize)> {
-    if data.get(dot_index) != Some(&b'.') {
-        return None;
-    }
-    let frac_start = dot_index + 1;
-    let long_frac = next_8_are_digits(data, frac_start);
-    if long_frac && next_8_are_digits(data, frac_start + 8) {
-        // 16 or more fraction digits: too many for an exact u64 mantissa
-        return None;
-    }
-
+/// Returns `None` when the number needs the general parsing path: more significant digits than
+/// a `u64` holds exactly, an exponent over 5 digits, invalid trailing syntax, or when lexical
+/// would need its slow algorithm.
+fn parse_float_fast(data: &[u8], start: usize, terminator_index: usize, int_mantissa: u64) -> Option<(f64, usize)> {
     let is_negative = data.get(start) == Some(&b'-');
     let int_start = start + usize::from(is_negative);
-    let int_digits = dot_index - int_start;
+    let int_digits = terminator_index - int_start;
     if int_digits > 18 {
         // `int_mantissa` only covers 18 digits, and the mantissa couldn't be exact anyway
         return None;
@@ -247,31 +237,46 @@ fn parse_float_dot(data: &[u8], start: usize, dot_index: usize, int_mantissa: u6
     // no significant digits
     let int_digits = if int_mantissa == 0 { 0 } else { int_digits };
 
-    let (frac_value, end) = if long_frac && data.len() >= frac_start + 16 {
-        parse_long_fraction(data, frac_start)
-    } else {
-        // short fraction, or a long one at the very end of the data
-        let (chunk, end) = decode_int_chunk_small(data, frac_start, 0);
-        match chunk {
-            IntChunk::Done(value) | IntChunk::Float(value) => (value, end),
-            IntChunk::Ongoing(_) => return None,
+    let (mantissa, frac_digits, end) = if data.get(terminator_index) == Some(&b'.') {
+        let frac_start = terminator_index + 1;
+        let long_frac = next_8_are_digits(data, frac_start);
+        if long_frac && next_8_are_digits(data, frac_start + 8) {
+            // 16 or more fraction digits: too many for an exact u64 mantissa
+            return None;
         }
+        let (frac_value, end) = if long_frac && data.len() >= frac_start + 16 {
+            parse_long_fraction(data, frac_start)
+        } else {
+            // short fraction, or a long one at the very end of the data
+            let (chunk, end) = decode_int_chunk_small(data, frac_start, 0);
+            match chunk {
+                IntChunk::Done(value) | IntChunk::Float(value) => (value, end),
+                IntChunk::Ongoing(_) => return None,
+            }
+        };
+        let frac_digits = end - frac_start;
+        // any 19-digit decimal fits in a u64, so up to 19 significant digits the mantissa is
+        // exact; `frac_digits == 0` (e.g. `123.`) is invalid and left to the general path to
+        // error
+        if frac_digits == 0 || int_digits + frac_digits > 19 {
+            return None;
+        }
+        (int_mantissa * POW_10[frac_digits] + frac_value, frac_digits, end)
+    } else {
+        // the integer part was ended by `e` or `E`, e.g. `123e45`
+        (int_mantissa, 0, terminator_index)
     };
-    // an exponent needs the general path; any other terminator (e.g. the second dot of
-    // `1.2.3`) just ends the number
+
+    let mut exponent = -(frac_digits as i64);
+    let mut end = end;
     if matches!(data.get(end), Some(b'e' | b'E')) {
-        return None;
+        let (explicit_exponent, exponent_end) = parse_exponent(data, end + 1)?;
+        exponent += explicit_exponent;
+        end = exponent_end;
     }
-    let frac_digits = end - frac_start;
-    // any 19-digit decimal fits in a u64, so up to 19 significant digits the mantissa is exact;
-    // `frac_digits == 0` (e.g. `123.`) is invalid and left to the general path to error
-    if frac_digits == 0 || int_digits + frac_digits > 19 {
-        return None;
-    }
-    let mantissa = int_mantissa * POW_10[frac_digits] + frac_value;
 
     let num = Number {
-        exponent: -(frac_digits as i64),
+        exponent,
         mantissa,
         is_negative,
         many_digits: false,
@@ -295,6 +300,41 @@ fn parse_float_dot(data: &[u8], start: usize, dot_index: usize, int_mantissa: u6
         float = -float;
     }
     Some((float, end))
+}
+
+/// Parse an explicit exponent like `-78` after the `e`/`E` at `index - 1`, returning its value
+/// and the index of the byte after its last digit.
+/// Returns `None` for no digits (invalid, the general path errors) or over 5 digits; every f64
+/// overflows or underflows well within 5 digits, and lexical's `compute_float` short-circuits
+/// both, so the cap only sends absurd literals like `2e2147483648` to the general path.
+fn parse_exponent(data: &[u8], mut index: usize) -> Option<(i64, usize)> {
+    let negative = match data.get(index) {
+        Some(b'-') => {
+            index += 1;
+            true
+        }
+        Some(b'+') => {
+            index += 1;
+            false
+        }
+        _ => false,
+    };
+    let first_digit = index;
+    let mut value: i64 = 0;
+    while let Some(digit) = data.get(index) {
+        if !digit.is_ascii_digit() {
+            break;
+        }
+        value = value * 10 + i64::from(digit & 0x0f);
+        if value > 99_999 {
+            return None;
+        }
+        index += 1;
+    }
+    if index == first_digit {
+        return None;
+    }
+    Some((if negative { -value } else { value }, index))
 }
 
 /// Decode a fraction of 8-15 digits at `frac_start`, returning its value and the index of the
@@ -437,8 +477,8 @@ fn consume_nan(data: &[u8], index: usize, allow_inf_nan: bool) -> JsonResult<(f6
 #[derive(Debug)]
 pub(crate) enum IntParse {
     Int(NumberInt),
-    /// carries the integer part's value so [`parse_float_dot`] doesn't rescan it; only valid
-    /// while the integer part has 18 digits or fewer, which `parse_float_dot` checks
+    /// carries the integer part's value so [`parse_float_fast`] doesn't rescan it; only valid
+    /// while the integer part has 18 digits or fewer, which `parse_float_fast` checks
     Float(u64),
     FloatInf(bool),
     FloatNaN,
@@ -536,7 +576,7 @@ pub(crate) enum IntChunk {
     Done(u64),
     /// number ended with a dot or exponent at the returned index; from
     /// [`decode_int_chunk_small`](crate::simd::decode_int_chunk_small) this carries the value
-    /// of the digits so far for [`parse_float_dot`], the big decoder always passes 0
+    /// of the digits so far for [`parse_float_fast`], the big decoder always passes 0
     Float(u64),
 }
 
