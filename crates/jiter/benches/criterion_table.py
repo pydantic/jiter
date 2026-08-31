@@ -38,7 +38,6 @@ GROUPS: list[tuple[str, list[str]]] = [
         'numbers',
         [
             'short_numbers',
-            'floats_array',
             'bigints_array',
             'massive_ints_array',
             # despite the name, big.json is 1000 arrays of ints and floats with no strings,
@@ -46,6 +45,16 @@ GROUPS: list[tuple[str, list[str]]] = [
             'big',
             'json_cases_numbers',
             'json_cases_ints',
+        ],
+    ),
+    (
+        'floats',
+        [
+            'floats_array',
+            'short_floats',
+            'doubles_array',
+            'long_significand_floats',
+            'exponent_floats',
             'json_cases_floats',
         ],
     ),
@@ -123,10 +132,14 @@ def build_table(results: dict[str, dict[str, float]]) -> str:
     if other:
         grouped.append(('other', other))
 
-    lines = [
-        '| benchmark | `jiter` iter | `jiter` value | `serde` value | `serde`/`jiter` |',
-        '| --- | ---: | ---: | ---: | ---: |',
+    header = [
+        'benchmark',
+        '`jiter` iter',
+        '`jiter` value',
+        '`serde` value',
+        '`serde`/`jiter`',
     ]
+    body: list[list[str]] = []
     for group, fixtures in grouped:
         rows = []
         for fixture in fixtures:
@@ -137,16 +150,37 @@ def build_table(results: dict[str, dict[str, float]]) -> str:
                 # a row without the serde comparison isn't adding anything
                 continue
             rows.append(
-                f'| {fixture} '
-                f'| {format_time(times.get("jiter_iter"))} '
-                f'| {format_time(jiter_value)} '
-                f'| {format_time(serde_value)} '
-                f'| {format_ratio(jiter_value, serde_value)} |'
+                [
+                    fixture,
+                    format_time(times.get('jiter_iter')),
+                    format_time(jiter_value),
+                    format_time(serde_value),
+                    format_ratio(jiter_value, serde_value),
+                ]
             )
         if rows:
-            lines.append(f'| **{group}** | | | | |')
-            lines.extend(rows)
-    return '\n'.join(lines)
+            body.append([f'**{group}**', '', '', '', ''])
+            body.extend(rows)
+
+    # pad the cells so the pipes line up in the source; the first column is left-aligned to
+    # match its `---` marker, the rest right-aligned to match `---:`
+    widths = [max(len(row[i]) for row in [header, *body]) for i in range(len(header))]
+
+    def format_row(cells: list[str]) -> str:
+        padded = [cells[0].ljust(widths[0])]
+        padded += [cell.rjust(width) for cell, width in zip(cells[1:], widths[1:])]
+        return '| ' + ' | '.join(padded) + ' |'
+
+    separator = (
+        '| '
+        + ' | '.join(
+            ['-' * widths[0]] + ['-' * (width - 1) + ':' for width in widths[1:]]
+        )
+        + ' |'
+    )
+    return '\n'.join(
+        [format_row(header), separator] + [format_row(row) for row in body]
+    )
 
 
 def default_criterion_dir() -> Path:

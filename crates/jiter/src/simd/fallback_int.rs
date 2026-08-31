@@ -14,7 +14,7 @@ pub(crate) fn decode_int_chunk(data: &[u8], mut index: usize, mut value: u64) ->
                 index += 1;
                 continue;
             } else if matches!(digit, b'.' | b'e' | b'E') {
-                return (IntChunk::Float, index);
+                return (IntChunk::Float(value), index);
             }
         }
         return (IntChunk::Done(value), index);

@@ -57,7 +57,9 @@ pub(crate) fn decode_int_chunk_big(data: &[u8], index: usize) -> (IntChunk, usiz
         } else {
             let index = index + last_digit as usize;
             if next_is_float(data, index) {
-                (IntChunk::Float, index)
+                // both callers discard the value for floats ending in a big chunk, skip the
+                // vector reduction
+                (IntChunk::Float(0), index)
             } else {
                 let value = unsafe { full_calc(digits, last_digit) };
                 (IntChunk::Done(value), index)
