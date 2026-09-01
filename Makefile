@@ -38,7 +38,7 @@ python-install:
 
 .PHONY: python-dev
 python-dev:
-	maturin develop -m crates/jiter-python/Cargo.toml
+	uv run maturin develop --uv -m crates/jiter-python/Cargo.toml
 
 .PHONY: python-test
 python-test: python-dev
@@ -46,11 +46,13 @@ python-test: python-dev
 
 .PHONY: python-dev-release
 python-dev-release:
-	maturin develop -m crates/jiter-python/Cargo.toml --release
+	uv run maturin develop --uv -m crates/jiter-python/Cargo.toml --release
 
 .PHONY: python-bench
-python-bench: python-dev-release
-	uv run python crates/jiter-python/bench.py
+python-bench:
+	uv sync --group bench
+	$(MAKE) python-dev-release
+	uv run --no-sync crates/jiter-python/bench.py
 
 .PHONY: bench
 bench:
