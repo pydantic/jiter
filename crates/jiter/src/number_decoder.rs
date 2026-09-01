@@ -195,17 +195,19 @@ impl AbstractNumberDecoder for NumberAny {
                     _ => return Ok((Self::Int(NumberInt::Int(0)), index)),
                 }
             }
-            Some(b'1'..=b'9') => {
-                let (chunk, end) = decode_number_prefix(data, digit_start);
-                index = end;
-                match chunk {
-                    IntChunk::Done(value) => {
-                        return Ok((Self::Int(short_integer(value, positive)), index));
-                    }
-                    IntChunk::Float => None,
-                    IntChunk::Ongoing(value) => Some((value, end)),
+            Some(b'1'..=b'9') => match decode_number_prefix(data, digit_start) {
+                Some((IntChunk::Done(value), end)) => {
+                    return Ok((Self::Int(short_integer(value, positive)), end));
                 }
-            }
+                Some((IntChunk::Float, end)) => {
+                    index = end;
+                    None
+                }
+                Some((IntChunk::Ongoing(_), _)) => {
+                    unreachable!("four-digit prefixes are handled by the digit-run scanner")
+                }
+                None => Some((0, digit_start)),
+            },
             Some(_) => return json_err!(InvalidNumber, index),
             None => return json_err!(EofWhileParsingValue, index),
         };

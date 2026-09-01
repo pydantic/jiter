@@ -17,23 +17,14 @@ pub(crate) fn find_digit_run_end(data: &[u8], mut index: usize, limit: usize) ->
     }
 }
 
-/// Fuse termination and value decoding for common short integers, using a bulk check before
-/// falling back to the digit-run scanner when at least four digits are present.
+/// Fuse termination and value decoding for numbers shorter than four digits. Returns `None` when
+/// at least four digits are present so the caller can scan the run from its SIMD-friendly start.
 #[inline(always)]
-pub(crate) fn decode_number_prefix(data: &[u8], index: usize) -> (IntChunk, usize) {
-    if let Some(digits) = data.get(index..index + 4)
-        && digits[0].is_ascii_digit()
-        && digits[1].is_ascii_digit()
-        && digits[2].is_ascii_digit()
-        && digits[3].is_ascii_digit()
-    {
-        let value = u64::from(digits[0] & 0x0f) * 1000
-            + u64::from(digits[1] & 0x0f) * 100
-            + u64::from(digits[2] & 0x0f) * 10
-            + u64::from(digits[3] & 0x0f);
-        (IntChunk::Ongoing(value), index + 4)
+pub(crate) fn decode_number_prefix(data: &[u8], index: usize) -> Option<(IntChunk, usize)> {
+    if data.get(index + 3).is_some_and(u8::is_ascii_digit) {
+        None
     } else {
-        decode_int_chunk_limit::<4>(data, index, 0)
+        Some(decode_int_chunk_limit::<4>(data, index, 0))
     }
 }
 
