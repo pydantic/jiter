@@ -125,7 +125,10 @@ where
             (StringChunk::StringEnd, ascii_only, index) => {
                 let s = to_str(&data[start..index], ascii_only, start, allow_partial)?;
                 // SAFETY: `ascii_only` tracks whether the decoded string contains only ASCII.
-                Ok((unsafe { StringOutput::data(s, ascii_only) }, index_after_string_end(data, index)))
+                Ok((
+                    unsafe { StringOutput::data(s, ascii_only) },
+                    (index + 1).min(data.len()),
+                ))
             }
             (StringChunk::Backslash, ascii_only, index) => {
                 decode_to_tape(data, index, tape, start, ascii_only, allow_partial)
@@ -186,7 +189,7 @@ fn decode_to_tape<'t, 'j>(
         match decode_string_chunk(data, index, ascii_only, allow_partial)? {
             (StringChunk::StringEnd, ascii_only, new_index) => {
                 tape.extend_from_slice(&data[index..new_index]);
-                index = index_after_string_end(data, new_index);
+                index = (new_index + 1).min(data.len());
                 let s = to_str(tape, ascii_only, start, allow_partial)?;
                 // SAFETY: `ascii_only` tracks whether the decoded string contains only ASCII.
                 return Ok((unsafe { StringOutput::tape(s, ascii_only) }, index));
@@ -203,13 +206,6 @@ fn decode_to_tape<'t, 'j>(
 pub(crate) enum StringChunk {
     StringEnd,
     Backslash,
-}
-
-/// In partial mode `decode_string_chunk` reports `StringEnd` at the end of the data even when the
-/// closing quote is missing. Only step over the quote when it is present, so the returned index
-/// never moves past the end of the data.
-fn index_after_string_end(data: &[u8], index: usize) -> usize {
-    if index < data.len() { index + 1 } else { index }
 }
 
 fn to_str(bytes: &[u8], ascii_only: bool, start: usize, allow_partial: bool) -> JsonResult<&str> {
@@ -308,7 +304,7 @@ where
             index = match decode_string_chunk(data, index, true, allow_partial)? {
                 (StringChunk::StringEnd, _, index) => {
                     let r = start..index;
-                    return Ok((r, index_after_string_end(data, index)));
+                    return Ok((r, (index + 1).min(data.len())));
                 }
                 (StringChunk::Backslash, _, index) => index,
             };
