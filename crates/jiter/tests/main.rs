@@ -1693,6 +1693,33 @@ fn jiter_partial_string_escape() {
 }
 
 #[test]
+fn jiter_partial_string_current_index() {
+    // https://github.com/pydantic/jiter/issues/267
+    // a partial string ending at the end of the input must not advance the index past the data
+    let json = br#"["foo"#;
+    let mut jiter = Jiter::new(json).with_allow_partial_strings();
+    assert_eq!(jiter.next_array().unwrap(), Some(Peek::String));
+    let start = jiter.current_index();
+    assert_eq!(jiter.next_str().unwrap(), "foo");
+    assert_eq!(jiter.current_index(), json.len());
+    assert_eq!(jiter.slice_to_current(start), br#""foo"#);
+
+    // same for the tape path (string containing an escape)
+    let json = br#""foo\nbar"#;
+    let mut jiter = Jiter::new(json).with_allow_partial_strings();
+    assert_eq!(jiter.next_str().unwrap(), "foo\nbar");
+    assert_eq!(jiter.current_index(), json.len());
+    assert_eq!(jiter.slice_to_current(0), json.as_slice());
+
+    // same for the range decoder used by next_bytes
+    let json = br#"["bar"#;
+    let mut jiter = Jiter::new(json).with_allow_partial_strings();
+    assert_eq!(jiter.next_array().unwrap(), Some(Peek::String));
+    assert_eq!(jiter.next_bytes().unwrap(), b"bar");
+    assert_eq!(jiter.current_index(), json.len());
+}
+
+#[test]
 fn test_unicode_roundtrip() {
     // '"中文"'
     let json_bytes = b"\"\\u4e2d\\u6587\"";
