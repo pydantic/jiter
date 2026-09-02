@@ -1715,8 +1715,43 @@ fn jiter_partial_string_current_index() {
     let json = br#"["bar"#;
     let mut jiter = Jiter::new(json).with_allow_partial_strings();
     assert_eq!(jiter.next_array().unwrap(), Some(Peek::String));
+    let start = jiter.current_index();
     assert_eq!(jiter.next_bytes().unwrap(), b"bar");
     assert_eq!(jiter.current_index(), json.len());
+    assert_eq!(jiter.slice_to_current(start), br#""bar"#);
+}
+
+#[test]
+fn jiter_partial_string_index_never_past_end() {
+    let full =
+        "[\"plain\", \"esc \\n \\u00e9 é tail\", \"ααα\", \"long enough to cross a simd chunk boundary\"]".as_bytes();
+    for use_bytes in [false, true] {
+        for i in 1..=full.len() {
+            let json = &full[..i];
+            let mut jiter = Jiter::new(json).with_allow_partial_strings();
+            let mut peek = jiter.next_array().ok().flatten();
+            while peek.is_some() {
+                let start = jiter.current_index();
+                let value_len = if use_bytes {
+                    jiter.next_bytes().map(<[u8]>::len)
+                } else {
+                    jiter.next_str().map(str::len)
+                };
+                let index = jiter.current_index();
+                assert!(index <= json.len(), "prefix {i}: index {index} > len {}", json.len());
+                // next_bytes rejects an incomplete escape even in partial mode (next_str truncates it
+                // instead). On that error the index must not have moved
+                let Ok(value_len) = value_len else {
+                    assert_eq!(index, start, "prefix {i}");
+                    assert!(jiter.slice_to_current(start).is_empty(), "prefix {i}");
+                    break;
+                };
+                let raw = jiter.slice_to_current(start);
+                assert!(raw.len() > value_len, "prefix {i}: raw {raw:?} shorter than value");
+                peek = jiter.array_step().ok().flatten();
+            }
+        }
+    }
 }
 
 #[test]
