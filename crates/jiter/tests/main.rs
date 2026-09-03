@@ -1937,7 +1937,7 @@ fn test_json_value_accessors() {
     assert_eq!(float_item.as_i64(), None);
     assert!(!float_item.is_int());
 
-        #[cfg(feature = "num-bigint")]
+    #[cfg(feature = "num-bigint")]
     {
         let big_int_val = JsonValue::BigInt(BigInt::from(100));
         assert!(big_int_val.is_number());
@@ -1946,6 +1946,7 @@ fn test_json_value_accessors() {
         assert_eq!(big_int_val.as_f64(), None);
     }
 }
+
 /// Check `json` against Rust std's float parsing, which is guaranteed correctly rounded,
 /// through both the `NumberAny` (`next_number`) and `NumberFloat` (`next_float`) decoders.
 fn check_float_bits(json: &str) {
