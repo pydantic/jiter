@@ -161,6 +161,10 @@ impl<'j> JsonValue<'j> {
     }
 
     /// Returns `true` if the `JsonValue` is an `Int`, `BigInt`, or `Float`.
+    ///
+    /// Note: When the `num-bigint` feature is enabled, numbers that exceed `i64` bounds
+    /// will return `true` for `is_number()`, but `as_i64()` will return `None`. Use
+    /// `as_bigint()` or `is_bigint()` to inspect and retrieve `BigInt` values.
     #[inline]
     pub fn is_number(&self) -> bool {
         match self {
@@ -182,6 +186,23 @@ impl<'j> JsonValue<'j> {
     pub fn as_i64(&self) -> Option<i64> {
         match self {
             Self::Int(i) => Some(*i),
+            _ => None,
+        }
+    }
+
+    /// Returns `true` if the `JsonValue` is a `BigInt`.
+    #[cfg(feature = "num-bigint")]
+    #[inline]
+    pub fn is_bigint(&self) -> bool {
+        matches!(self, Self::BigInt(_))
+    }
+
+    /// If the `JsonValue` is a `BigInt`, returns a reference to the associated `BigInt`.
+    #[cfg(feature = "num-bigint")]
+    #[inline]
+    pub fn as_bigint(&self) -> Option<&BigInt> {
+        match self {
+            Self::BigInt(b) => Some(b),
             _ => None,
         }
     }
@@ -248,6 +269,9 @@ impl<'j> JsonValue<'j> {
     }
 
     /// If the `JsonValue` is an `Object`, returns a reference to the value corresponding to the key.
+    ///
+    /// Note: `JsonObject` preserves duplicate keys and does not deduplicate them. This method
+    /// performs an O(n) linear search and returns a reference to the first matching key.
     #[inline]
     pub fn get(&self, key: &str) -> Option<&JsonValue<'j>> {
         match self {

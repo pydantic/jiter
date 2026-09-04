@@ -1903,6 +1903,7 @@ fn test_json_value_accessors() {
     let arr = val_e.as_array().unwrap();
     assert_eq!(arr.len(), 1);
     assert!(arr[0].is_float());
+    assert!(arr[0].is_number());
     assert_eq!(arr[0].as_f64(), Some(1.5));
 
     assert!(val.get("non_existent").is_none());
@@ -1941,9 +1942,16 @@ fn test_json_value_accessors() {
     {
         let big_int_val = JsonValue::BigInt(BigInt::from(100));
         assert!(big_int_val.is_number());
+        assert!(big_int_val.is_bigint());
+        assert_eq!(big_int_val.as_bigint(), Some(&BigInt::from(100)));
         assert!(!big_int_val.is_int());
         assert_eq!(big_int_val.as_i64(), None);
         assert_eq!(big_int_val.as_f64(), None);
+
+        assert!(!val_a.is_bigint());
+        assert_eq!(val_a.as_bigint(), None);
+        assert!(!null_val.is_bigint());
+        assert_eq!(null_val.as_bigint(), None);
     }
 }
 
