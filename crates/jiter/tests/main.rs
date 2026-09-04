@@ -1873,6 +1873,88 @@ fn test_partial_medium_response() {
     }
 }
 
+#[test]
+fn test_json_value_accessors() {
+    let json = r#"{"a": 1, "b": "hello", "c": true, "d": null, "e": [1.5]}"#;
+    let val = JsonValue::parse(json.as_bytes(), true).unwrap();
+
+    assert!(val.is_object());
+    assert_eq!(val.as_object().unwrap().len(), 5);
+
+    let val_a = val.get("a").unwrap();
+    assert!(val_a.is_number());
+    assert!(val_a.is_int());
+    assert_eq!(val_a.as_i64(), Some(1));
+    assert_eq!(val_a.as_f64(), Some(1.0));
+
+    let val_b = val.get("b").unwrap();
+    assert!(val_b.is_string());
+    assert_eq!(val_b.as_str(), Some("hello"));
+
+    let val_c = val.get("c").unwrap();
+    assert!(val_c.is_boolean());
+    assert_eq!(val_c.as_bool(), Some(true));
+
+    let val_d = val.get("d").unwrap();
+    assert!(val_d.is_null());
+
+    let val_e = val.get("e").unwrap();
+    assert!(val_e.is_array());
+    let arr = val_e.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert!(arr[0].is_float());
+    assert!(arr[0].is_number());
+    assert_eq!(arr[0].as_f64(), Some(1.5));
+
+    assert!(val.get("non_existent").is_none());
+    assert!(!val_a.is_string());
+    assert_eq!(val_a.as_str(), None);
+
+    // Negative branch tests for complete coverage
+    let null_val = JsonValue::Null;
+    assert!(!null_val.is_boolean());
+    assert_eq!(null_val.as_bool(), None);
+    assert!(!null_val.is_number());
+    assert!(!null_val.is_int());
+    assert_eq!(null_val.as_i64(), None);
+    assert!(!null_val.is_float());
+    assert_eq!(null_val.as_f64(), None);
+    assert!(!null_val.is_string());
+    assert_eq!(null_val.as_str(), None);
+    assert!(!null_val.is_array());
+    assert_eq!(null_val.as_array(), None);
+    assert!(!null_val.is_object());
+    assert_eq!(null_val.as_object(), None);
+    assert_eq!(null_val.get("key"), None);
+
+    assert!(!val_a.is_null());
+    assert_eq!(val_a.as_bool(), None);
+    assert!(!val_a.is_float());
+    assert_eq!(val_a.as_array(), None);
+    assert_eq!(val_a.as_object(), None);
+    assert_eq!(val_a.get("key"), None);
+
+    let float_item = &arr[0];
+    assert_eq!(float_item.as_i64(), None);
+    assert!(!float_item.is_int());
+
+    #[cfg(feature = "num-bigint")]
+    {
+        let big_int_val = JsonValue::BigInt(BigInt::from(100));
+        assert!(big_int_val.is_number());
+        assert!(big_int_val.is_bigint());
+        assert_eq!(big_int_val.as_bigint(), Some(&BigInt::from(100)));
+        assert!(!big_int_val.is_int());
+        assert_eq!(big_int_val.as_i64(), None);
+        assert_eq!(big_int_val.as_f64(), None);
+
+        assert!(!val_a.is_bigint());
+        assert_eq!(val_a.as_bigint(), None);
+        assert!(!null_val.is_bigint());
+        assert_eq!(null_val.as_bigint(), None);
+    }
+}
+
 /// Check `json` against Rust std's float parsing, which is guaranteed correctly rounded,
 /// through both the `NumberAny` (`next_number`) and `NumberFloat` (`next_float`) decoders.
 fn check_float_bits(json: &str) {
