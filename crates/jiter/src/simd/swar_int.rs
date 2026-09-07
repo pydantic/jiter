@@ -7,7 +7,7 @@
 /// Will produce a garbage value if the input is not valid ASCII digits (max 19 digits).
 #[inline]
 pub(crate) fn decode_digits(data: &[u8]) -> u64 {
-    debug_assert!(data.iter().all(|&digit| (b'0'..=b'9').contains(&digit)));
+    debug_assert!(data.iter().all(|&digit| digit.is_ascii_digit()));
     debug_assert!(data.len() <= 19, "maximum 19 digits allowed");
 
     let mut value = 0;
