@@ -106,11 +106,7 @@ impl AbstractNumberDecoder for NumberFloat {
 
         if let Some(digit) = first2 {
             if INT_CHAR_MAP[*digit as usize] {
-                let options = ParseFloatOptions::new();
-                match f64::from_lexical_partial_with_options::<JSON>(&data[start..], &options) {
-                    Ok((float, index)) => Ok((Self(float), index + start)),
-                    Err(_) => float_error(data, start, first, allow_inf_nan).map(|(float, index)| (Self(float), index)),
-                }
+                parse_json_float(data, start, first, allow_inf_nan).map(|(float, end)| (Self(float), end))
             } else if digit == &b'I' {
                 let (f, end) = consume_inf_f64(data, index, positive, allow_inf_nan)?;
                 Ok((Self(f), end))
