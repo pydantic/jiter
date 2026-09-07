@@ -2,10 +2,12 @@
 mod aarch64;
 mod fallback_int;
 mod fallback_string;
+mod swar_int;
 #[cfg(target_arch = "x86_64")]
 mod x86_64;
 
-pub(crate) use fallback_int::{decode_int_chunk as decode_int_chunk_small, decode_number_prefix};
+pub(crate) use fallback_int::{ShortInt, decode_int_chunk as decode_int_chunk_small, decode_short_int};
+pub(crate) use swar_int::decode_digits as decode_int_digits;
 
 use crate::errors::JsonResult;
 use crate::number_decoder::IntChunk;

@@ -1308,6 +1308,37 @@ fn jiter_next_value_owned() {
 }
 
 #[test]
+fn number_any_chunk_boundaries() {
+    for integer in [
+        1_234_567i64,
+        12_345_678,
+        123_456_789,
+        123_456_789_012_345,
+        1_234_567_890_123_456,
+        12_345_678_901_234_567,
+    ] {
+        for value in [integer, -integer] {
+            for suffix in ["", ".125", "e-3", "E+3"] {
+                let token = format!("{value}{suffix}");
+                let expected = if suffix.is_empty() {
+                    NumberAny::Int(NumberInt::Int(value))
+                } else {
+                    NumberAny::Float(token.parse::<f64>().unwrap())
+                };
+                for offset in [0, 1, 7, 15] {
+                    for trailing in ["", ", 12345678901234567890]"] {
+                        let data = format!("{}{token}{trailing}", " ".repeat(offset));
+                        let mut jiter = Jiter::new(data.as_bytes());
+                        assert_eq!(jiter.next_number().unwrap(), expected, "{data}");
+                        assert_eq!(jiter.current_index(), offset + token.len(), "{data}");
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn number_any_i64_boundaries() {
     assert_eq!(
         NumberAny::from_bytes(b"9223372036854775807", false).unwrap(),
@@ -1317,6 +1348,16 @@ fn number_any_i64_boundaries() {
         NumberAny::from_bytes(b"-9223372036854775808", false).unwrap(),
         NumberAny::Int(NumberInt::Int(i64::MIN))
     );
+    for json in ["9223372036854775808", "-9223372036854775809"] {
+        let result = NumberAny::from_bytes(json.as_bytes(), false);
+        #[cfg(feature = "num-bigint")]
+        assert_eq!(
+            result.unwrap(),
+            NumberAny::Int(NumberInt::BigInt(json.parse::<BigInt>().unwrap()))
+        );
+        #[cfg(not(feature = "num-bigint"))]
+        assert_eq!(result.unwrap_err().error_type, JsonErrorType::NumberOutOfRange);
+    }
 }
 
 #[cfg(feature = "num-bigint")]

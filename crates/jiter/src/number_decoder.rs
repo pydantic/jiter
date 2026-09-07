@@ -12,7 +12,9 @@ use lexical_parse_float::{FromLexicalWithOptions, Options as ParseFloatOptions, 
 use crate::{
     JsonErrorType::FloatExpectingInt,
     errors::{JsonError, JsonResult, json_err, json_error},
-    simd::{decode_int_chunk_big, decode_int_chunk_small, decode_number_prefix, find_digit_run_end},
+    simd::{
+        ShortInt, decode_int_chunk_big, decode_int_chunk_small, decode_int_digits, decode_short_int, find_digit_run_end,
+    },
 };
 use lexical_format::JSON;
 
@@ -183,7 +185,7 @@ impl AbstractNumberDecoder for NumberAny {
         };
 
         let digit_start = index;
-        let int_prefix = match first {
+        let scan_digits = match first {
             b'I' => {
                 return consume_inf_f64(data, index, positive, allow_inf_nan)
                     .map(|(float, end)| (Self::Float(float), end));
@@ -192,32 +194,26 @@ impl AbstractNumberDecoder for NumberAny {
                 index += 1;
                 match data.get(index) {
                     Some(digit) if digit.is_ascii_digit() => return json_err!(InvalidNumber, index),
-                    Some(b'.' | b'e' | b'E') => None,
+                    Some(b'.' | b'e' | b'E') => false,
                     _ => return Ok((Self::Int(NumberInt::Int(0)), index)),
                 }
             }
-            b'1'..=b'9' => match decode_number_prefix(data, digit_start) {
-                Some((IntChunk::Done(value), end)) => {
+            b'1'..=b'9' => match decode_short_int(data, digit_start) {
+                Some((ShortInt::Int(value), end)) => {
                     return Ok((Self::Int(short_integer(value, positive)), end));
                 }
-                Some((IntChunk::Float, end)) => {
-                    index = end;
-                    None
-                }
-                Some((IntChunk::Ongoing(_), _)) => {
-                    unreachable!("four-digit prefixes are handled by the digit-run scanner")
-                }
-                None => Some((0, digit_start)),
+                Some((ShortInt::Float, _)) => false,
+                None => true,
             },
             _ => return json_err!(InvalidNumber, index),
         };
 
-        if let Some((prefix, prefix_end)) = int_prefix {
+        if scan_digits {
             let limit = digit_start.saturating_add(4300);
             index = find_digit_run_end(data, index, limit)
                 .ok_or_else(|| json_error!(NumberOutOfRange, digit_start + 4301))?;
             if !matches!(data.get(index), Some(b'.' | b'e' | b'E')) {
-                let int = decode_integer_digits(data, digit_start, index, positive, prefix, prefix_end)?;
+                let int = decode_integer_digits(data, digit_start, index, positive)?;
                 return Ok((Self::Int(int), index));
             }
         }
@@ -235,21 +231,14 @@ fn short_integer(magnitude: u64, positive: bool) -> NumberInt {
     NumberInt::Int(value)
 }
 
-/// Convert a validated decimal digit run, extending any already-decoded prefix and applying its sign.
-fn decode_integer_digits(
-    data: &[u8],
-    digit_start: usize,
-    end: usize,
-    positive: bool,
-    prefix: u64,
-    prefix_end: usize,
-) -> JsonResult<NumberInt> {
+/// Convert a validated decimal digit run and apply its sign.
+#[cfg_attr(
+    feature = "num-bigint",
+    allow(clippy::unnecessary_wraps, reason = "conversion can fail without num-bigint")
+)]
+fn decode_integer_digits(data: &[u8], digit_start: usize, end: usize, positive: bool) -> JsonResult<NumberInt> {
     let magnitude = if end - digit_start <= 19 {
-        Some(
-            data[prefix_end..end]
-                .iter()
-                .fold(prefix, |value, digit| value * 10 + u64::from(digit & 0x0f)),
-        )
+        Some(decode_int_digits(&data[digit_start..end]))
     } else {
         None
     };
@@ -391,7 +380,7 @@ impl NumberInt {
         {
             // silence unused variable warning
             let _ = (ongoing, start);
-            return json_err!(NumberOutOfRange, index);
+            json_err!(NumberOutOfRange, index)
         }
 
         #[cfg(feature = "num-bigint")]

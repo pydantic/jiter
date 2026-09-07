@@ -17,15 +17,25 @@ pub(crate) fn find_digit_run_end(data: &[u8], mut index: usize, limit: usize) ->
     }
 }
 
-/// Fuse termination and value decoding for numbers shorter than four digits. Returns `None` when
-/// at least four digits are present so the caller can scan the run from its SIMD-friendly start.
+pub(crate) enum ShortInt {
+    Int(u64),
+    Float,
+}
+
+/// Decode a short integer or identify a float marker. Returns `None` when the fourth byte is
+/// a digit, without validating the preceding bytes; the caller must scan from `index`.
 #[inline(always)]
-pub(crate) fn decode_number_prefix(data: &[u8], index: usize) -> Option<(IntChunk, usize)> {
+pub(crate) fn decode_short_int(data: &[u8], index: usize) -> Option<(ShortInt, usize)> {
     if data.get(index + 3).is_some_and(u8::is_ascii_digit) {
-        None
-    } else {
-        Some(decode_int_chunk_limit::<4>(data, index, 0))
+        return None;
     }
+    let (chunk, end) = decode_int_chunk_limit::<4>(data, index, 0);
+    let prefix = match chunk {
+        IntChunk::Done(value) => ShortInt::Int(value),
+        IntChunk::Float => ShortInt::Float,
+        IntChunk::Ongoing(_) => unreachable!("the fourth byte is not a digit"),
+    };
+    Some((prefix, end))
 }
 
 /// Turns out this is faster than fancy bit manipulation, see
