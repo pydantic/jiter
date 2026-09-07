@@ -10,9 +10,11 @@ use std::ops::Range;
 use lexical_parse_float::{FromLexicalWithOptions, Options as ParseFloatOptions, format as lexical_format};
 
 use crate::{
+    JsonErrorType::FloatExpectingInt,
     errors::{JsonError, JsonResult, json_err, json_error},
     simd::{decode_int_chunk_big, decode_int_chunk_small, decode_number_prefix, find_digit_run_end},
 };
+use lexical_format::JSON;
 
 pub trait AbstractNumberDecoder: Sized {
     fn decode(data: &[u8], index: usize, first: u8, allow_inf_nan: bool) -> JsonResult<(Self, usize)>;
@@ -50,21 +52,21 @@ impl NumberInt {
     /// is empty, or contains trailing bytes.
     pub fn from_bytes(data: &[u8]) -> JsonResult<Self> {
         let first = *data.first().ok_or_else(|| json_error!(InvalidNumber, 0))?;
-        let (int_parse, index) = IntParse::parse(data, 0, first)?;
-        match int_parse {
-            IntParse::Int(int) if index == data.len() => Ok(int),
-            _ => json_err!(InvalidNumber, index),
+        match NumberInt::parse(data, 0, first) {
+            Ok((int, index)) if index == data.len() => Ok(int),
+            Ok((_, index))
+            | Err(JsonError {
+                error_type: FloatExpectingInt,
+                index,
+            }) => json_err!(InvalidNumber, index),
+            Err(other) => Err(other),
         }
     }
 }
 
 impl AbstractNumberDecoder for NumberInt {
     fn decode(data: &[u8], index: usize, first: u8, _allow_inf_nan: bool) -> JsonResult<(Self, usize)> {
-        let (int_parse, index) = IntParse::parse(data, index, first)?;
-        match int_parse {
-            IntParse::Int(int) => Ok((int, index)),
-            _ => json_err!(FloatExpectingInt, index),
-        }
+        Self::parse(data, index, first)
     }
 }
 
@@ -105,9 +107,9 @@ impl AbstractNumberDecoder for NumberFloat {
         if let Some(digit) = first2 {
             if INT_CHAR_MAP[*digit as usize] {
                 let options = ParseFloatOptions::new();
-                match f64::from_lexical_partial_with_options::<JSON_FMT>(&data[start..], &options) {
+                match f64::from_lexical_partial_with_options::<JSON>(&data[start..], &options) {
                     Ok((float, index)) => Ok((Self(float), index + start)),
-                    Err(_) => float_error(data, start, allow_inf_nan).map(|(float, index)| (Self(float), index)),
+                    Err(_) => float_error(data, start, first, allow_inf_nan).map(|(float, index)| (Self(float), index)),
                 }
             } else if digit == &b'I' {
                 let (f, end) = consume_inf_f64(data, index, positive, allow_inf_nan)?;
@@ -121,23 +123,22 @@ impl AbstractNumberDecoder for NumberFloat {
     }
 }
 
-const JSON_FMT: u128 = lexical_format::JSON;
-
+/// Parse a JSON float prefix, preserving jiter's error kinds and positions.
 #[inline(always)]
-fn parse_json_float(data: &[u8], start: usize, allow_inf_nan: bool) -> JsonResult<(f64, usize)> {
+fn parse_json_float(data: &[u8], start: usize, first: u8, allow_inf_nan: bool) -> JsonResult<(f64, usize)> {
     let options = ParseFloatOptions::new();
-    if let Ok((float, index)) = f64::from_lexical_partial_with_options::<JSON_FMT>(&data[start..], &options) {
+    if let Ok((float, index)) = f64::from_lexical_partial_with_options::<JSON>(&data[start..], &options) {
         Ok((float, index + start))
     } else {
-        float_error(data, start, allow_inf_nan)
+        float_error(data, start, first, allow_inf_nan)
     }
 }
 
+/// Recover a precise JSON error when lexical cannot parse a float.
 #[cold]
 #[inline(never)]
-fn float_error(data: &[u8], start: usize, allow_inf_nan: bool) -> JsonResult<(f64, usize)> {
-    let first = data.get(start).expect("float data to start within string");
-    match NumberRange::decode(data, start, *first, allow_inf_nan) {
+fn float_error(data: &[u8], start: usize, first: u8, allow_inf_nan: bool) -> JsonResult<(f64, usize)> {
+    match NumberRange::decode(data, start, first, allow_inf_nan) {
         Err(e) => Err(e),
         Ok(_) => unreachable!("NumberRange should return an error if lexical-parse-float did"),
     }
@@ -168,6 +169,9 @@ impl NumberAny {
 }
 
 impl AbstractNumberDecoder for NumberAny {
+    /// Decode short integers directly; otherwise locate the integer digit-run terminator before
+    /// choosing integer conversion or lexical's public float parser. This avoids accumulating a
+    /// speculative integer mantissa for longer floats while keeping short integers single-pass.
     fn decode(data: &[u8], mut index: usize, first: u8, allow_inf_nan: bool) -> JsonResult<(Self, usize)> {
         let start = index;
         let positive = match first {
@@ -213,16 +217,16 @@ impl AbstractNumberDecoder for NumberAny {
         };
 
         if let Some((prefix, prefix_end)) = int_prefix {
-            let limit = start.saturating_add(4300);
-            index =
-                find_digit_run_end(data, index, limit).ok_or_else(|| json_error!(NumberOutOfRange, start + 4301))?;
+            let limit = digit_start.saturating_add(4300);
+            index = find_digit_run_end(data, index, limit)
+                .ok_or_else(|| json_error!(NumberOutOfRange, digit_start + 4301))?;
             if !matches!(data.get(index), Some(b'.' | b'e' | b'E')) {
                 let int = decode_integer_digits(data, digit_start, index, positive, prefix, prefix_end)?;
                 return Ok((Self::Int(int), index));
             }
         }
 
-        parse_json_float(data, start, allow_inf_nan).map(|(float, end)| (Self::Float(float), end))
+        parse_json_float(data, start, first, allow_inf_nan).map(|(float, end)| (Self::Float(float), end))
     }
 }
 
@@ -235,6 +239,7 @@ fn short_integer(magnitude: u64, positive: bool) -> NumberInt {
     NumberInt::Int(value)
 }
 
+/// Convert a validated decimal digit run, extending any already-decoded prefix and applying its sign.
 fn decode_integer_digits(
     data: &[u8],
     digit_start: usize,
@@ -285,16 +290,12 @@ fn decode_integer_digits(
         };
         while index < end {
             let (chunk, new_index) = decode_int_chunk_big(data, index);
-            let chunk = match chunk {
-                IntChunk::Ongoing(value) | IntChunk::Done(value) => value,
+            let (chunk, multiplier) = match chunk {
+                IntChunk::Ongoing(value) => (value, crate::simd::ONGOING_CHUNK_MULTIPLIER),
+                IntChunk::Done(value) => (value, 10u64.pow((new_index - index) as u32)),
                 IntChunk::Float => unreachable!("known integer digit run to contain a float marker"),
             };
-            let chunk_len = new_index - index;
-            value *= match chunk_len {
-                16 => 10u64.pow(16),
-                18 => 10u64.pow(18),
-                _ => 10u64.pow(chunk_len as u32),
-            };
+            value *= multiplier;
             value += chunk;
             index = new_index;
         }
@@ -343,17 +344,11 @@ fn consume_nan(data: &[u8], index: usize, allow_inf_nan: bool) -> JsonResult<(f6
     }
 }
 
-#[derive(Debug)]
-pub(crate) enum IntParse {
-    Int(NumberInt),
-    Float,
-}
-
-impl IntParse {
-    pub(crate) fn parse(data: &[u8], mut index: usize, first: u8) -> JsonResult<(Self, usize)> {
+impl NumberInt {
+    fn parse(data: &[u8], mut index: usize, first: u8) -> JsonResult<(Self, usize)> {
         let start = index;
         let positive = match first {
-            b'N' => return Ok((Self::Float, index)),
+            b'N' => return json_err!(FloatExpectingInt, index),
             b'-' => false,
             _ => true,
         };
@@ -366,13 +361,13 @@ impl IntParse {
             Some(b'0') => {
                 index += 1;
                 return match data.get(index) {
-                    Some(b'.') => Ok((Self::Float, index)),
-                    Some(b'e' | b'E') => Ok((Self::Float, index)),
+                    Some(b'.') => json_err!(FloatExpectingInt, index),
+                    Some(b'e' | b'E') => json_err!(FloatExpectingInt, index),
                     Some(digit) if digit.is_ascii_digit() => json_err!(InvalidNumber, index),
-                    _ => Ok((Self::Int(NumberInt::Int(0)), index)),
+                    _ => Ok((NumberInt::Int(0), index)),
                 };
             }
-            Some(b'I') => return Ok((Self::Float, index)),
+            Some(b'I') => return json_err!(FloatExpectingInt, index),
             Some(digit) if (b'1'..=b'9').contains(digit) => (digit & 0x0f) as u64,
             Some(_) => return json_err!(InvalidNumber, index),
             None => return json_err!(EofWhileParsingValue, index),
@@ -388,9 +383,9 @@ impl IntParse {
                 if !positive {
                     value_i64 = -value_i64;
                 }
-                return Ok((Self::Int(NumberInt::Int(value_i64)), new_index));
+                return Ok((NumberInt::Int(value_i64), new_index));
             }
-            IntChunk::Float => return Ok((Self::Float, new_index)),
+            IntChunk::Float => return json_err!(FloatExpectingInt, new_index),
         };
 
         // number is too big for i64, we need to use a BigInt,
@@ -431,10 +426,11 @@ impl IntParse {
             let mut big_value: BigInt = ongoing.into();
             index = new_index;
 
+            let digit_start = start + usize::from(!positive);
             loop {
                 let (chunk, new_index) = decode_int_chunk_big(data, index);
-                if (new_index - start) > 4300 {
-                    return json_err!(NumberOutOfRange, start + 4301);
+                if (new_index - digit_start) > 4300 {
+                    return json_err!(NumberOutOfRange, digit_start + 4301);
                 }
                 match chunk {
                     IntChunk::Ongoing(value) => {
@@ -448,9 +444,9 @@ impl IntParse {
                         if !positive {
                             big_value = -big_value;
                         }
-                        return Ok((Self::Int(NumberInt::BigInt(big_value)), new_index));
+                        return Ok((NumberInt::BigInt(big_value), new_index));
                     }
-                    IntChunk::Float => return Ok((Self::Float, new_index)),
+                    IntChunk::Float => return json_err!(FloatExpectingInt, new_index),
                 }
             }
         }
@@ -573,10 +569,11 @@ impl AbstractNumberDecoder for NumberRange {
             }
             return Ok((Self::int(start..index), index));
         }
+        let digit_start = start + usize::from(!positive);
         loop {
             let (chunk, new_index) = decode_int_chunk_big(data, index);
-            if (new_index - start) > 4300 {
-                return json_err!(NumberOutOfRange, start + 4301);
+            if (new_index - digit_start) > 4300 {
+                return json_err!(NumberOutOfRange, digit_start + 4301);
             }
             #[allow(clippy::single_match_else)]
             match chunk {

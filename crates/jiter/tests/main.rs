@@ -1024,6 +1024,34 @@ fn test_4300_int() {
 
 #[cfg(feature = "num-bigint")]
 #[test]
+fn signed_integer_digit_limit() {
+    for sign in ["", "-"] {
+        for digits in [4299, 4300, 4301] {
+            let json = format!("{sign}{}", "9".repeat(digits));
+            let bytes = json.as_bytes();
+            let any = NumberAny::from_bytes(bytes, false);
+            let int = NumberInt::from_bytes(bytes);
+            let mut jiter = Jiter::new(bytes);
+            let range = jiter.next_number_bytes();
+            if digits <= 4300 {
+                let expected = BigInt::from_str(&json).unwrap();
+                assert_eq!(any.unwrap(), NumberAny::Int(NumberInt::BigInt(expected.clone())));
+                assert_eq!(int.unwrap(), NumberInt::BigInt(expected));
+                assert_eq!(range.unwrap(), bytes);
+            } else {
+                let expected_index = sign.len() + 4301;
+                for error in [any.unwrap_err(), int.unwrap_err()] {
+                    assert_eq!(error.error_type, JsonErrorType::NumberOutOfRange);
+                    assert_eq!(error.index, expected_index);
+                }
+                assert!(range.is_err());
+            }
+        }
+    }
+}
+
+#[cfg(feature = "num-bigint")]
+#[test]
 fn test_big_int_errs() {
     for json in [
         &[b'9'; 4302][..],
