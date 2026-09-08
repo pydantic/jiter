@@ -12,9 +12,7 @@ use lexical_parse_float::{FromLexicalWithOptions, Options as ParseFloatOptions, 
 use crate::{
     JsonErrorType::FloatExpectingInt,
     errors::{JsonError, JsonResult, json_err, json_error},
-    simd::{
-        ShortInt, decode_int_chunk_big, decode_int_chunk_small, decode_int_digits, decode_short_int, find_digit_run_end,
-    },
+    simd::{NumberChunk, decode_int_chunk_big, decode_int_chunk_small, decode_number_chunk, find_digit_run_end},
 };
 use lexical_format::JSON;
 
@@ -165,9 +163,8 @@ impl NumberAny {
 }
 
 impl AbstractNumberDecoder for NumberAny {
-    /// Decode short integers directly; otherwise locate the integer digit-run terminator before
-    /// choosing integer conversion or lexical's public float parser. This avoids accumulating a
-    /// speculative integer mantissa for longer floats while keeping short integers single-pass.
+    /// Decode integers or dispatch floats to lexical's public parser without constructing a
+    /// speculative bigint.
     fn decode(data: &[u8], mut index: usize, mut first: u8, allow_inf_nan: bool) -> JsonResult<(Self, usize)> {
         let start = index;
         let positive = match first {
@@ -198,12 +195,20 @@ impl AbstractNumberDecoder for NumberAny {
                     _ => return Ok((Self::Int(NumberInt::Int(0)), index)),
                 }
             }
-            b'1'..=b'9' => match decode_short_int(data, digit_start) {
-                Some((ShortInt::Int(value), end)) => {
-                    return Ok((Self::Int(short_integer(value, positive)), end));
+            b'1'..=b'9' => match decode_number_chunk(data, digit_start) {
+                (NumberChunk::Int(magnitude), end) => {
+                    let int = if let Some(value) = signed_integer(magnitude, positive) {
+                        NumberInt::Int(value)
+                    } else {
+                        decode_bigint(data, digit_start, end, positive, Some(magnitude))?
+                    };
+                    return Ok((Self::Int(int), end));
                 }
-                Some((ShortInt::Float, _)) => false,
-                None => true,
+                (NumberChunk::Float, _) => false,
+                (NumberChunk::Ongoing, end) => {
+                    index = end;
+                    true
+                }
             },
             _ => return json_err!(InvalidNumber, index),
         };
@@ -213,7 +218,7 @@ impl AbstractNumberDecoder for NumberAny {
             index = find_digit_run_end(data, index, limit)
                 .ok_or_else(|| json_error!(NumberOutOfRange, digit_start + 4301))?;
             if !matches!(data.get(index), Some(b'.' | b'e' | b'E')) {
-                let int = decode_integer_digits(data, digit_start, index, positive)?;
+                let int = decode_bigint(data, digit_start, index, positive, None)?;
                 return Ok((Self::Int(int), index));
             }
         }
@@ -222,42 +227,33 @@ impl AbstractNumberDecoder for NumberAny {
     }
 }
 
-fn short_integer(magnitude: u64, positive: bool) -> NumberInt {
-    let value = if positive {
+fn signed_integer(magnitude: u64, positive: bool) -> Option<i64> {
+    let max_magnitude = if positive { i64::MAX as u64 } else { i64::MAX as u64 + 1 };
+    if magnitude > max_magnitude {
+        return None;
+    }
+    Some(if positive {
         magnitude as i64
     } else {
-        -(magnitude as i64)
-    };
-    NumberInt::Int(value)
+        (magnitude as i64).wrapping_neg()
+    })
 }
 
-/// Convert a validated decimal digit run and apply its sign.
+/// Convert a validated integer outside the signed i64 range, optionally using its decoded magnitude.
 #[cfg_attr(
     feature = "num-bigint",
     allow(clippy::unnecessary_wraps, reason = "conversion can fail without num-bigint")
 )]
-fn decode_integer_digits(data: &[u8], digit_start: usize, end: usize, positive: bool) -> JsonResult<NumberInt> {
-    let magnitude = if end - digit_start <= 19 {
-        Some(decode_int_digits(&data[digit_start..end]))
-    } else {
-        None
-    };
-    let max_magnitude = if positive { i64::MAX as u64 } else { i64::MAX as u64 + 1 };
-    if let Some(magnitude) = magnitude
-        && magnitude <= max_magnitude
-    {
-        let value = if positive {
-            magnitude as i64
-        } else if magnitude == i64::MAX as u64 + 1 {
-            i64::MIN
-        } else {
-            -(magnitude as i64)
-        };
-        return Ok(NumberInt::Int(value));
-    }
-
+fn decode_bigint(
+    data: &[u8],
+    digit_start: usize,
+    end: usize,
+    positive: bool,
+    magnitude: Option<u64>,
+) -> JsonResult<NumberInt> {
     #[cfg(not(feature = "num-bigint"))]
     {
+        let _ = (data, end, positive, magnitude);
         json_err!(NumberOutOfRange, digit_start + 1)
     }
 

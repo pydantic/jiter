@@ -1316,6 +1316,8 @@ fn number_any_chunk_boundaries() {
         123_456_789_012_345,
         1_234_567_890_123_456,
         12_345_678_901_234_567,
+        123_456_789_012_345_678,
+        1_234_567_890_123_456_789,
     ] {
         for value in [integer, -integer] {
             for suffix in ["", ".125", "e-3", "E+3"] {
@@ -1334,6 +1336,23 @@ fn number_any_chunk_boundaries() {
                     }
                 }
             }
+        }
+    }
+}
+
+#[test]
+fn number_any_non_digit_terminators() {
+    for len in [1, 3, 7, 8, 9, 15, 16, 17, 18, 19] {
+        let token = &"1234567890123456789"[..len];
+        let expected = NumberAny::Int(NumberInt::Int(token.parse().unwrap()));
+        for &byte in b"/:\x00\x80\xff]" {
+            let mut data = b"       ".to_vec();
+            data.extend_from_slice(token.as_bytes());
+            data.push(byte);
+            data.extend_from_slice(b"12345678901234567890]");
+            let mut jiter = Jiter::new(&data);
+            assert_eq!(jiter.next_number().unwrap(), expected, "{data:?}");
+            assert_eq!(jiter.current_index(), 7 + len, "{data:?}");
         }
     }
 }

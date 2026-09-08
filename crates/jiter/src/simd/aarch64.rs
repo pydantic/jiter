@@ -80,6 +80,19 @@ const ALT_MUL_U8_16: SimdVecu8_16 = simd_const!([
 const ALT_MUL_U16_8: SimdVecu16_8 = simd_const!([100u16, 1u16, 100u16, 1u16, 100u16, 1u16, 100u16, 1u16]);
 const ALT_MUL_U32_4: SimdVecu32_4 = simd_const!([10000u32, 1u32, 10000u32, 1u32]);
 
+#[cfg(target_endian = "little")]
+#[inline]
+#[target_feature(enable = "neon")]
+pub(super) fn classify_digit_chunk(data: &[u8; 16]) -> ([u64; 2], u32) {
+    let digits = simd_sub_16(load_slice(data), ZERO_DIGIT_16);
+    let mask = simd_gt_16(digits, simd_sub_16(NINE_DIGIT_16, ZERO_DIGIT_16));
+    let count = mask_to_u64(mask).trailing_zeros() / 4;
+    // SAFETY: the SIMD vector and integer array are both 16 bytes. The caller selects this
+    // implementation only on little-endian targets.
+    let digits: [u64; 2] = unsafe { transmute(digits) };
+    (digits, count)
+}
+
 #[target_feature(enable = "neon")]
 pub(crate) fn find_digit_run_end(data: &[u8], mut index: usize, limit: usize) -> Option<usize> {
     while index + SIMD_STEP <= limit

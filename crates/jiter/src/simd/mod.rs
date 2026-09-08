@@ -2,12 +2,13 @@
 mod aarch64;
 mod fallback_int;
 mod fallback_string;
+mod number;
 mod swar_int;
 #[cfg(target_arch = "x86_64")]
 mod x86_64;
 
-pub(crate) use fallback_int::{ShortInt, decode_int_chunk as decode_int_chunk_small, decode_short_int};
-pub(crate) use swar_int::decode_digits as decode_int_digits;
+pub(crate) use fallback_int::decode_int_chunk as decode_int_chunk_small;
+pub(crate) use number::{NumberChunk, decode_number_chunk};
 
 use crate::errors::JsonResult;
 use crate::number_decoder::IntChunk;
@@ -44,6 +45,26 @@ pub(crate) fn decode_string_chunk(
     #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
     {
         fallback_string::decode_string_chunk(data, index, ascii_only, allow_partial)
+    }
+}
+
+/// Classify sixteen bytes, returning digit values in little-endian byte order and the digit
+/// count. Bytes after the first non-digit have unspecified values.
+#[inline(always)]
+fn classify_digit_chunk(data: &[u8; 16]) -> ([u64; 2], u32) {
+    #[cfg(all(target_arch = "aarch64", target_endian = "little"))]
+    {
+        // SAFETY: all supported aarch64 targets support neon intrinsics.
+        unsafe { aarch64::classify_digit_chunk(data) }
+    }
+    #[cfg(target_arch = "x86_64")]
+    {
+        // SAFETY: SSE2 is part of the x86_64 baseline.
+        unsafe { x86_64::classify_digit_chunk(data) }
+    }
+    #[cfg(not(any(target_arch = "x86_64", all(target_arch = "aarch64", target_endian = "little"))))]
+    {
+        fallback_int::classify_digit_chunk(data)
     }
 }
 

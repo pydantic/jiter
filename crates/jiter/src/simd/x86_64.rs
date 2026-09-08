@@ -45,6 +45,16 @@ const ALT_MUL_U32_4: SimdVec = simd_const!([10000u32, 0u32, 10000u32, 0u32]);
 
 #[inline]
 #[target_feature(enable = "sse2")]
+pub(super) fn classify_digit_chunk(data: &[u8; 16]) -> ([u64; 2], u32) {
+    let digits = simd_sub_16(load_slice(data), ZERO_DIGIT_16);
+    let count = first_non_digit(digits);
+    // SAFETY: the SIMD vector and integer array are both 16 bytes; x86_64 is little-endian.
+    let digits: [u64; 2] = unsafe { transmute(digits) };
+    (digits, count)
+}
+
+#[inline]
+#[target_feature(enable = "sse2")]
 pub(crate) fn find_digit_run_end(data: &[u8], mut index: usize, limit: usize) -> Option<usize> {
     while index + SIMD_STEP <= limit
         && let Some(byte_chunk) = data.get(index..index + SIMD_STEP)

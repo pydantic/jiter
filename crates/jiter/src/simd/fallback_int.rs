@@ -17,25 +17,15 @@ pub(crate) fn find_digit_run_end(data: &[u8], mut index: usize, limit: usize) ->
     }
 }
 
-pub(crate) enum ShortInt {
-    Int(u64),
-    Float,
-}
-
-/// Decode a short integer or identify a float marker. Returns `None` when the fourth byte is
-/// a digit, without validating the preceding bytes; the caller must scan from `index`.
+#[cfg(not(any(target_arch = "x86_64", all(target_arch = "aarch64", target_endian = "little"))))]
 #[inline(always)]
-pub(crate) fn decode_short_int(data: &[u8], index: usize) -> Option<(ShortInt, usize)> {
-    if data.get(index + 3).is_some_and(u8::is_ascii_digit) {
-        return None;
-    }
-    let (chunk, end) = decode_int_chunk_limit::<4>(data, index, 0);
-    let prefix = match chunk {
-        IntChunk::Done(value) => ShortInt::Int(value),
-        IntChunk::Float => ShortInt::Float,
-        IntChunk::Ongoing(_) => unreachable!("the fourth byte is not a digit"),
-    };
-    Some((prefix, end))
+pub(super) fn classify_digit_chunk(data: &[u8; 16]) -> ([u64; 2], u32) {
+    let count = data.iter().position(|digit| !digit.is_ascii_digit()).unwrap_or(16);
+    let words = [data[..8].try_into().unwrap(), data[8..].try_into().unwrap()];
+    (
+        words.map(|word| u64::from_le_bytes(word) & 0x0F0F_0F0F_0F0F_0F0F),
+        count as u32,
+    )
 }
 
 /// Turns out this is faster than fancy bit manipulation, see
