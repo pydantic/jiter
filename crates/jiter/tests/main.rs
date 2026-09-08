@@ -1024,6 +1024,34 @@ fn test_4300_int() {
 
 #[cfg(feature = "num-bigint")]
 #[test]
+fn signed_integer_digit_limit() {
+    for sign in ["", "-"] {
+        for digits in [4299, 4300, 4301] {
+            let json = format!("{sign}{}", "9".repeat(digits));
+            let bytes = json.as_bytes();
+            let any = NumberAny::from_bytes(bytes, false);
+            let int = NumberInt::from_bytes(bytes);
+            let mut jiter = Jiter::new(bytes);
+            let range = jiter.next_number_bytes();
+            if digits <= 4300 {
+                let expected = BigInt::from_str(&json).unwrap();
+                assert_eq!(any.unwrap(), NumberAny::Int(NumberInt::BigInt(expected.clone())));
+                assert_eq!(int.unwrap(), NumberInt::BigInt(expected));
+                assert_eq!(range.unwrap(), bytes);
+            } else {
+                let expected_index = sign.len() + 4301;
+                for error in [any.unwrap_err(), int.unwrap_err()] {
+                    assert_eq!(error.error_type, JsonErrorType::NumberOutOfRange);
+                    assert_eq!(error.index, expected_index);
+                }
+                assert!(range.is_err());
+            }
+        }
+    }
+}
+
+#[cfg(feature = "num-bigint")]
+#[test]
 fn test_big_int_errs() {
     for json in [
         &[b'9'; 4302][..],
@@ -1277,6 +1305,78 @@ fn jiter_next_value_owned() {
     };
     assert_eq!(s, "v");
     assert!(matches!(s, Cow::Owned(_)));
+}
+
+#[test]
+fn number_any_chunk_boundaries() {
+    for integer in [
+        1_234_567i64,
+        12_345_678,
+        123_456_789,
+        123_456_789_012_345,
+        1_234_567_890_123_456,
+        12_345_678_901_234_567,
+        123_456_789_012_345_678,
+        1_234_567_890_123_456_789,
+    ] {
+        for value in [integer, -integer] {
+            for suffix in ["", ".125", "e-3", "E+3"] {
+                let token = format!("{value}{suffix}");
+                let expected = if suffix.is_empty() {
+                    NumberAny::Int(NumberInt::Int(value))
+                } else {
+                    NumberAny::Float(token.parse::<f64>().unwrap())
+                };
+                for offset in [0, 1, 7, 15] {
+                    for trailing in ["", ", 12345678901234567890]"] {
+                        let data = format!("{}{token}{trailing}", " ".repeat(offset));
+                        let mut jiter = Jiter::new(data.as_bytes());
+                        assert_eq!(jiter.next_number().unwrap(), expected, "{data}");
+                        assert_eq!(jiter.current_index(), offset + token.len(), "{data}");
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn number_any_non_digit_terminators() {
+    for len in [1, 3, 7, 8, 9, 15, 16, 17, 18, 19] {
+        let token = &"1234567890123456789"[..len];
+        let expected = NumberAny::Int(NumberInt::Int(token.parse().unwrap()));
+        for &byte in b"/:\x00\x80\xff]" {
+            let mut data = b"       ".to_vec();
+            data.extend_from_slice(token.as_bytes());
+            data.push(byte);
+            data.extend_from_slice(b"12345678901234567890]");
+            let mut jiter = Jiter::new(&data);
+            assert_eq!(jiter.next_number().unwrap(), expected, "{data:?}");
+            assert_eq!(jiter.current_index(), 7 + len, "{data:?}");
+        }
+    }
+}
+
+#[test]
+fn number_any_i64_boundaries() {
+    assert_eq!(
+        NumberAny::from_bytes(b"9223372036854775807", false).unwrap(),
+        NumberAny::Int(NumberInt::Int(i64::MAX))
+    );
+    assert_eq!(
+        NumberAny::from_bytes(b"-9223372036854775808", false).unwrap(),
+        NumberAny::Int(NumberInt::Int(i64::MIN))
+    );
+    for json in ["9223372036854775808", "-9223372036854775809"] {
+        let result = NumberAny::from_bytes(json.as_bytes(), false);
+        #[cfg(feature = "num-bigint")]
+        assert_eq!(
+            result.unwrap(),
+            NumberAny::Int(NumberInt::BigInt(json.parse::<BigInt>().unwrap()))
+        );
+        #[cfg(not(feature = "num-bigint"))]
+        assert_eq!(result.unwrap_err().error_type, JsonErrorType::NumberOutOfRange);
+    }
 }
 
 #[cfg(feature = "num-bigint")]
