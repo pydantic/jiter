@@ -1,11 +1,11 @@
 [build-system]
-requires = ["maturin>=1.9.4,<2"]
+requires = ["maturin>=1.15.0,<2"]
 build-backend = "maturin"
 
 [project]
 name = "jiter"
 description = "Fast iterable JSON parser."
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [
     {name = "Samuel Colvin", email = "s@muelcolvin.com"}
 ]
@@ -17,7 +17,6 @@ classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -43,3 +42,4 @@ module-name = "jiter"
 bindings = "pyo3"
 features = []
 editable-profile = 'dev'
+pgo-command = "python bench.py jiter jiter-cache"
