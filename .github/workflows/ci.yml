@@ -520,20 +520,22 @@ jobs:
           enable-cache: false
 
       # make sure UV has the desired interpreter installed so PGO can use it
-      - run: uv python install
+      # - run: uv python install
 
-      # no release versioning, see https://github.com/dtolnay/rust-toolchain/issues/180
-      - uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9
-        id: rust-toolchain
+      - name: build pgo-optimized wheel
+        uses: PyO3/maturin-action@04ac600d27cdf7a9a280dadf7147097c42b757ad # v1.50.1
         with:
-          toolchain: stable
-          components: llvm-tools
-
-      - name: build pgo wheel
-        uses: ./.github/actions/build-pgo-wheel
-        with:
-          interpreter: ${{ matrix.interpreter }}
-          rust-toolchain: ${{ steps.rust-toolchain.outputs.name }}
+          manylinux: auto
+          # before-script-linux: |
+          #   curl -LsSf https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL=/usr/local/bin sh
+          args: >
+            --release
+            --pgo
+            --out dist
+            --interpreter ${{ matrix.interpreter }}
+          rust-toolchain: stable
+          docker-options: -e CI -e UV_PYTHON
+          working-directory: crates/jiter-python
 
       - run: ${{ (startsWith(matrix.platform.os, 'windows') && 'dir') || 'ls -lh' }} crates/jiter-python/dist/
 
