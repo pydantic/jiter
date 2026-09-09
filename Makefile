@@ -48,6 +48,10 @@ python-test: python-dev
 python-dev-release:
 	uv run maturin develop --uv -m crates/jiter-python/Cargo.toml --release
 
+.PHONY: python-dev-pgo
+python-dev-pgo:
+	uv run maturin develop --uv -m crates/jiter-python/Cargo.toml --release --pgo
+
 .PHONY: python-bench
 python-bench:
 	uv sync --group bench

@@ -1,11 +1,11 @@
 [project]
 name = "jiter-workspace"
 version = "0.1.0"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 
 [dependency-groups]
 dev = [
-    "maturin",
+    "maturin>=1.15",
     "pytest",
     "pytest-pretty",
     "dirty-equals",
