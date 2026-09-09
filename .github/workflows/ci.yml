@@ -536,6 +536,8 @@ jobs:
           rust-toolchain: stable
           docker-options: -e CI -e UV_PYTHON
           working-directory: crates/jiter-python
+        env:
+          UV_PYTHON_DOWNLOADS: "automatic"
 
       - run: ${{ (startsWith(matrix.platform.os, 'windows') && 'dir') || 'ls -lh' }} crates/jiter-python/dist/
 
