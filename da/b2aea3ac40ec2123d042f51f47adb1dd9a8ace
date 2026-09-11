@@ -1,0 +1,9 @@
+crates/jiter/src/py_string_cache.rs
+  ai_agent 49-50,54-56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "dab2aea3ac40ec2123d042f51f47adb1dd9a8ace",
+  "prompts": {}
+}
