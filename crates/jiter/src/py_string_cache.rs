@@ -175,6 +175,10 @@ fn get_string_cache() -> MutexGuard<'static, PyStringCache> {
     }
 }
 
+/// Take the string cache lock for a parse without blocking: if another thread holds it the parse
+/// proceeds uncached. A poisoned cache is cleared and reused, as in `get_string_cache`.
+/// Take the string cache lock for a parse without blocking: if another thread holds it the parse
+/// proceeds uncached. A poisoned cache is cleared and reused, as in `get_string_cache`.
 #[inline]
 fn try_get_string_cache() -> StringCacheGuard {
     let cache = match STRING_CACHE
