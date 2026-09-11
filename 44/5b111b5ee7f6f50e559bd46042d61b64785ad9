@@ -1,0 +1,9 @@
+crates/jiter-python/tests/test_jiter.py
+  ai_agent 419
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "445b111b5ee7f6f50e559bd46042d61b64785ad9",
+  "prompts": {}
+}
