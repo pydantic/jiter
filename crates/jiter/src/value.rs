@@ -345,10 +345,17 @@ static MEMBERS_HINT: AtomicUsize = AtomicUsize::new(8);
 /// Bounds what a hint left by a large document can make a later one allocate up front.
 const STACK_HINT_MAX: usize = 2048;
 
-/// The capacity to give an empty stack: the last parse's peak, capped by what the remaining input
-/// could hold at `min_bytes` per entry.
-fn stack_hint(hint: &AtomicUsize, remaining: usize, min_bytes: usize) -> usize {
-    hint.load(Relaxed).min(STACK_HINT_MAX).min(remaining / min_bytes)
+/// The capacity to give an empty elements stack: `hint`, capped by how many elements the
+/// `remaining` input could still hold, at two bytes each.
+fn elements_capacity(hint: usize, remaining: usize) -> usize {
+    hint.min(STACK_HINT_MAX).min(remaining / 2)
+}
+
+/// The capacity to give an empty members stack: `hint`, capped by how many members the
+/// `remaining` input could still hold, at five bytes each plus the one whose key is already
+/// consumed when a container opens.
+fn members_capacity(hint: usize, remaining: usize) -> usize {
+    hint.min(STACK_HINT_MAX).min(remaining / 5 + 1)
 }
 
 #[inline(never)] // this is an iterative algo called only from take_value, no point in inlining
@@ -372,18 +379,18 @@ fn take_value_recursive<'j, 's>(
     // allocation of exactly the right size. A `Vec` per container has to guess that size instead,
     // and pays a run of reallocations for guessing low.
     // The stacks are sized from the peaks of the last parse, capped by what the remaining input
-    // could possibly hold: an element needs at least two bytes, a member at least five. Only the
+    // could possibly hold. Only the
     // root container's stack is allocated up front, the other when its first container opens, so
     // a document that never opens a container of the other kind never pays for its stack.
     let (mut elements, mut members): (Vec<JsonValue<'s>>, Vec<(Cow<'s, str>, JsonValue<'s>)>) = match &current_recursion
     {
         RecursedValue::Array { .. } => (
-            Vec::with_capacity(stack_hint(&ELEMENTS_HINT, parser.remaining_len(), 2)),
+            Vec::with_capacity(elements_capacity(ELEMENTS_HINT.load(Relaxed), parser.remaining_len())),
             Vec::new(),
         ),
         RecursedValue::Object { .. } => (
             Vec::new(),
-            Vec::with_capacity(stack_hint(&MEMBERS_HINT, parser.remaining_len(), 5)),
+            Vec::with_capacity(members_capacity(MEMBERS_HINT.load(Relaxed), parser.remaining_len())),
         ),
     };
     let (mut elements_peak, mut members_peak) = (0, 0);
@@ -400,10 +407,16 @@ fn take_value_recursive<'j, 's>(
             }
             match &current_recursion {
                 RecursedValue::Array { .. } if elements.capacity() == 0 => {
-                    elements.reserve_exact(stack_hint(&ELEMENTS_HINT, parser.remaining_len(), 2));
+                    elements.reserve_exact(elements_capacity(
+                        ELEMENTS_HINT.load(Relaxed),
+                        parser.remaining_len(),
+                    ));
                 }
                 RecursedValue::Object { .. } if members.capacity() == 0 => {
-                    members.reserve_exact(stack_hint(&MEMBERS_HINT, parser.remaining_len(), 5));
+                    members.reserve_exact(members_capacity(
+                        MEMBERS_HINT.load(Relaxed),
+                        parser.remaining_len(),
+                    ));
                 }
                 _ => {}
             }
@@ -784,5 +797,29 @@ fn take_value_skip_recursive(
 
             current_recursion = recursion_stack[current_recursion_depth];
         };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The input bounds are tight: a minimal container gets exactly the capacity it needs, so
+    /// repeated parses of it never reallocate.
+    #[test]
+    fn stack_capacity_bounds_are_tight() {
+        for n in 1..=100 {
+            let array = format!("[{}]", vec!["1"; n].join(","));
+            let mut parser = Parser::new(array.as_bytes());
+            parser.array_first().unwrap().unwrap();
+            assert_eq!(elements_capacity(usize::MAX, parser.remaining_len()), n, "{array}");
+
+            let object = format!("{{{}}}", vec!["\"\":0"; n].join(","));
+            let mut parser = Parser::new(object.as_bytes());
+            let mut tape = Tape::default();
+            parser.object_first::<StringDecoder>(&mut tape).unwrap().unwrap();
+            parser.peek().unwrap();
+            assert_eq!(members_capacity(usize::MAX, parser.remaining_len()), n, "{object}");
+        }
     }
 }
