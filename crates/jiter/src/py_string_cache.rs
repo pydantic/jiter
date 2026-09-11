@@ -51,16 +51,21 @@ thread_local! {
     static CACHE_HELD_BY_THIS_THREAD: Cell<bool> = const { Cell::new(false) };
 }
 
-/// Holds the string cache lock for the duration of a parse. It starts `Unacquired` and the lock
-/// is taken on the first cacheable string; `Unavailable` means another thread holds it, in which
-/// case strings are created uncached for the rest of the parse.
+/// Whether the current parse holds the string cache lock.
 #[derive(Default)]
-pub enum StringCacheGuard {
+enum CacheState {
+    /// No cacheable string has been seen yet, so the lock has not been tried.
     #[default]
     Unacquired,
+    /// This parse holds the lock.
     Held(MutexGuard<'static, PyStringCache>),
+    /// Another thread holds the lock, so strings are created uncached for the rest of the parse.
     Unavailable,
 }
+
+/// Holds the string cache lock for the duration of a parse, taken on the first cacheable string.
+#[derive(Default)]
+pub(crate) struct StringCacheGuard(CacheState);
 
 impl StringCacheGuard {
     /// Take the string cache lock for a parse without blocking: if another thread holds it the
@@ -77,16 +82,16 @@ impl StringCacheGuard {
                 cache.clear();
                 cache
             }
-            Err(TryLockError::WouldBlock) => return Self::Unavailable,
+            Err(TryLockError::WouldBlock) => return Self(CacheState::Unavailable),
         };
         CACHE_HELD_BY_THIS_THREAD.set(true);
-        Self::Held(cache)
+        Self(CacheState::Held(cache))
     }
 }
 
 impl Drop for StringCacheGuard {
     fn drop(&mut self) {
-        if matches!(self, Self::Held(_)) {
+        if matches!(self.0, CacheState::Held(_)) {
             CACHE_HELD_BY_THIS_THREAD.set(false);
         }
     }
@@ -120,10 +125,10 @@ unsafe fn guarded_py_string<'py>(
     let s = string_output.as_str();
     let ascii_only = string_output.ascii_only();
     if (2..64).contains(&s.len()) {
-        if matches!(guard, StringCacheGuard::Unacquired) {
+        if matches!(guard.0, CacheState::Unacquired) {
             *guard = StringCacheGuard::try_acquire();
         }
-        if let StringCacheGuard::Held(cache) = guard {
+        if let CacheState::Held(cache) = &mut guard.0 {
             return unsafe { cache.get_or_insert(py, s, ascii_only) };
         }
     }
@@ -248,7 +253,7 @@ type Entry = Option<(u64, Py<PyString>)>;
 /// This is a Fully associative cache with LRU replacement policy.
 /// See https://en.wikipedia.org/wiki/Cache_placement_policies#Fully_associative_cache
 #[derive(Debug)]
-pub struct PyStringCache {
+struct PyStringCache {
     entries: Box<[Entry; CAPACITY]>,
     hash_builder: RandomState,
 }
