@@ -416,6 +416,7 @@ def test_multithreaded_parsing():
             assert result.result()
 
 
+@pytest.mark.skipif(sys.implementation.name != 'cpython', reason='uses CPython gc APIs')
 def test_cache_clear_during_parse_does_not_deadlock():
     # on CPython <= 3.11 a GC can run inside the parser's allocations, on newer versions it's deferred
     # to the eval loop, so this only exercises the re-entrancy check on older versions
