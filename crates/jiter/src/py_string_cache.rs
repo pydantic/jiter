@@ -1,4 +1,5 @@
-use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::cell::Cell;
+use std::sync::{Mutex, MutexGuard, OnceLock, TryLockError};
 
 use ahash::random_state::RandomState;
 use pyo3::exceptions::{PyTypeError, PyValueError};
@@ -44,32 +45,94 @@ impl From<bool> for StringCacheMode {
     }
 }
 
-pub trait StringMaybeCache {
-    fn get_key<'py>(py: Python<'py>, string_output: StringOutput<'_, '_>) -> Bound<'py, PyString>;
+thread_local! {
+    static CACHE_HELD_BY_THIS_THREAD: Cell<bool> = const { Cell::new(false) };
+}
 
-    fn get_value<'py>(py: Python<'py>, string_output: StringOutput<'_, '_>) -> Bound<'py, PyString> {
-        Self::get_key(py, string_output)
+#[derive(Default)]
+pub enum StringCacheGuard {
+    #[default]
+    Unacquired,
+    Held(MutexGuard<'static, PyStringCache>),
+    Unavailable,
+}
+
+impl Drop for StringCacheGuard {
+    fn drop(&mut self) {
+        if matches!(self, Self::Held(_)) {
+            CACHE_HELD_BY_THIS_THREAD.set(false);
+        }
     }
+}
+
+pub trait StringMaybeCache {
+    fn get_key<'py>(
+        py: Python<'py>,
+        guard: &mut StringCacheGuard,
+        string_output: StringOutput<'_, '_>,
+    ) -> Bound<'py, PyString>;
+
+    fn get_value<'py>(
+        py: Python<'py>,
+        guard: &mut StringCacheGuard,
+        string_output: StringOutput<'_, '_>,
+    ) -> Bound<'py, PyString> {
+        Self::get_key(py, guard, string_output)
+    }
+}
+
+/// # Safety
+///
+/// Caller must match the ascii_only flag to the string passed in.
+#[inline]
+unsafe fn guarded_py_string<'py>(
+    py: Python<'py>,
+    guard: &mut StringCacheGuard,
+    string_output: &StringOutput<'_, '_>,
+) -> Bound<'py, PyString> {
+    let s = string_output.as_str();
+    let ascii_only = string_output.ascii_only();
+    if (2..64).contains(&s.len()) {
+        if matches!(guard, StringCacheGuard::Unacquired) {
+            *guard = try_get_string_cache();
+        }
+        if let StringCacheGuard::Held(cache) = guard {
+            return unsafe { cache.get_or_insert(py, s, ascii_only) };
+        }
+    }
+    unsafe { pystring_fast_new_maybe_ascii(py, s, ascii_only) }
 }
 
 pub struct StringCacheAll;
 
 impl StringMaybeCache for StringCacheAll {
-    fn get_key<'py>(py: Python<'py>, string_output: StringOutput<'_, '_>) -> Bound<'py, PyString> {
+    fn get_key<'py>(
+        py: Python<'py>,
+        guard: &mut StringCacheGuard,
+        string_output: StringOutput<'_, '_>,
+    ) -> Bound<'py, PyString> {
         // SAFETY: `StringOutput` guarantees that its ASCII flag matches its contents.
-        unsafe { cached_py_string_maybe_ascii(py, string_output.as_str(), string_output.ascii_only()) }
+        unsafe { guarded_py_string(py, guard, &string_output) }
     }
 }
 
 pub struct StringCacheKeys;
 
 impl StringMaybeCache for StringCacheKeys {
-    fn get_key<'py>(py: Python<'py>, string_output: StringOutput<'_, '_>) -> Bound<'py, PyString> {
+    fn get_key<'py>(
+        py: Python<'py>,
+        guard: &mut StringCacheGuard,
+        string_output: StringOutput<'_, '_>,
+    ) -> Bound<'py, PyString> {
         // SAFETY: `StringOutput` guarantees that its ASCII flag matches its contents.
-        unsafe { cached_py_string_maybe_ascii(py, string_output.as_str(), string_output.ascii_only()) }
+        unsafe { guarded_py_string(py, guard, &string_output) }
     }
 
-    fn get_value<'py>(py: Python<'py>, string_output: StringOutput<'_, '_>) -> Bound<'py, PyString> {
+    fn get_value<'py>(
+        py: Python<'py>,
+        _guard: &mut StringCacheGuard,
+        string_output: StringOutput<'_, '_>,
+    ) -> Bound<'py, PyString> {
         // SAFETY: `StringOutput` guarantees that its ASCII flag matches its contents.
         unsafe { pystring_fast_new_maybe_ascii(py, string_output.as_str(), string_output.ascii_only()) }
     }
@@ -78,7 +141,11 @@ impl StringMaybeCache for StringCacheKeys {
 pub struct StringNoCache;
 
 impl StringMaybeCache for StringNoCache {
-    fn get_key<'py>(py: Python<'py>, string_output: StringOutput<'_, '_>) -> Bound<'py, PyString> {
+    fn get_key<'py>(
+        py: Python<'py>,
+        _guard: &mut StringCacheGuard,
+        string_output: StringOutput<'_, '_>,
+    ) -> Bound<'py, PyString> {
         // SAFETY: `StringOutput` guarantees that its ASCII flag matches its contents.
         unsafe { pystring_fast_new_maybe_ascii(py, string_output.as_str(), string_output.ascii_only()) }
     }
@@ -88,6 +155,10 @@ static STRING_CACHE: OnceLock<Mutex<PyStringCache>> = OnceLock::new();
 
 #[inline]
 fn get_string_cache() -> MutexGuard<'static, PyStringCache> {
+    assert!(
+        !CACHE_HELD_BY_THIS_THREAD.get(),
+        "jiter's string cache is locked by a parse in progress on this thread"
+    );
     match STRING_CACHE.get_or_init(|| Mutex::new(PyStringCache::default())).lock() {
         Ok(cache) => cache,
         Err(poisoned) => {
@@ -97,6 +168,24 @@ fn get_string_cache() -> MutexGuard<'static, PyStringCache> {
             cache
         }
     }
+}
+
+#[inline]
+fn try_get_string_cache() -> StringCacheGuard {
+    let cache = match STRING_CACHE
+        .get_or_init(|| Mutex::new(PyStringCache::default()))
+        .try_lock()
+    {
+        Ok(cache) => cache,
+        Err(TryLockError::Poisoned(poisoned)) => {
+            let mut cache = poisoned.into_inner();
+            cache.clear();
+            cache
+        }
+        Err(TryLockError::WouldBlock) => return StringCacheGuard::Unavailable,
+    };
+    CACHE_HELD_BY_THIS_THREAD.set(true);
+    StringCacheGuard::Held(cache)
 }
 
 pub fn cache_usage() -> usize {
@@ -148,7 +237,7 @@ type Entry = Option<(u64, Py<PyString>)>;
 /// This is a Fully associative cache with LRU replacement policy.
 /// See https://en.wikipedia.org/wiki/Cache_placement_policies#Fully_associative_cache
 #[derive(Debug)]
-struct PyStringCache {
+pub struct PyStringCache {
     entries: Box<[Entry; CAPACITY]>,
     hash_builder: RandomState,
 }
