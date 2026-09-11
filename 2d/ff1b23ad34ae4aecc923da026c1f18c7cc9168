@@ -1,0 +1,19 @@
+crates/jiter/src/value.rs
+  s_5edde25d41e111::t_02137bdd622b6c 348-358,382,388,393,410-413,416-419,802-823
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "2dff1b23ad34ae4aecc923da026c1f18c7cc9168",
+  "prompts": {},
+  "sessions": {
+    "s_5edde25d41e111": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bb737352-ec27-4af0-babb-63876bc57903",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Samuel Colvin <s@muelcolvin.com>"
+    }
+  }
+}
