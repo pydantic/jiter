@@ -208,7 +208,8 @@ fn parse_borrowed<'j, const REUSE: bool>(
         allow_partial,
         stacks,
         &|s: StringOutput<'_, 'j>| s.into(),
-    )?;
+    )
+    .inspect_err(|_| stacks.clear())?;
     if !allow_partial.is_active() {
         parser.finish()?;
     }
@@ -233,7 +234,8 @@ fn parse_owned<const REUSE: bool>(
         allow_partial,
         stacks,
         &|s: StringOutput<'_, '_>| Into::<String>::into(s).into(),
-    )?;
+    )
+    .inspect_err(|_| stacks.clear())?;
     parser.finish()?;
     Ok(v)
 }
@@ -383,11 +385,19 @@ enum RecursedValue<'s> {
     Object { base: usize, next_key: Cow<'s, str> },
 }
 
-/// The stacks every container of a document is built on, see [`take_value_recursive`].
+/// The stacks every container of a document is built on, see [`take_value_recursive`]. A
+/// successful parse takes everything off them; a failed one is cleared by its caller.
 #[derive(Default)]
 struct Stacks<'s> {
     elements: Vec<JsonValue<'s>>,
     members: Vec<(Cow<'s, str>, JsonValue<'s>)>,
+}
+
+impl Stacks<'_> {
+    fn clear(&mut self) {
+        self.elements.clear();
+        self.members.clear();
+    }
 }
 
 /// The contents of a container that has just closed, taken off the stack they were built on.
@@ -432,9 +442,6 @@ fn take_value_recursive<'j, 's, const REUSE: bool>(
     // are always the top of the stack, from its `base` up; closing it copies them out into an
     // allocation of exactly the right size. A `Vec` per container has to guess that size instead,
     // and pays a run of reallocations for guessing low.
-    // A failed parse leaves whatever was on the stacks, so start from empty ones.
-    stacks.elements.clear();
-    stacks.members.clear();
     let Stacks { elements, members } = stacks;
 
     let mut recursion_stack: SmallVec<[RecursedValue; 8]> = SmallVec::new();
@@ -822,5 +829,23 @@ fn take_value_skip_recursive(
 
             current_recursion = recursion_stack[current_recursion_depth];
         };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scratch_holds_nothing_after_a_failed_parse() {
+        let mut scratch = JsonValueScratch::new();
+        assert!(
+            scratch
+                .parse_owned(br#"[1, 2, {"a": [3, 4, "#, false, PartialMode::Off)
+                .is_err()
+        );
+        assert!(scratch.0.elements.is_empty());
+        assert!(scratch.0.members.is_empty());
+        assert!(scratch.0.elements.capacity() > 0);
     }
 }
