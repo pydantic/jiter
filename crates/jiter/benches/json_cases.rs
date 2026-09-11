@@ -9,7 +9,7 @@ use std::hint::black_box;
 
 use codspeed_criterion_compat::{Criterion, criterion_group, criterion_main};
 
-use jiter::JsonValue;
+use jiter::{JsonValueScratch, PartialMode};
 use serde_json::Value as SerdeValue;
 
 #[path = "../tests/corpus/mod.rs"]
@@ -19,10 +19,10 @@ use corpus::{TAGS, find_corpus_root, load_cases};
 
 /// Parse every document with jiter, counting the ones that parsed — the malformed documents are
 /// part of the workload, an error is a result like any other.
-fn jiter_value(documents: &[&[u8]]) -> usize {
+fn jiter_value<'j>(scratch: &mut JsonValueScratch<'j>, documents: &[&'j [u8]]) -> usize {
     let mut parsed = 0;
     for json_data in documents {
-        if let Ok(value) = JsonValue::parse(black_box(json_data), false) {
+        if let Ok(value) = scratch.parse(black_box(json_data), false, PartialMode::Off) {
             black_box(&value);
             parsed += 1;
         }
@@ -77,8 +77,9 @@ fn corpus_benches(c: &mut Criterion) {
     for (name, documents) in &groups {
         let bytes: usize = documents.iter().map(|json_data| json_data.len()).sum();
         println!("json_cases_{name}: {} documents, {} bytes", documents.len(), bytes);
+        let mut scratch = JsonValueScratch::new();
         c.bench_function(&format!("json_cases_{name}_jiter_value"), |bench| {
-            bench.iter(|| black_box(jiter_value(documents)));
+            bench.iter(|| black_box(jiter_value(&mut scratch, documents)));
         });
         if !skip_under_codspeed() {
             c.bench_function(&format!("json_cases_{name}_serde_value"), |bench| {

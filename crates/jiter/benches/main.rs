@@ -5,7 +5,7 @@ use std::hint::black_box;
 use std::io::Read;
 use std::path::Path;
 
-use jiter::{Jiter, JsonValue, PartialMode, Peek};
+use jiter::{Jiter, JsonValueScratch, PartialMode, Peek};
 use serde_json::Value;
 
 /// serde_json is the local comparison baseline; CodSpeed tracks jiter's own history, so the serde
@@ -37,9 +37,10 @@ fn jiter_value(path: &str, c: &mut Criterion) {
     let json = read_file(path);
     let json_data = json.as_bytes();
 
+    let mut scratch = JsonValueScratch::new();
     c.bench_function(&title, |bench| {
         bench.iter(|| {
-            let v = JsonValue::parse(black_box(json_data), false).unwrap();
+            let v = scratch.parse(black_box(json_data), false, PartialMode::Off).unwrap();
             black_box(v)
         });
     });
@@ -357,9 +358,12 @@ fn string_array_jiter_value_owned(c: &mut Criterion) {
     let json = read_file("./benches/string_array.json");
     let json_data = json.as_bytes();
 
+    let mut scratch = JsonValueScratch::new();
     c.bench_function("string_array_jiter_value_owned", |bench| {
         bench.iter(|| {
-            let v = JsonValue::parse_owned(black_box(json_data), false, PartialMode::Off).unwrap();
+            let v = scratch
+                .parse_owned(black_box(json_data), false, PartialMode::Off)
+                .unwrap();
             black_box(v)
         });
     });
@@ -369,9 +373,12 @@ fn medium_response_jiter_value_owned(c: &mut Criterion) {
     let json = read_file("./benches/medium_response.json");
     let json_data = json.as_bytes();
 
+    let mut scratch = JsonValueScratch::new();
     c.bench_function("medium_response_jiter_value_owned", |bench| {
         bench.iter(|| {
-            let v = JsonValue::parse_owned(black_box(json_data), false, PartialMode::Off).unwrap();
+            let v = scratch
+                .parse_owned(black_box(json_data), false, PartialMode::Off)
+                .unwrap();
             black_box(v)
         });
     });
