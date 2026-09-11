@@ -46,9 +46,14 @@ impl From<bool> for StringCacheMode {
 }
 
 thread_local! {
+    /// Set while a parse on this thread holds the string cache lock, so `cache_clear` and
+    /// `cache_usage` can fail fast if a Python callback calls them mid-parse instead of deadlocking.
     static CACHE_HELD_BY_THIS_THREAD: Cell<bool> = const { Cell::new(false) };
 }
 
+/// Holds the string cache lock for the duration of a parse. It starts `Unacquired` and the lock
+/// is taken on the first cacheable string; `Unavailable` means another thread holds it, in which
+/// case strings are created uncached for the rest of the parse.
 #[derive(Default)]
 pub enum StringCacheGuard {
     #[default]
