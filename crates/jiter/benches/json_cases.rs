@@ -14,6 +14,10 @@ use serde_json::Value as SerdeValue;
 
 #[path = "../tests/corpus/mod.rs"]
 mod corpus;
+mod slow_realloc;
+
+#[global_allocator]
+static GLOBAL: slow_realloc::SlowRealloc = slow_realloc::SlowRealloc;
 
 use corpus::{TAGS, find_corpus_root, load_cases};
 

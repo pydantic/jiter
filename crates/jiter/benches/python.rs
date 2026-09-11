@@ -1,3 +1,8 @@
+mod slow_realloc;
+
+#[global_allocator]
+static GLOBAL: slow_realloc::SlowRealloc = slow_realloc::SlowRealloc;
+
 use codspeed_criterion_compat::{Criterion, criterion_group, criterion_main};
 
 use std::fs::File;
