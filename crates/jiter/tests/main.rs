@@ -2112,9 +2112,11 @@ fn test_scratch_owned() {
 #[test]
 fn test_scratch_after_error() {
     let mut scratch = JsonValueScratch::new();
-    let broken: &[u8] = br#"[1, 2, {"a": [3, 4, "#;
+    let broken: &[u8] = br#"{"a": "escaped\nvalue", "b": [1, 2, {"c": [3, "#;
     assert!(scratch.parse(broken, false, PartialMode::Off).is_err());
-    let json_data: &[u8] = br#"[5, {"b": 6}]"#;
+    let trailing: &[u8] = br#"[1, "two\n"] x"#;
+    assert!(scratch.parse(trailing, false, PartialMode::Off).is_err());
+    let json_data: &[u8] = br#"[5, {"b": "six\n"}]"#;
     assert_eq!(
         scratch.parse(json_data, false, PartialMode::Off).unwrap(),
         JsonValue::parse(json_data, false).unwrap()

@@ -101,7 +101,13 @@ impl<'j> JsonValue<'j> {
         allow_inf_nan: bool,
         allow_partial: PartialMode,
     ) -> Result<Self, JsonError> {
-        parse_borrowed::<false>(&mut Stacks::default(), data, allow_inf_nan, allow_partial)
+        parse_borrowed::<false>(
+            &mut Stacks::default(),
+            &mut Tape::default(),
+            data,
+            allow_inf_nan,
+            allow_partial,
+        )
     }
 
     /// Convert a borrowed JSON enum into an owned JSON enum.
@@ -146,21 +152,31 @@ fn value_static(v: JsonValue<'_>) -> JsonValue<'static> {
 impl JsonValue<'static> {
     /// Parse a JSON enum from a byte slice, returning an owned version of the enum.
     pub fn parse_owned(data: &[u8], allow_inf_nan: bool, allow_partial: PartialMode) -> Result<Self, JsonError> {
-        parse_owned::<false>(&mut Stacks::default(), data, allow_inf_nan, allow_partial)
+        parse_owned::<false>(
+            &mut Stacks::default(),
+            &mut Tape::default(),
+            data,
+            allow_inf_nan,
+            allow_partial,
+        )
     }
 }
 
-/// The stacks [`JsonValue`]s are built on, kept between parses.
+/// The buffers [`JsonValue`]s are built with, kept between parses.
 ///
-/// Every container of a document is built on one of two stacks, see [`take_value_recursive`],
-/// which a plain [`JsonValue::parse`] grows from nothing each time. A scratch keeps them at the
-/// size the last document needed, so a run of documents of one shape grows them once, and each
-/// parse allocates only the values it returns.
+/// Every container of a document is built on one of two stacks, and escaped strings are decoded
+/// through a tape, all of which a plain [`JsonValue::parse`] grows from nothing each time. A
+/// scratch keeps them at the largest size any document so far has needed, so a run of documents
+/// of one shape grows them once; after that a parse allocates the values it returns and nothing
+/// else, short of a document nested more than eight containers deep.
 ///
 /// Values parsed on a scratch borrow from the input it was given, so one scratch serves every
 /// document of a lifetime; a `JsonValueScratch<'static>` also parses owned values.
 #[derive(Default)]
-pub struct JsonValueScratch<'j>(Stacks<'j>);
+pub struct JsonValueScratch<'j> {
+    stacks: Stacks<'j>,
+    tape: Tape,
+}
 
 impl<'j> JsonValueScratch<'j> {
     pub fn new() -> Self {
@@ -174,7 +190,7 @@ impl<'j> JsonValueScratch<'j> {
         allow_inf_nan: bool,
         allow_partial: PartialMode,
     ) -> Result<JsonValue<'j>, JsonError> {
-        parse_borrowed::<true>(&mut self.0, data, allow_inf_nan, allow_partial)
+        parse_borrowed::<true>(&mut self.stacks, &mut self.tape, data, allow_inf_nan, allow_partial)
     }
 }
 
@@ -186,23 +202,23 @@ impl JsonValueScratch<'static> {
         allow_inf_nan: bool,
         allow_partial: PartialMode,
     ) -> Result<JsonValue<'static>, JsonError> {
-        parse_owned::<true>(&mut self.0, data, allow_inf_nan, allow_partial)
+        parse_owned::<true>(&mut self.stacks, &mut self.tape, data, allow_inf_nan, allow_partial)
     }
 }
 
 fn parse_borrowed<'j, const REUSE: bool>(
     stacks: &mut Stacks<'j>,
+    tape: &mut Tape,
     data: &'j [u8],
     allow_inf_nan: bool,
     allow_partial: PartialMode,
 ) -> Result<JsonValue<'j>, JsonError> {
     let mut parser = Parser::new(data);
-    let mut tape = Tape::default();
     let peek = parser.peek()?;
     let v = take_value::<REUSE>(
         peek,
         &mut parser,
-        &mut tape,
+        tape,
         DEFAULT_RECURSION_LIMIT,
         allow_inf_nan,
         allow_partial,
@@ -218,17 +234,17 @@ fn parse_borrowed<'j, const REUSE: bool>(
 
 fn parse_owned<const REUSE: bool>(
     stacks: &mut Stacks<'static>,
+    tape: &mut Tape,
     data: &[u8],
     allow_inf_nan: bool,
     allow_partial: PartialMode,
 ) -> Result<JsonValue<'static>, JsonError> {
     let mut parser = Parser::new(data);
-    let mut tape = Tape::default();
     let peek = parser.peek()?;
     let v = take_value::<REUSE>(
         peek,
         &mut parser,
-        &mut tape,
+        tape,
         DEFAULT_RECURSION_LIMIT,
         allow_inf_nan,
         allow_partial,
@@ -406,16 +422,12 @@ impl Stacks<'_> {
 /// has anything on it yet — so the stack itself is the container and can be handed over whole.
 /// That is the whole document for the common single-container case, where copying it out would be
 /// pure overhead, and the outermost array of a big one, which would otherwise be the largest
-/// copy of all. A stack that is `REUSE`d for the next parse is copied out instead, at exactly
-/// its size, and keeps its capacity.
+/// copy of all. A stack that is `REUSE`d for the next parse is split off instead, which copies
+/// its contents into an allocation of exactly their size and leaves it empty with its capacity.
 #[inline]
 fn take_container<T, const REUSE: bool>(stack: &mut Vec<T>, base: usize) -> Vec<T> {
-    if base != 0 {
+    if REUSE || base != 0 {
         stack.split_off(base)
-    } else if REUSE {
-        let mut container = Vec::with_capacity(stack.len());
-        container.append(stack);
-        container
     } else {
         std::mem::take(stack)
     }
@@ -839,13 +851,22 @@ mod tests {
     #[test]
     fn scratch_holds_nothing_after_a_failed_parse() {
         let mut scratch = JsonValueScratch::new();
-        assert!(
+        // a completed member, an element and a decoded escape are on the buffers when this fails
+        let broken: &[u8] = br#"{"a": "escaped\nvalue", "b": [1, 2, {"c": [3, "#;
+        assert!(scratch.parse_owned(broken, false, PartialMode::Off).is_err());
+        assert!(scratch.stacks.elements.is_empty());
+        assert!(scratch.stacks.members.is_empty());
+        assert!(scratch.stacks.elements.capacity() > 0);
+        assert!(scratch.stacks.members.capacity() > 0);
+        assert!(scratch.tape.capacity() > 0);
+
+        assert!(scratch.parse_owned(b"[1] x", false, PartialMode::Off).is_err());
+        assert!(scratch.stacks.elements.is_empty());
+        assert_eq!(
             scratch
-                .parse_owned(br#"[1, 2, {"a": [3, 4, "#, false, PartialMode::Off)
-                .is_err()
+                .parse_owned(br#"["ok\n", {"d": 4}]"#, false, PartialMode::Off)
+                .unwrap(),
+            JsonValue::parse_owned(br#"["ok\n", {"d": 4}]"#, false, PartialMode::Off).unwrap()
         );
-        assert!(scratch.0.elements.is_empty());
-        assert!(scratch.0.members.is_empty());
-        assert!(scratch.0.elements.capacity() > 0);
     }
 }
