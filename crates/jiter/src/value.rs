@@ -379,9 +379,9 @@ fn take_value_recursive<'j, 's>(
     // allocation of exactly the right size. A `Vec` per container has to guess that size instead,
     // and pays a run of reallocations for guessing low.
     // The stacks are sized from the peaks of the last parse, capped by what the remaining input
-    // could possibly hold. Only the
-    // root container's stack is allocated up front, the other when its first container opens, so
-    // a document that never opens a container of the other kind never pays for its stack.
+    // could possibly hold. Only the root container's stack is allocated up front; the other kind's
+    // stack is allocated when its first container opens, so a document that never opens a
+    // container of the other kind never pays for one.
     let (mut elements, mut members): (Vec<JsonValue<'s>>, Vec<(Cow<'s, str>, JsonValue<'s>)>) = match &current_recursion
     {
         RecursedValue::Array { .. } => (
