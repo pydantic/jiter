@@ -342,6 +342,15 @@ fn take_container<T>(stack: &mut Vec<T>, base: usize, peak: &mut usize) -> Vec<T
 static ELEMENTS_HINT: AtomicUsize = AtomicUsize::new(8);
 static MEMBERS_HINT: AtomicUsize = AtomicUsize::new(8);
 
+/// Bounds what a hint left by a large document can make a later one allocate up front.
+const STACK_HINT_MAX: usize = 2048;
+
+/// The capacity to give an empty stack: the last parse's peak, capped by what the remaining input
+/// could hold at `min_bytes` per entry.
+fn stack_hint(hint: &AtomicUsize, remaining: usize, min_bytes: usize) -> usize {
+    hint.load(Relaxed).min(STACK_HINT_MAX).min(remaining / min_bytes)
+}
+
 #[inline(never)] // this is an iterative algo called only from take_value, no point in inlining
 #[allow(clippy::too_many_lines)] // FIXME?
 #[allow(clippy::too_many_arguments)]
@@ -363,11 +372,20 @@ fn take_value_recursive<'j, 's>(
     // allocation of exactly the right size. A `Vec` per container has to guess that size instead,
     // and pays a run of reallocations for guessing low.
     // The stacks are sized from the peaks of the last parse, capped by what the remaining input
-    // could possibly hold: an element needs at least two bytes, a member at least five.
-    let remaining = parser.remaining_len();
-    let mut elements: Vec<JsonValue<'s>> = Vec::with_capacity(ELEMENTS_HINT.load(Relaxed).min(remaining / 2));
-    let mut members: Vec<(Cow<'s, str>, JsonValue<'s>)> =
-        Vec::with_capacity(MEMBERS_HINT.load(Relaxed).min(remaining / 5));
+    // could possibly hold: an element needs at least two bytes, a member at least five. Only the
+    // root container's stack is allocated up front, the other when its first container opens, so
+    // a document that never opens a container of the other kind never pays for its stack.
+    let (mut elements, mut members): (Vec<JsonValue<'s>>, Vec<(Cow<'s, str>, JsonValue<'s>)>) = match &current_recursion
+    {
+        RecursedValue::Array { .. } => (
+            Vec::with_capacity(stack_hint(&ELEMENTS_HINT, parser.remaining_len(), 2)),
+            Vec::new(),
+        ),
+        RecursedValue::Object { .. } => (
+            Vec::new(),
+            Vec::with_capacity(stack_hint(&MEMBERS_HINT, parser.remaining_len(), 5)),
+        ),
+    };
     let (mut elements_peak, mut members_peak) = (0, 0);
 
     let mut recursion_stack: SmallVec<[RecursedValue; 8]> = SmallVec::new();
@@ -379,6 +397,15 @@ fn take_value_recursive<'j, 's>(
             recursion_stack.push(std::mem::replace(&mut current_recursion, $value));
             if recursion_stack.len() >= recursion_limit {
                 return Err(json_error!(RecursionLimitExceeded, parser.index));
+            }
+            match &current_recursion {
+                RecursedValue::Array { .. } if elements.capacity() == 0 => {
+                    elements.reserve_exact(stack_hint(&ELEMENTS_HINT, parser.remaining_len(), 2));
+                }
+                RecursedValue::Object { .. } if members.capacity() == 0 => {
+                    members.reserve_exact(stack_hint(&MEMBERS_HINT, parser.remaining_len(), 5));
+                }
+                _ => {}
             }
         };
     }
