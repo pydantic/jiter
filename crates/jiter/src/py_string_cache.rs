@@ -62,6 +62,28 @@ pub enum StringCacheGuard {
     Unavailable,
 }
 
+impl StringCacheGuard {
+    /// Take the string cache lock for a parse without blocking: if another thread holds it the
+    /// parse proceeds uncached. A poisoned cache is cleared and reused, as in `get_string_cache`.
+    #[inline]
+    fn try_acquire() -> Self {
+        let cache = match STRING_CACHE
+            .get_or_init(|| Mutex::new(PyStringCache::default()))
+            .try_lock()
+        {
+            Ok(cache) => cache,
+            Err(TryLockError::Poisoned(poisoned)) => {
+                let mut cache = poisoned.into_inner();
+                cache.clear();
+                cache
+            }
+            Err(TryLockError::WouldBlock) => return Self::Unavailable,
+        };
+        CACHE_HELD_BY_THIS_THREAD.set(true);
+        Self::Held(cache)
+    }
+}
+
 impl Drop for StringCacheGuard {
     fn drop(&mut self) {
         if matches!(self, Self::Held(_)) {
@@ -99,7 +121,7 @@ unsafe fn guarded_py_string<'py>(
     let ascii_only = string_output.ascii_only();
     if (2..64).contains(&s.len()) {
         if matches!(guard, StringCacheGuard::Unacquired) {
-            *guard = try_get_string_cache();
+            *guard = StringCacheGuard::try_acquire();
         }
         if let StringCacheGuard::Held(cache) = guard {
             return unsafe { cache.get_or_insert(py, s, ascii_only) };
@@ -177,26 +199,6 @@ fn get_string_cache() -> MutexGuard<'static, PyStringCache> {
 
 /// Take the string cache lock for a parse without blocking: if another thread holds it the parse
 /// proceeds uncached. A poisoned cache is cleared and reused, as in `get_string_cache`.
-/// Take the string cache lock for a parse without blocking: if another thread holds it the parse
-/// proceeds uncached. A poisoned cache is cleared and reused, as in `get_string_cache`.
-#[inline]
-fn try_get_string_cache() -> StringCacheGuard {
-    let cache = match STRING_CACHE
-        .get_or_init(|| Mutex::new(PyStringCache::default()))
-        .try_lock()
-    {
-        Ok(cache) => cache,
-        Err(TryLockError::Poisoned(poisoned)) => {
-            let mut cache = poisoned.into_inner();
-            cache.clear();
-            cache
-        }
-        Err(TryLockError::WouldBlock) => return StringCacheGuard::Unavailable,
-    };
-    CACHE_HELD_BY_THIS_THREAD.set(true);
-    StringCacheGuard::Held(cache)
-}
-
 pub fn cache_usage() -> usize {
     get_string_cache().usage()
 }
