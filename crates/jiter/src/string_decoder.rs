@@ -310,13 +310,20 @@ where
                 match next_inner {
                     // these escapes are easy to validate
                     b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't' => (),
-                    b'u' => {
-                        let (_, new_index) = parse_escape(data, index)?;
-                        index = new_index;
-                    }
+                    b'u' => match parse_escape(data, index) {
+                        Ok((_, new_index)) => index = new_index,
+                        // input ends inside the `\u` escape, keep the span before the backslash
+                        Err(e) if allow_partial && e.error_type == JsonErrorType::EofWhileParsingString => {
+                            return Ok((start..index - 1, e.index));
+                        }
+                        Err(e) => return Err(e),
+                    },
                     _ => return json_err!(InvalidEscape, index),
                 }
                 index += 1;
+            } else if allow_partial {
+                // input ends right after the backslash, keep the span before it
+                return Ok((start..index - 1, index));
             } else {
                 return json_err!(EofWhileParsingString, index);
             }
