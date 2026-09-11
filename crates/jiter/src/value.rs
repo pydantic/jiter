@@ -4,6 +4,7 @@ use std::sync::{Arc, OnceLock};
 #[cfg(feature = "num-bigint")]
 use num_bigint::BigInt;
 use smallvec::SmallVec;
+use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 
 use crate::PartialMode;
 use crate::errors::{DEFAULT_RECURSION_LIMIT, JsonError, JsonResult, json_error};
@@ -323,13 +324,23 @@ enum RecursedValue<'s> {
 /// pure overhead, and the outermost array of a big one, which would otherwise be the largest
 /// copy of all.
 #[inline]
-fn take_container<T>(stack: &mut Vec<T>, base: usize) -> Vec<T> {
-    if base == 0 {
-        std::mem::take(stack)
-    } else {
+fn take_container<T>(stack: &mut Vec<T>, base: usize, peak: &mut usize) -> Vec<T> {
+    *peak = (*peak).max(stack.len());
+    if base != 0 {
         stack.split_off(base)
+    } else if stack.capacity() > 2 * stack.len().max(8) {
+        let mut exact = Vec::with_capacity(stack.len());
+        exact.append(stack);
+        exact
+    } else {
+        std::mem::take(stack)
     }
 }
+
+/// The most elements and members the shared stacks held in the last successful parse, so that
+/// the next parse can size them up front; repeated documents of one shape never reallocate.
+static ELEMENTS_HINT: AtomicUsize = AtomicUsize::new(8);
+static MEMBERS_HINT: AtomicUsize = AtomicUsize::new(8);
 
 #[inline(never)] // this is an iterative algo called only from take_value, no point in inlining
 #[allow(clippy::too_many_lines)] // FIXME?
@@ -351,13 +362,13 @@ fn take_value_recursive<'j, 's>(
     // are always the top of the stack, from its `base` up; closing it copies them out into an
     // allocation of exactly the right size. A `Vec` per container has to guess that size instead,
     // and pays a run of reallocations for guessing low.
-    // Only the root container's stack is allocated up front; a document that never opens a
-    // container of the other kind never pays for its stack.
-    let (mut elements, mut members): (Vec<JsonValue<'s>>, Vec<(Cow<'s, str>, JsonValue<'s>)>) = match &current_recursion
-    {
-        RecursedValue::Array { .. } => (Vec::with_capacity(8), Vec::new()),
-        RecursedValue::Object { .. } => (Vec::new(), Vec::with_capacity(8)),
-    };
+    // The stacks are sized from the peaks of the last parse, capped by what the remaining input
+    // could possibly hold: an element needs at least two bytes, a member at least five.
+    let remaining = parser.remaining_len();
+    let mut elements: Vec<JsonValue<'s>> = Vec::with_capacity(ELEMENTS_HINT.load(Relaxed).min(remaining / 2));
+    let mut members: Vec<(Cow<'s, str>, JsonValue<'s>)> =
+        Vec::with_capacity(MEMBERS_HINT.load(Relaxed).min(remaining / 5));
+    let (mut elements_peak, mut members_peak) = (0, 0);
 
     let mut recursion_stack: SmallVec<[RecursedValue; 8]> = SmallVec::new();
     let partial_active = allow_partial.is_active();
@@ -462,7 +473,7 @@ fn take_value_recursive<'j, 's>(
                         }
                     };
 
-                    break JsonValue::Array(Arc::new(take_container(&mut elements, base)));
+                    break JsonValue::Array(Arc::new(take_container(&mut elements, base, &mut elements_peak)));
                 }
             }
             RecursedValue::Object { next_key, .. } => {
@@ -562,7 +573,7 @@ fn take_value_recursive<'j, 's>(
                         }
                     };
 
-                    break JsonValue::Object(Arc::new(take_container(&mut members, base)));
+                    break JsonValue::Object(Arc::new(take_container(&mut members, base, &mut members_peak)));
                 }
             }
         };
@@ -573,6 +584,8 @@ fn take_value_recursive<'j, 's>(
             if let Some(next_recursion) = recursion_stack.pop() {
                 current_recursion = next_recursion;
             } else {
+                ELEMENTS_HINT.store(elements_peak, Relaxed);
+                MEMBERS_HINT.store(members_peak, Relaxed);
                 return Ok(value);
             }
 
@@ -587,7 +600,7 @@ fn take_value_recursive<'j, 's>(
                         Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
                         _ => (),
                     }
-                    JsonValue::Array(Arc::new(take_container(&mut elements, base)))
+                    JsonValue::Array(Arc::new(take_container(&mut elements, base, &mut elements_peak)))
                 }
                 RecursedValue::Object { base, next_key } => {
                     members.push((next_key, value));
@@ -608,7 +621,7 @@ fn take_value_recursive<'j, 's>(
                         _ => (),
                     }
 
-                    JsonValue::Object(Arc::new(take_container(&mut members, base)))
+                    JsonValue::Object(Arc::new(take_container(&mut members, base, &mut members_peak)))
                 }
             }
         };

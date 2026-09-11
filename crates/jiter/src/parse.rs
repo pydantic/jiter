@@ -69,6 +69,10 @@ impl<'j> Parser<'j> {
         Self { data, index: 0 }
     }
 
+    pub(crate) fn remaining_len(&self) -> usize {
+        self.data.len().saturating_sub(self.index)
+    }
+
     #[allow(dead_code)]
     pub fn slice(&self, range: Range<usize>) -> Option<&[u8]> {
         self.data.get(range)
