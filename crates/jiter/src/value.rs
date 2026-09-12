@@ -848,6 +848,9 @@ fn take_value_skip_recursive(
 mod tests {
     use super::*;
 
+    /// Lives here rather than in `tests/` because it checks the scratch's private buffers: that a
+    /// failed parse leaves nothing on them, and that they keep their capacity. Neither is visible
+    /// through the public API, which only shows that the next parse still succeeds.
     #[test]
     fn scratch_holds_nothing_after_a_failed_parse() {
         let mut scratch = JsonValueScratch::new();
