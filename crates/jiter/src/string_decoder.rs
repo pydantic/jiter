@@ -134,6 +134,10 @@ where
     }
 }
 
+/// The decoded string is never longer than the raw one, so the rest of the input bounds the tape;
+/// reserving that much up to this cap makes a short escaped string a single allocation.
+const MAX_TAPE_RESERVE: usize = 8192;
+
 fn decode_to_tape<'t, 'j>(
     data: &'j [u8],
     mut index: usize,
@@ -143,6 +147,7 @@ fn decode_to_tape<'t, 'j>(
     allow_partial: bool,
 ) -> JsonResult<(StringOutput<'t, 'j>, usize)> {
     tape.clear();
+    tape.reserve((data.len() - start).min(MAX_TAPE_RESERVE));
     let mut chunk_start = start;
     loop {
         // on_backslash
