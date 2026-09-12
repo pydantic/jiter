@@ -397,6 +397,21 @@ def test_against_json():
 
 
 @pytest.mark.skipif(
+    sys.implementation.name != 'cpython', reason='singletons are a CPython detail'
+)
+def test_short_strings_are_singletons():
+    """CPython interns the empty string and every single Latin-1 character."""
+    for s in ['', 'a', ' ', '\x7f']:
+        data = json.dumps([s, {s: s}]).encode()
+        for cache_mode in (True, False):
+            parsed, obj = jiter.from_json(data, cache_mode=cache_mode)
+            assert parsed is s
+            key, value = next(iter(obj.items()))
+            assert key is s
+            assert value is s
+
+
+@pytest.mark.skipif(
     sys.platform == 'emscripten', reason='threads not supported on pyodide'
 )
 def test_multithreaded_parsing():
