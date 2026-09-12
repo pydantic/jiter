@@ -1,0 +1,21 @@
+pyproject.toml
+  s_5edde25d41e111::t_0371869ecab72b 19
+Makefile
+  s_5edde25d41e111::t_54e174aebfbbbe 33,37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "6782b5d61102cdd7beab08307f5e5498295ec40d",
+  "prompts": {},
+  "sessions": {
+    "s_5edde25d41e111": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bb737352-ec27-4af0-babb-63876bc57903",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Samuel Colvin <s@muelcolvin.com>"
+    }
+  }
+}
