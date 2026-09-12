@@ -28,15 +28,13 @@ format-python: .uv
 	uv run --group linting ruff format $(python_sources)
 	uv run --group linting ruff check --fix --fix-only $(python_sources)
 
-MD_FILES := $(shell git ls-files '*.md')
-
 .PHONY: format-md
 format-md: .uv
-	uv run --group linting mdformat $(MD_FILES)
+	uv run --group linting mdformat --exclude '**/.*/**' --exclude '**/target/**' README.md crates
 
 .PHONY: lint-md
 lint-md: .uv
-	uv run --group linting mdformat --check $(MD_FILES)
+	uv run --group linting mdformat --check --exclude '**/.*/**' --exclude '**/target/**' README.md crates
 
 .PHONY: test
 test:

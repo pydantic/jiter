@@ -16,7 +16,7 @@ bench = [
 ]
 linting = [
     "ruff",
-    # markdown formatting (`make format-md`); style is in .mdformat.toml
+    # markdown formatting, `make format-md`
     "mdformat",
     "mdformat-tables",
 ]
