@@ -95,12 +95,41 @@ fn python_parse_string_array(c: &mut Criterion) {
     python_parse_file("./benches/string_array.json", c, StringCacheMode::All);
 }
 
-fn python_parse_x100_not_cached(c: &mut Criterion) {
-    python_parse_file("./benches/x100.json", c, StringCacheMode::None);
+/// A thousand ASCII strings of 64 to 2000 characters, too long for the string cache, so one
+/// variant covers both cache modes. Built here so the repository doesn't carry a megabyte of filler.
+fn long_strings_json() -> Vec<u8> {
+    let mut state: u64 = 0x2545_f491_4f6c_dd1d;
+    let mut next = move || {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        state
+    };
+    let filler = b"the quick brown fox jumps over the lazy dog 0123456789 ";
+    let mut json = Vec::with_capacity(1_100_000);
+    json.push(b'[');
+    for i in 0..1000 {
+        if i > 0 {
+            json.push(b',');
+        }
+        json.push(b'"');
+        let len = 64 + (next() % (2000 - 64 + 1)) as usize;
+        let offset = (next() % filler.len() as u64) as usize;
+        json.extend(filler.iter().cycle().skip(offset).take(len));
+        json.push(b'"');
+    }
+    json.push(b']');
+    json
 }
 
-fn python_parse_x100(c: &mut Criterion) {
-    python_parse_file("./benches/x100.json", c, StringCacheMode::All);
+fn python_parse_long_strings(c: &mut Criterion) {
+    let json_data = long_strings_json();
+    Python::attach(|py| {
+        cache_clear();
+        c.bench_function("python_parse_long_strings", |bench| {
+            bench.iter(|| PythonParse::default().python_parse(py, &json_data).unwrap());
+        });
+    });
 }
 
 fn python_parse_string_array_unique_not_cached(c: &mut Criterion) {
@@ -131,8 +160,7 @@ criterion_group!(
     python_parse_string_array,
     python_parse_string_array_unique_not_cached,
     python_parse_string_array_unique,
-    python_parse_x100_not_cached,
-    python_parse_x100,
+    python_parse_long_strings,
     python_parse_true_object,
     python_parse_true_array,
     python_parse_massive_ints_array,
