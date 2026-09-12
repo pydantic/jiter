@@ -1,0 +1,30 @@
+crates/jiter-python/README.md
+  s_5edde25d41e111::t_3030456110e873 52
+crates/jiter/src/py_string_cache.rs
+  s_5edde25d41e111::t_634543fb4e1123 1,7,48-49,51,55-56,89-92,144-148,150-155,158-166,169,171,200-203
+crates/jiter-python/tests/test_jiter.py
+  s_5edde25d41e111::t_3030456110e873 422
+  s_5edde25d41e111::t_634543fb4e1123 442
+crates/jiter/Cargo.toml
+  s_5edde25d41e111::t_3030456110e873 19
+crates/jiter-python/src/lib.rs
+  s_5edde25d41e111::t_634543fb4e1123 66
+crates/jiter-python/jiter.pyi
+  s_5edde25d41e111::t_634543fb4e1123 38,41,46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "6dcb1b2f4c62fd044dab6e678d2d89e41adc5a59",
+  "prompts": {},
+  "sessions": {
+    "s_5edde25d41e111": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bb737352-ec27-4af0-babb-63876bc57903",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Samuel Colvin <s@muelcolvin.com>"
+    }
+  }
+}
