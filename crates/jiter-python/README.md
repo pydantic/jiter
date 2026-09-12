@@ -49,7 +49,7 @@ def cache_clear() -> None:
     """
 
 
-def cache_usage() -> int:
+def cache_usage() -> int | None:
     """
     get the size of the string cache.
 

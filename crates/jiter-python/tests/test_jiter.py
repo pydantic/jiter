@@ -419,7 +419,7 @@ def test_multithreaded_parsing():
 @pytest.mark.skipif(sys.implementation.name != 'cpython', reason='uses CPython gc APIs')
 def test_cache_clear_during_parse_does_not_deadlock():
     # on CPython <= 3.11 a GC can run inside the parser's allocations, on newer versions it's deferred
-    # to the eval loop, so this only exercises the re-entrancy check on older versions
+    # to the eval loop, so only older versions exercise a cache_clear while a parse holds the cache
     unraisable = []
 
     def callback(phase, info):
@@ -439,5 +439,4 @@ def test_cache_clear_during_parse_does_not_deadlock():
         gc.set_threshold(*thresholds)
 
     assert len(result) == 50_000
-    for u in unraisable:
-        assert 'locked by a parse in progress' in str(u.exc_value)
+    assert unraisable == []

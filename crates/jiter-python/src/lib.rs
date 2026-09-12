@@ -63,7 +63,7 @@ mod jiter_python {
     }
 
     #[pyfunction]
-    pub fn cache_usage() -> usize {
+    pub fn cache_usage() -> Option<usize> {
         jiter::cache_usage()
     }
 

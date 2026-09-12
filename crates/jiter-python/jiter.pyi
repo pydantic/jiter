@@ -35,15 +35,15 @@ def from_json(
 
 def cache_clear() -> None:
     """
-    Reset the string cache.
+    Reset the string cache. A cache in use by a parse on another thread is left as it is.
     """
 
-def cache_usage() -> int:
+def cache_usage() -> int | None:
     """
     get the size of the string cache.
 
     Returns:
-        Size of the string cache in bytes.
+        Size of the string cache in bytes, or `None` if a parse on another thread is using it.
     """
 
 class LosslessFloat:

@@ -1,10 +1,10 @@
-use std::cell::Cell;
-use std::sync::{Mutex, MutexGuard, OnceLock, TryLockError};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use ahash::random_state::RandomState;
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyString};
+use smallvec::SmallVec;
 
 use crate::string_decoder::StringOutput;
 
@@ -45,54 +45,15 @@ impl From<bool> for StringCacheMode {
     }
 }
 
-thread_local! {
-    /// Set while a parse on this thread holds the string cache lock, so `cache_clear` and
-    /// `cache_usage` can fail fast if a Python callback calls them mid-parse instead of deadlocking.
-    static CACHE_HELD_BY_THIS_THREAD: Cell<bool> = const { Cell::new(false) };
-}
-
-/// Whether the current parse holds the string cache lock.
+/// The string cache a parse works on, taken from the pool on the first cacheable string and
+/// returned to it when the parse ends.
 #[derive(Default)]
-enum CacheState {
-    /// No cacheable string has been seen yet, so the lock has not been tried.
-    #[default]
-    Unacquired,
-    /// This parse holds the lock.
-    Held(MutexGuard<'static, PyStringCache>),
-    /// Another thread holds the lock, so strings are created uncached for the rest of the parse.
-    Unavailable,
-}
-
-/// Holds the string cache lock for the duration of a parse, taken on the first cacheable string.
-#[derive(Default)]
-pub(crate) struct StringCacheGuard(CacheState);
-
-impl StringCacheGuard {
-    /// Take the string cache lock for a parse without blocking: if another thread holds it the
-    /// parse proceeds uncached. A poisoned cache is cleared and reused, as in `get_string_cache`.
-    #[inline]
-    fn try_acquire() -> Self {
-        let cache = match STRING_CACHE
-            .get_or_init(|| Mutex::new(PyStringCache::default()))
-            .try_lock()
-        {
-            Ok(cache) => cache,
-            Err(TryLockError::Poisoned(poisoned)) => {
-                let mut cache = poisoned.into_inner();
-                cache.clear();
-                cache
-            }
-            Err(TryLockError::WouldBlock) => return Self(CacheState::Unavailable),
-        };
-        CACHE_HELD_BY_THIS_THREAD.set(true);
-        Self(CacheState::Held(cache))
-    }
-}
+pub(crate) struct StringCacheGuard(Option<PyStringCache>);
 
 impl Drop for StringCacheGuard {
     fn drop(&mut self) {
-        if matches!(self.0, CacheState::Held(_)) {
-            CACHE_HELD_BY_THIS_THREAD.set(false);
+        if let Some(cache) = self.0.take() {
+            string_cache_pool().push(cache);
         }
     }
 }
@@ -125,14 +86,11 @@ unsafe fn guarded_py_string<'py>(
     let s = string_output.as_str();
     let ascii_only = string_output.ascii_only();
     if (2..64).contains(&s.len()) {
-        if matches!(guard.0, CacheState::Unacquired) {
-            *guard = StringCacheGuard::try_acquire();
-        }
-        if let CacheState::Held(cache) = &mut guard.0 {
-            return unsafe { cache.get_or_insert(py, s, ascii_only) };
-        }
+        let cache = guard.0.get_or_insert_with(take_string_cache);
+        unsafe { cache.get_or_insert(py, s, ascii_only) }
+    } else {
+        unsafe { pystring_fast_new_maybe_ascii(py, s, ascii_only) }
     }
-    unsafe { pystring_fast_new_maybe_ascii(py, s, ascii_only) }
 }
 
 pub struct StringCacheAll;
@@ -183,33 +141,34 @@ impl StringMaybeCache for StringNoCache {
     }
 }
 
-static STRING_CACHE: OnceLock<Mutex<PyStringCache>> = OnceLock::new();
+/// The string caches no parse is using. A parse takes one out, or builds one if there are none,
+/// and puts it back when it's done, so the lock is never held while Python code can run. Under
+/// the GIL parses never overlap and there is only ever one cache; on free-threaded builds the
+/// pool grows to the number of parses that have overlapped.
+static STRING_CACHE: Mutex<SmallVec<[PyStringCache; 1]>> = Mutex::new(SmallVec::new_const());
 
-#[inline]
-fn get_string_cache() -> MutexGuard<'static, PyStringCache> {
-    assert!(
-        !CACHE_HELD_BY_THIS_THREAD.get(),
-        "jiter's string cache is locked by a parse in progress on this thread"
-    );
-    match STRING_CACHE.get_or_init(|| Mutex::new(PyStringCache::default())).lock() {
-        Ok(cache) => cache,
-        Err(poisoned) => {
-            let mut cache = poisoned.into_inner();
-            // worst case if we panic while the cache is held, we just clear and keep going
-            cache.clear();
-            cache
-        }
+fn string_cache_pool() -> MutexGuard<'static, SmallVec<[PyStringCache; 1]>> {
+    STRING_CACHE.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+fn take_string_cache() -> PyStringCache {
+    string_cache_pool().pop().unwrap_or_default()
+}
+
+/// The number of entries in the string caches no parse is using, `None` if a parse is using every
+/// one of them.
+pub fn cache_usage() -> Option<usize> {
+    let pool = string_cache_pool();
+    if pool.is_empty() {
+        None
+    } else {
+        Some(pool.iter().map(PyStringCache::usage).sum())
     }
 }
 
-/// Take the string cache lock for a parse without blocking: if another thread holds it the parse
-/// proceeds uncached. A poisoned cache is cleared and reused, as in `get_string_cache`.
-pub fn cache_usage() -> usize {
-    get_string_cache().usage()
-}
-
+/// Clear the string caches no parse is using; a cache in use by a parse is left as it is.
 pub fn cache_clear() {
-    get_string_cache().clear();
+    string_cache_pool().iter_mut().for_each(PyStringCache::clear);
 }
 
 /// Create a cached Python `str` from a string slice
@@ -238,7 +197,10 @@ unsafe fn cached_py_string_maybe_ascii<'py>(py: Python<'py>, s: &str, ascii_only
     unsafe {
         // from tests, 0 and 1 character strings are faster not cached
         if (2..64).contains(&s.len()) {
-            get_string_cache().get_or_insert(py, s, ascii_only)
+            let mut cache = take_string_cache();
+            let py_string = cache.get_or_insert(py, s, ascii_only);
+            string_cache_pool().push(cache);
+            py_string
         } else {
             pystring_fast_new_maybe_ascii(py, s, ascii_only)
         }
