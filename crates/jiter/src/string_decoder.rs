@@ -134,6 +134,11 @@ where
     }
 }
 
+/// Cap on the tape capacity reserved when a string turns out to contain escapes. The rest of the
+/// input bounds the decoded length, so reserving it makes a short string a single allocation; the
+/// cap stops a short string near the start of a large document reserving the whole document.
+const MAX_TAPE_RESERVE: usize = 8192;
+
 fn decode_to_tape<'t, 'j>(
     data: &'j [u8],
     mut index: usize,
@@ -143,6 +148,7 @@ fn decode_to_tape<'t, 'j>(
     allow_partial: bool,
 ) -> JsonResult<(StringOutput<'t, 'j>, usize)> {
     tape.clear();
+    tape.reserve((data.len() - start).min(MAX_TAPE_RESERVE));
     let mut chunk_start = start;
     loop {
         // on_backslash
