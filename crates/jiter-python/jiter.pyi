@@ -38,12 +38,12 @@ def cache_clear() -> None:
     Reset the string cache. A cache in use by a parse on another thread is left as it is.
     """
 
-def cache_usage() -> int | None:
+def cache_usage() -> int:
     """
     get the size of the string cache.
 
     Returns:
-        Size of the string cache in bytes, or `None` if a parse on another thread is using it.
+        Size of the string cache in bytes.
     """
 
 class LosslessFloat:

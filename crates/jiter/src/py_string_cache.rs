@@ -166,15 +166,9 @@ fn return_string_cache(cache: PyStringCache) {
     }
 }
 
-/// The number of entries in the string caches no parse is using, `None` if a parse is using every
-/// one of them.
-pub fn cache_usage() -> Option<usize> {
-    let pool = string_cache_pool();
-    if pool.is_empty() {
-        None
-    } else {
-        Some(pool.iter().map(PyStringCache::usage).sum())
-    }
+/// The number of entries in the string caches no parse is using.
+pub fn cache_usage() -> usize {
+    string_cache_pool().iter().map(PyStringCache::usage).sum()
 }
 
 /// Clear the string caches no parse is using; a cache in use by a parse is left as it is.
