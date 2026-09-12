@@ -1,0 +1,19 @@
+crates/jiter/benches/python.rs
+  s_5edde25d41e111::t_dbe424b6b6f20b 98-122,125-132,163
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "48a3b53f02043fff1060a9b62e41095cfd18b32a",
+  "prompts": {},
+  "sessions": {
+    "s_5edde25d41e111": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bb737352-ec27-4af0-babb-63876bc57903",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Samuel Colvin <s@muelcolvin.com>"
+    }
+  }
+}
