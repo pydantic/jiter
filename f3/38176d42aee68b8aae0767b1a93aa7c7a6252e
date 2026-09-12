@@ -1,0 +1,9 @@
+crates/jiter/src/value.rs
+  ai_agent 851-853
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "f338176d42aee68b8aae0767b1a93aa7c7a6252e",
+  "prompts": {}
+}
