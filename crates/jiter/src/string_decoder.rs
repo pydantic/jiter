@@ -134,8 +134,9 @@ where
     }
 }
 
-/// The decoded string is never longer than the raw one, so the rest of the input bounds the tape;
-/// reserving that much up to this cap makes a short escaped string a single allocation.
+/// Cap on the tape capacity reserved when a string turns out to contain escapes. The rest of the
+/// input bounds the decoded length, so reserving it makes a short string a single allocation; the
+/// cap stops a short string near the start of a large document reserving the whole document.
 const MAX_TAPE_RESERVE: usize = 8192;
 
 fn decode_to_tape<'t, 'j>(
