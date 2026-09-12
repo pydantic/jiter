@@ -1,0 +1,34 @@
+pyproject.toml
+  s_5edde25d41e111::t_1da49e41776be0 19-21
+README.md
+  s_5edde25d41e111::t_b44644ed573135 13-15,99-135
+uv.lock
+  ai_agent 423-424,445-449,475,480,482,509-534,1373-1379
+Makefile
+  s_5edde25d41e111::t_1da49e41776be0 31-40
+Cargo.lock
+  ai_agent 453,472
+.pre-commit-config.yaml
+  s_5edde25d41e111::t_bce32b240801c1 44-46
+  s_5edde25d41e111::t_1da49e41776be0 47-49
+crates/jiter-python/README.md
+  s_5edde25d41e111::t_b44644ed573135 61
+crates/jiter/benches/criterion_table.py
+  s_5edde25d41e111::t_beb9e286075b81 42-44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "42f921fc34bce188855e1c1dbd402b6ba36ba41d",
+  "prompts": {},
+  "sessions": {
+    "s_5edde25d41e111": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bb737352-ec27-4af0-babb-63876bc57903",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Samuel Colvin <s@muelcolvin.com>"
+    }
+  }
+}
