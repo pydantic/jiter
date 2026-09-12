@@ -206,6 +206,9 @@ impl JsonValueScratch<'static> {
     }
 }
 
+/// Parse a whole document into a value borrowing from `data`, on the given buffers. Under
+/// `REUSE` the stacks are left empty with their capacity for the next parse, otherwise the root
+/// container takes its stack over.
 fn parse_borrowed<'j, const REUSE: bool>(
     stacks: &mut Stacks<'j>,
     tape: &mut Tape,
@@ -232,6 +235,7 @@ fn parse_borrowed<'j, const REUSE: bool>(
     Ok(v)
 }
 
+/// [`parse_borrowed`] for an owned value: strings are copied out of `data` rather than borrowed.
 fn parse_owned<const REUSE: bool>(
     stacks: &mut Stacks<'static>,
     tape: &mut Tape,
@@ -256,6 +260,8 @@ fn parse_owned<const REUSE: bool>(
     Ok(v)
 }
 
+/// Take the next value from `parser` as a value borrowing from its input; the entry point for
+/// [`Jiter`](crate::Jiter), which has its own parser and tape.
 pub(crate) fn take_value_borrowed<'j>(
     peek: Peek,
     parser: &mut Parser<'j>,
@@ -276,6 +282,7 @@ pub(crate) fn take_value_borrowed<'j>(
     )
 }
 
+/// [`take_value_borrowed`] for an owned value: strings are copied out of the input.
 pub(crate) fn take_value_owned<'j>(
     peek: Peek,
     parser: &mut Parser<'j>,
@@ -296,6 +303,9 @@ pub(crate) fn take_value_owned<'j>(
     )
 }
 
+/// Take the next value from `parser`, `create_cow` deciding whether its strings are borrowed
+/// or copied. Scalars are returned directly; a container hands over to
+/// [`take_value_recursive`], with the root's stack reserved first.
 #[allow(clippy::too_many_arguments)]
 fn take_value<'j, 's, const REUSE: bool>(
     peek: Peek,
