@@ -20,23 +20,23 @@ lint:
 
 .PHONY: lint-python
 lint-python: .uv
-	uv run ruff check $(python_sources)
-	uv run ruff format --check $(python_sources)
+	uv run --group linting ruff check $(python_sources)
+	uv run --group linting ruff format --check $(python_sources)
 
 .PHONY: format-python
 format-python: .uv
-	uv run ruff format $(python_sources)
-	uv run ruff check --fix --fix-only $(python_sources)
+	uv run --group linting ruff format $(python_sources)
+	uv run --group linting ruff check --fix --fix-only $(python_sources)
 
 MD_FILES := $(shell git ls-files '*.md')
 
 .PHONY: format-md
 format-md: .uv
-	uv run mdformat $(MD_FILES)
+	uv run --group linting mdformat $(MD_FILES)
 
 .PHONY: lint-md
 lint-md: .uv
-	uv run mdformat --check $(MD_FILES)
+	uv run --group linting mdformat --check $(MD_FILES)
 
 .PHONY: test
 test:
