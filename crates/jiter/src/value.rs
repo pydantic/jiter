@@ -101,22 +101,13 @@ impl<'j> JsonValue<'j> {
         allow_inf_nan: bool,
         allow_partial: PartialMode,
     ) -> Result<Self, JsonError> {
-        let mut parser = Parser::new(data);
-
-        let mut tape = Tape::default();
-        let peek = parser.peek()?;
-        let v = take_value_borrowed(
-            peek,
-            &mut parser,
-            &mut tape,
-            DEFAULT_RECURSION_LIMIT,
+        parse_borrowed::<false>(
+            &mut Stacks::default(),
+            &mut Tape::default(),
+            data,
             allow_inf_nan,
             allow_partial,
-        )?;
-        if !allow_partial.is_active() {
-            parser.finish()?;
-        }
-        Ok(v)
+        )
     }
 
     /// Convert a borrowed JSON enum into an owned JSON enum.
@@ -161,23 +152,116 @@ fn value_static(v: JsonValue<'_>) -> JsonValue<'static> {
 impl JsonValue<'static> {
     /// Parse a JSON enum from a byte slice, returning an owned version of the enum.
     pub fn parse_owned(data: &[u8], allow_inf_nan: bool, allow_partial: PartialMode) -> Result<Self, JsonError> {
-        let mut parser = Parser::new(data);
-
-        let mut tape = Tape::default();
-        let peek = parser.peek()?;
-        let v = take_value_owned(
-            peek,
-            &mut parser,
-            &mut tape,
-            DEFAULT_RECURSION_LIMIT,
+        parse_owned::<false>(
+            &mut Stacks::default(),
+            &mut Tape::default(),
+            data,
             allow_inf_nan,
             allow_partial,
-        )?;
-        parser.finish()?;
-        Ok(v)
+        )
     }
 }
 
+/// The buffers [`JsonValue`]s are built with, kept between parses.
+///
+/// Every container of a document is built on one of two stacks, and escaped strings are decoded
+/// through a tape, all of which a plain [`JsonValue::parse`] grows from nothing each time. A
+/// scratch keeps them at the largest size any document so far has needed, so a run of documents
+/// of one shape grows them once; after that a parse allocates the values it returns and nothing
+/// else, short of a document nested more than eight containers deep.
+///
+/// Values parsed on a scratch borrow from the input it was given, so one scratch serves every
+/// document of a lifetime; a `JsonValueScratch<'static>` also parses owned values.
+#[derive(Default)]
+pub struct JsonValueScratch<'j> {
+    stacks: Stacks<'j>,
+    tape: Tape,
+}
+
+impl<'j> JsonValueScratch<'j> {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Like [`JsonValue::parse_with_config`], on this scratch.
+    pub fn parse(
+        &mut self,
+        data: &'j [u8],
+        allow_inf_nan: bool,
+        allow_partial: PartialMode,
+    ) -> Result<JsonValue<'j>, JsonError> {
+        parse_borrowed::<true>(&mut self.stacks, &mut self.tape, data, allow_inf_nan, allow_partial)
+    }
+}
+
+impl JsonValueScratch<'static> {
+    /// Like [`JsonValue::parse_owned`], on this scratch.
+    pub fn parse_owned(
+        &mut self,
+        data: &[u8],
+        allow_inf_nan: bool,
+        allow_partial: PartialMode,
+    ) -> Result<JsonValue<'static>, JsonError> {
+        parse_owned::<true>(&mut self.stacks, &mut self.tape, data, allow_inf_nan, allow_partial)
+    }
+}
+
+/// Parse a whole document into a value borrowing from `data`, on the given buffers. Under
+/// `REUSE` the stacks are left empty with their capacity for the next parse, otherwise the root
+/// container takes its stack over.
+fn parse_borrowed<'j, const REUSE: bool>(
+    stacks: &mut Stacks<'j>,
+    tape: &mut Tape,
+    data: &'j [u8],
+    allow_inf_nan: bool,
+    allow_partial: PartialMode,
+) -> Result<JsonValue<'j>, JsonError> {
+    let mut parser = Parser::new(data);
+    let peek = parser.peek()?;
+    let v = take_value::<REUSE>(
+        peek,
+        &mut parser,
+        tape,
+        DEFAULT_RECURSION_LIMIT,
+        allow_inf_nan,
+        allow_partial,
+        stacks,
+        &|s: StringOutput<'_, 'j>| s.into(),
+    )
+    .inspect_err(|_| stacks.clear())?;
+    if !allow_partial.is_active() {
+        parser.finish()?;
+    }
+    Ok(v)
+}
+
+/// [`parse_borrowed`] for an owned value: strings are copied out of `data` rather than borrowed.
+fn parse_owned<const REUSE: bool>(
+    stacks: &mut Stacks<'static>,
+    tape: &mut Tape,
+    data: &[u8],
+    allow_inf_nan: bool,
+    allow_partial: PartialMode,
+) -> Result<JsonValue<'static>, JsonError> {
+    let mut parser = Parser::new(data);
+    let peek = parser.peek()?;
+    let v = take_value::<REUSE>(
+        peek,
+        &mut parser,
+        tape,
+        DEFAULT_RECURSION_LIMIT,
+        allow_inf_nan,
+        allow_partial,
+        stacks,
+        &|s: StringOutput<'_, '_>| Into::<String>::into(s).into(),
+    )
+    .inspect_err(|_| stacks.clear())?;
+    parser.finish()?;
+    Ok(v)
+}
+
+/// Take the next value from `parser` as a value borrowing from its input; the entry point for
+/// [`Jiter`](crate::Jiter), which has its own parser and tape.
 pub(crate) fn take_value_borrowed<'j>(
     peek: Peek,
     parser: &mut Parser<'j>,
@@ -186,17 +270,19 @@ pub(crate) fn take_value_borrowed<'j>(
     allow_inf_nan: bool,
     allow_partial: PartialMode,
 ) -> JsonResult<JsonValue<'j>> {
-    take_value(
+    take_value::<false>(
         peek,
         parser,
         tape,
         recursion_limit,
         allow_inf_nan,
         allow_partial,
+        &mut Stacks::default(),
         &|s: StringOutput<'_, 'j>| s.into(),
     )
 }
 
+/// [`take_value_borrowed`] for an owned value: strings are copied out of the input.
 pub(crate) fn take_value_owned<'j>(
     peek: Peek,
     parser: &mut Parser<'j>,
@@ -205,24 +291,30 @@ pub(crate) fn take_value_owned<'j>(
     allow_inf_nan: bool,
     allow_partial: PartialMode,
 ) -> JsonResult<JsonValue<'static>> {
-    take_value(
+    take_value::<false>(
         peek,
         parser,
         tape,
         recursion_limit,
         allow_inf_nan,
         allow_partial,
+        &mut Stacks::default(),
         &|s: StringOutput<'_, 'j>| Into::<String>::into(s).into(),
     )
 }
 
-fn take_value<'j, 's>(
+/// Take the next value from `parser`, `create_cow` deciding whether its strings are borrowed
+/// or copied. Scalars are returned directly; a container hands over to
+/// [`take_value_recursive`], with the root's stack reserved first.
+#[allow(clippy::too_many_arguments)]
+fn take_value<'j, 's, const REUSE: bool>(
     peek: Peek,
     parser: &mut Parser<'j>,
     tape: &mut Tape,
     recursion_limit: u8,
     allow_inf_nan: bool,
     allow_partial: PartialMode,
+    stacks: &mut Stacks<'s>,
     create_cow: &impl Fn(StringOutput<'_, 'j>) -> Cow<'s, str>,
 ) -> JsonResult<JsonValue<'s>> {
     let partial_active = allow_partial.is_active();
@@ -250,7 +342,8 @@ fn take_value<'j, 's>(
                 Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
                 Ok(None) | Err(_) => return Ok(JsonValue::empty_array()),
             };
-            take_value_recursive(
+            stacks.elements.reserve(8);
+            take_value_recursive::<REUSE>(
                 peek_first,
                 RecursedValue::Array { base: 0 },
                 parser,
@@ -258,6 +351,7 @@ fn take_value<'j, 's>(
                 recursion_limit,
                 allow_inf_nan,
                 allow_partial,
+                stacks,
                 create_cow,
             )
         }
@@ -269,8 +363,9 @@ fn take_value<'j, 's>(
                 _ => return Ok(JsonValue::empty_object()),
             };
             let first_key = create_cow(first_key);
+            stacks.members.reserve(8);
             match parser.peek() {
-                Ok(peek) => take_value_recursive(
+                Ok(peek) => take_value_recursive::<REUSE>(
                     peek,
                     RecursedValue::Object {
                         base: 0,
@@ -281,6 +376,7 @@ fn take_value<'j, 's>(
                     recursion_limit,
                     allow_inf_nan,
                     allow_partial,
+                    stacks,
                     create_cow,
                 ),
                 Err(e) if !(partial_active && e.allowed_if_partial()) => Err(e),
@@ -315,26 +411,42 @@ enum RecursedValue<'s> {
     Object { base: usize, next_key: Cow<'s, str> },
 }
 
+/// The stacks every container of a document is built on, see [`take_value_recursive`]. A
+/// successful parse takes everything off them; a failed one is cleared by its caller.
+#[derive(Default)]
+struct Stacks<'s> {
+    elements: Vec<JsonValue<'s>>,
+    members: Vec<(Cow<'s, str>, JsonValue<'s>)>,
+}
+
+impl Stacks<'_> {
+    fn clear(&mut self) {
+        self.elements.clear();
+        self.members.clear();
+    }
+}
+
 /// The contents of a container that has just closed, taken off the stack they were built on.
 ///
 /// `base` of zero means nothing else is on that stack — no enclosing container of the same kind
 /// has anything on it yet — so the stack itself is the container and can be handed over whole.
 /// That is the whole document for the common single-container case, where copying it out would be
 /// pure overhead, and the outermost array of a big one, which would otherwise be the largest
-/// copy of all.
+/// copy of all. A stack that is `REUSE`d for the next parse is split off instead, which copies
+/// its contents into an allocation of exactly their size and leaves it empty with its capacity.
 #[inline]
-fn take_container<T>(stack: &mut Vec<T>, base: usize) -> Vec<T> {
-    if base == 0 {
-        std::mem::take(stack)
-    } else {
+fn take_container<T, const REUSE: bool>(stack: &mut Vec<T>, base: usize) -> Vec<T> {
+    if REUSE || base != 0 {
         stack.split_off(base)
+    } else {
+        std::mem::take(stack)
     }
 }
 
 #[inline(never)] // this is an iterative algo called only from take_value, no point in inlining
 #[allow(clippy::too_many_lines)] // FIXME?
 #[allow(clippy::too_many_arguments)]
-fn take_value_recursive<'j, 's>(
+fn take_value_recursive<'j, 's, const REUSE: bool>(
     mut peek: Peek,
     mut current_recursion: RecursedValue<'s>,
     parser: &mut Parser<'j>,
@@ -342,6 +454,7 @@ fn take_value_recursive<'j, 's>(
     recursion_limit: u8,
     allow_inf_nan: bool,
     allow_partial: PartialMode,
+    stacks: &mut Stacks<'s>,
     create_cow: &impl Fn(StringOutput<'_, 'j>) -> Cow<'s, str>,
 ) -> JsonResult<JsonValue<'s>> {
     let recursion_limit: usize = recursion_limit.into();
@@ -351,13 +464,7 @@ fn take_value_recursive<'j, 's>(
     // are always the top of the stack, from its `base` up; closing it copies them out into an
     // allocation of exactly the right size. A `Vec` per container has to guess that size instead,
     // and pays a run of reallocations for guessing low.
-    // Only the root container's stack is allocated up front; a document that never opens a
-    // container of the other kind never pays for its stack.
-    let (mut elements, mut members): (Vec<JsonValue<'s>>, Vec<(Cow<'s, str>, JsonValue<'s>)>) = match &current_recursion
-    {
-        RecursedValue::Array { .. } => (Vec::with_capacity(8), Vec::new()),
-        RecursedValue::Object { .. } => (Vec::new(), Vec::with_capacity(8)),
-    };
+    let Stacks { elements, members } = stacks;
 
     let mut recursion_stack: SmallVec<[RecursedValue; 8]> = SmallVec::new();
     let partial_active = allow_partial.is_active();
@@ -462,7 +569,7 @@ fn take_value_recursive<'j, 's>(
                         }
                     };
 
-                    break JsonValue::Array(Arc::new(take_container(&mut elements, base)));
+                    break JsonValue::Array(Arc::new(take_container::<_, REUSE>(elements, base)));
                 }
             }
             RecursedValue::Object { next_key, .. } => {
@@ -562,7 +669,7 @@ fn take_value_recursive<'j, 's>(
                         }
                     };
 
-                    break JsonValue::Object(Arc::new(take_container(&mut members, base)));
+                    break JsonValue::Object(Arc::new(take_container::<_, REUSE>(members, base)));
                 }
             }
         };
@@ -587,7 +694,7 @@ fn take_value_recursive<'j, 's>(
                         Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
                         _ => (),
                     }
-                    JsonValue::Array(Arc::new(take_container(&mut elements, base)))
+                    JsonValue::Array(Arc::new(take_container::<_, REUSE>(elements, base)))
                 }
                 RecursedValue::Object { base, next_key } => {
                     members.push((next_key, value));
@@ -608,7 +715,7 @@ fn take_value_recursive<'j, 's>(
                         _ => (),
                     }
 
-                    JsonValue::Object(Arc::new(take_container(&mut members, base)))
+                    JsonValue::Object(Arc::new(take_container::<_, REUSE>(members, base)))
                 }
             }
         };
@@ -744,5 +851,35 @@ fn take_value_skip_recursive(
 
             current_recursion = recursion_stack[current_recursion_depth];
         };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Lives here rather than in `tests/` because it checks the scratch's private buffers: that a
+    /// failed parse leaves nothing on them, and that they keep their capacity. Neither is visible
+    /// through the public API, which only shows that the next parse still succeeds.
+    #[test]
+    fn scratch_holds_nothing_after_a_failed_parse() {
+        let mut scratch = JsonValueScratch::new();
+        // a completed member, an element and a decoded escape are on the buffers when this fails
+        let broken: &[u8] = br#"{"a": "escaped\nvalue", "b": [1, 2, {"c": [3, "#;
+        assert!(scratch.parse_owned(broken, false, PartialMode::Off).is_err());
+        assert!(scratch.stacks.elements.is_empty());
+        assert!(scratch.stacks.members.is_empty());
+        assert!(scratch.stacks.elements.capacity() > 0);
+        assert!(scratch.stacks.members.capacity() > 0);
+        assert!(scratch.tape.capacity() > 0);
+
+        assert!(scratch.parse_owned(b"[1] x", false, PartialMode::Off).is_err());
+        assert!(scratch.stacks.elements.is_empty());
+        assert_eq!(
+            scratch
+                .parse_owned(br#"["ok\n", {"d": 4}]"#, false, PartialMode::Off)
+                .unwrap(),
+            JsonValue::parse_owned(br#"["ok\n", {"d": 4}]"#, false, PartialMode::Off).unwrap()
+        );
     }
 }

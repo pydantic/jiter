@@ -10,8 +10,8 @@ use std::sync::Arc;
 use num_bigint::BigInt;
 
 use jiter::{
-    Jiter, JiterErrorType, JiterResult, JsonErrorType, JsonObject, JsonType, JsonValue, LinePosition, NumberAny,
-    NumberFloat, NumberInt, PartialMode, Peek,
+    Jiter, JiterErrorType, JiterResult, JsonErrorType, JsonObject, JsonType, JsonValue, JsonValueScratch, LinePosition,
+    NumberAny, NumberFloat, NumberInt, PartialMode, Peek,
 };
 
 fn json_vec(jiter: &mut Jiter, peek: Option<Peek>) -> JiterResult<Vec<String>> {
@@ -2072,4 +2072,57 @@ fn test_many_floats() {
             rand() % 1_000_000_000_000_000_000
         ));
     }
+}
+
+#[test]
+fn test_scratch_reuse() {
+    let documents: [&[u8]; 5] = [
+        br#"[true, false, null, 1, 2.5, "x", [1, [2, [3]]], {"a": {"b": [1, {"c": 2}]}}]"#,
+        br#"{"person": {"name": "x", "tags": ["a", "b"]}, "count": 3}"#,
+        b"[]",
+        b"{}",
+        br#""just a string""#,
+    ];
+    let mut scratch = JsonValueScratch::new();
+    for _ in 0..3 {
+        for json_data in documents {
+            let expected = JsonValue::parse(json_data, false).unwrap();
+            assert_eq!(scratch.parse(json_data, false, PartialMode::Off).unwrap(), expected);
+        }
+    }
+}
+
+#[test]
+fn test_scratch_owned() {
+    let mut scratch = JsonValueScratch::new();
+    let value = {
+        let s = r#"  { "int": 1, "const": true, "float": 1.2, "array": [1, false, null]}"#.to_string();
+        scratch.parse_owned(s.as_bytes(), false, PartialMode::Off).unwrap()
+    };
+    assert_eq!(value, value_owned());
+    let again = scratch
+        .parse_owned(br#"[{"k": "v"}, {"k": "w"}]"#, false, PartialMode::Off)
+        .unwrap();
+    assert_eq!(
+        again,
+        JsonValue::parse_owned(br#"[{"k": "v"}, {"k": "w"}]"#, false, PartialMode::Off).unwrap()
+    );
+}
+
+#[test]
+fn test_scratch_after_error() {
+    let mut scratch = JsonValueScratch::new();
+    let broken: &[u8] = br#"{"a": "escaped\nvalue", "b": [1, 2, {"c": [3, "#;
+    assert!(scratch.parse(broken, false, PartialMode::Off).is_err());
+    let trailing: &[u8] = br#"[1, "two\n"] x"#;
+    assert!(scratch.parse(trailing, false, PartialMode::Off).is_err());
+    let json_data: &[u8] = br#"[5, {"b": "six\n"}]"#;
+    assert_eq!(
+        scratch.parse(json_data, false, PartialMode::Off).unwrap(),
+        JsonValue::parse(json_data, false).unwrap()
+    );
+    assert_eq!(
+        scratch.parse(broken, false, PartialMode::On).unwrap(),
+        JsonValue::parse_with_config(broken, false, PartialMode::On).unwrap()
+    );
 }
