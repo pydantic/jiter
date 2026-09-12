@@ -58,6 +58,7 @@ def cache_usage() -> int:
     """
 
 ```
+
 ## Examples
 
 The main function provided by Jiter is `from_json()`, which accepts a bytes object containing JSON and returns a Python dictionary, list or other value.

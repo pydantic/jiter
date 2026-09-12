@@ -9,9 +9,10 @@ Fast iterable JSON parser.
 Documentation is available at [docs.rs/jiter](https://docs.rs/jiter).
 
 jiter has three interfaces:
-* `JsonValue` an enum representing JSON data
-* `Jiter` an iterator over JSON data
-* `PythonParse` which parses a JSON string into a Python object
+
+- `JsonValue` an enum representing JSON data
+- `Jiter` an iterator over JSON data
+- `PythonParse` which parses a JSON string into a Python object
 
 ## JsonValue Example
 
@@ -95,40 +96,43 @@ to a string.
 
 For more details, see [the benchmarks](https://github.com/pydantic/jiter/tree/main/crates/jiter/benches).
 
-| benchmark | `jiter` iter | `jiter` value | `serde` value | `serde`/`jiter` |
-| --- | ---: | ---: | ---: | ---: |
-| **strings** | | | | |
-| x100 | 10ns | 11ns | 37ns | 3.2x |
-| sentence | 234ns | 278ns | 296ns | 1.1x |
-| unicode | 291ns | 307ns | 322ns | 1.1x |
-| unicode_dense | 150ns | 152ns | 177ns | 1.2x |
-| string_array | 470ns | 954ns | 3.0µs | 3.2x |
-| json_cases_strings | - | 18.85ms | 59.62ms | 3.2x |
-| json_cases_escapes | - | 1.70ms | 2.52ms | 1.5x |
-| json_cases_non-ascii | - | 830.0µs | 1.16ms | 1.4x |
-| **numbers** | | | | |
-| short_numbers | - | 9.1µs | 37.6µs | 4.1x |
-| floats_array | 15.6µs | 23.9µs | 117.9µs | 4.9x |
-| bigints_array | 10.4µs | 16.4µs | 69.4µs | 4.2x |
-| massive_ints_array | 74.1µs | 79.2µs | 279.9µs | 3.5x |
-| big | 3.04ms | 4.37ms | 20.73ms | 4.7x |
-| json_cases_numbers | - | 11.29ms | 54.53ms | 4.8x |
-| json_cases_ints | - | 11.13ms | 50.96ms | 4.6x |
-| json_cases_floats | - | 3.43ms | 15.90ms | 4.6x |
-| **constants** | | | | |
-| true_array | 196ns | 637ns | 1.1µs | 1.7x |
-| true_object | 2.2µs | 1.5µs | 5.7µs | 3.8x |
-| json_cases_constants | - | 27.4µs | 58.7µs | 2.1x |
-| **documents** | | | | |
-| pass1 | - | 2.2µs | 5.4µs | 2.5x |
-| pass2 | 314ns | 759ns | 574ns | 0.8x |
-| medium_response | - | 2.4µs | 6.9µs | 2.9x |
-| json_cases_all | - | 26.74ms | 90.50ms | 3.4x |
-| json_cases_arrays | - | 11.13ms | 47.00ms | 4.2x |
-| json_cases_objects | - | 17.17ms | 53.85ms | 3.1x |
-| json_cases_deep | - | 5.81ms | 12.97ms | 2.2x |
-| json_cases_whitespace | - | 6.90ms | 16.51ms | 2.4x |
-| json_cases_error | - | 2.73ms | 11.91ms | 4.4x |
+| benchmark               | `jiter` iter | `jiter` value | `serde` value | `serde`/`jiter` |
+| ----------------------- | -----------: | ------------: | ------------: | --------------: |
+| **strings**             |              |               |               |                 |
+| x100                    |          8ns |           9ns |          40ns |            4.4x |
+| sentence                |        232ns |         124ns |         293ns |            2.4x |
+| unicode                 |        268ns |         159ns |         308ns |            1.9x |
+| unicode_dense           |        152ns |         152ns |         177ns |            1.2x |
+| string_array            |        466ns |         751ns |         3.0µs |            4.0x |
+| pass2                   |        304ns |         785ns |         576ns |            0.7x |
+| json_cases_strings      |            - |       14.92ms |       58.85ms |            3.9x |
+| json_cases_escapes      |            - |        1.62ms |        2.44ms |            1.5x |
+| json_cases_non-ascii    |            - |       715.5µs |       995.3µs |            1.4x |
+| **numbers**             |              |               |               |                 |
+| short_numbers           |            - |        10.9µs |        37.6µs |            3.4x |
+| floats_array            |       15.2µs |        19.2µs |       117.2µs |            6.1x |
+| doubles_array           |       13.2µs |        17.6µs |       110.9µs |            6.3x |
+| short_floats            |        9.7µs |        12.6µs |        46.6µs |            3.7x |
+| long_significand_floats |       12.1µs |        13.9µs |        94.7µs |            6.8x |
+| bigints_array           |       12.2µs |        12.5µs |        69.3µs |            5.6x |
+| massive_ints_array      |       73.2µs |        77.9µs |       284.9µs |            3.7x |
+| big                     |       2.93ms |        3.96ms |       20.32ms |            5.1x |
+| json_cases_numbers      |            - |        7.81ms |       50.42ms |            6.5x |
+| json_cases_ints         |            - |        7.82ms |       50.27ms |            6.4x |
+| json_cases_floats       |            - |        3.04ms |       17.68ms |            5.8x |
+| **constants**           |              |               |               |                 |
+| true_array              |        194ns |         477ns |         1.1µs |            2.3x |
+| true_object             |        2.4µs |         1.4µs |         6.0µs |            4.2x |
+| json_cases_constants    |            - |        25.6µs |        66.3µs |            2.6x |
+| **documents**           |              |               |               |                 |
+| pass1                   |            - |         1.8µs |         5.3µs |            3.0x |
+| medium_response         |            - |         2.2µs |         6.8µs |            3.1x |
+| json_cases_all          |            - |       22.15ms |       90.38ms |            4.1x |
+| json_cases_arrays       |            - |       10.78ms |       45.96ms |            4.3x |
+| json_cases_objects      |            - |       12.98ms |       53.66ms |            4.1x |
+| json_cases_deep         |            - |        4.63ms |       12.83ms |            2.8x |
+| json_cases_whitespace   |            - |        6.24ms |       16.58ms |            2.7x |
+| json_cases_error        |            - |        2.38ms |       11.87ms |            5.0x |
 
 ## Part of the Pydantic Stack
 

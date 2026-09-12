@@ -39,6 +39,9 @@ GROUPS: list[tuple[str, list[str]]] = [
         [
             'short_numbers',
             'floats_array',
+            'doubles_array',
+            'short_floats',
+            'long_significand_floats',
             'bigints_array',
             'massive_ints_array',
             # despite the name, big.json is 1000 arrays of ints and floats with no strings,

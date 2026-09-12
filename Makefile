@@ -20,13 +20,21 @@ lint:
 
 .PHONY: lint-python
 lint-python: .uv
-	uv run ruff check $(python_sources)
-	uv run ruff format --check $(python_sources)
+	uv run --group linting ruff check $(python_sources)
+	uv run --group linting ruff format --check $(python_sources)
 
 .PHONY: format-python
 format-python: .uv
-	uv run ruff format $(python_sources)
-	uv run ruff check --fix --fix-only $(python_sources)
+	uv run --group linting ruff format $(python_sources)
+	uv run --group linting ruff check --fix --fix-only $(python_sources)
+
+.PHONY: format-md
+format-md: .uv
+	uv run --group linting mdformat --exclude '**/.*/**' --exclude '**/target/**' README.md crates
+
+.PHONY: lint-md
+lint-md: .uv
+	uv run --group linting mdformat --check --exclude '**/.*/**' --exclude '**/target/**' README.md crates
 
 .PHONY: test
 test:
