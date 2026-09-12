@@ -1,0 +1,19 @@
+crates/jiter/src/string_decoder.rs
+  s_5edde25d41e111::t_904ff531ab465e 137-139
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "7edb809d7517898dcf53e1c0aa07e9d136791668",
+  "prompts": {},
+  "sessions": {
+    "s_5edde25d41e111": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bb737352-ec27-4af0-babb-63876bc57903",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Samuel Colvin <s@muelcolvin.com>"
+    }
+  }
+}
