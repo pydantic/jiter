@@ -28,6 +28,16 @@ format-python: .uv
 	uv run ruff format $(python_sources)
 	uv run ruff check --fix --fix-only $(python_sources)
 
+MD_FILES := $(shell git ls-files '*.md')
+
+.PHONY: format-md
+format-md: .uv
+	uv run mdformat $(MD_FILES)
+
+.PHONY: lint-md
+lint-md: .uv
+	uv run mdformat --check $(MD_FILES)
+
 .PHONY: test
 test:
 	cargo test

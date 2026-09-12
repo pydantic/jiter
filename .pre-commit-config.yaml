@@ -41,6 +41,12 @@ repos:
         types: [python]
         language: system
         pass_filenames: false
+      - id: format-md
+        name: Format markdown
+        entry: make format-md
+        types: [markdown]
+        language: system
+        pass_filenames: false
       - id: check-without-num-bigint
         name: Check without num-bigint feature
         entry: cargo check --no-default-features --package jiter

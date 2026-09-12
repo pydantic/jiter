@@ -41,5 +41,5 @@ dynamic = ["version"]
 module-name = "jiter"
 bindings = "pyo3"
 features = []
-editable-profile = 'dev'
+editable-profile = "dev"
 pgo-command = "python bench.py jiter jiter-cache"

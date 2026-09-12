@@ -16,6 +16,9 @@ bench = [
 ]
 linting = [
     "ruff",
+    # markdown formatting (`make format-md`); style is in .mdformat.toml
+    "mdformat",
+    "mdformat-tables",
 ]
 pyodide-build = [
     "pyodide-build",
