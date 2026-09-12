@@ -16,7 +16,7 @@ rust-version = { workspace = true }
 num-bigint = { version = "0.4.4", optional = true }
 num-traits = "0.2.16"
 ahash = "0.8.0"
-smallvec = "1.11.0"
+smallvec = { version = "1.11.0", features = ["const_new"] }
 pyo3 = { workspace = true, optional = true }
 lexical-parse-float = { version = "1.0.5", features = ["format"] }
 bitvec = "1.0.1"

@@ -1,9 +1,10 @@
-use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use ahash::random_state::RandomState;
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyString};
+use smallvec::SmallVec;
 
 use crate::string_decoder::StringOutput;
 
@@ -44,32 +45,84 @@ impl From<bool> for StringCacheMode {
     }
 }
 
-pub trait StringMaybeCache {
-    fn get_key<'py>(py: Python<'py>, string_output: StringOutput<'_, '_>) -> Bound<'py, PyString>;
+/// The string cache a parse works on, taken from the pool on the first cacheable string and
+/// returned to it when the parse ends.
+#[derive(Default)]
+pub(crate) struct StringCacheGuard(Option<PyStringCache>);
 
-    fn get_value<'py>(py: Python<'py>, string_output: StringOutput<'_, '_>) -> Bound<'py, PyString> {
-        Self::get_key(py, string_output)
+impl Drop for StringCacheGuard {
+    fn drop(&mut self) {
+        if let Some(cache) = self.0.take() {
+            return_string_cache(cache);
+        }
+    }
+}
+
+pub trait StringMaybeCache {
+    fn get_key<'py>(
+        py: Python<'py>,
+        guard: &mut StringCacheGuard,
+        string_output: StringOutput<'_, '_>,
+    ) -> Bound<'py, PyString>;
+
+    fn get_value<'py>(
+        py: Python<'py>,
+        guard: &mut StringCacheGuard,
+        string_output: StringOutput<'_, '_>,
+    ) -> Bound<'py, PyString> {
+        Self::get_key(py, guard, string_output)
+    }
+}
+
+/// # Safety
+///
+/// Caller must match the ascii_only flag to the string passed in.
+#[inline]
+unsafe fn guarded_py_string<'py>(
+    py: Python<'py>,
+    guard: &mut StringCacheGuard,
+    string_output: &StringOutput<'_, '_>,
+) -> Bound<'py, PyString> {
+    let s = string_output.as_str();
+    let ascii_only = string_output.ascii_only();
+    if (2..64).contains(&s.len()) {
+        let cache = guard.0.get_or_insert_with(take_string_cache);
+        unsafe { cache.get_or_insert(py, s, ascii_only) }
+    } else {
+        unsafe { pystring_fast_new_maybe_ascii(py, s, ascii_only) }
     }
 }
 
 pub struct StringCacheAll;
 
 impl StringMaybeCache for StringCacheAll {
-    fn get_key<'py>(py: Python<'py>, string_output: StringOutput<'_, '_>) -> Bound<'py, PyString> {
+    fn get_key<'py>(
+        py: Python<'py>,
+        guard: &mut StringCacheGuard,
+        string_output: StringOutput<'_, '_>,
+    ) -> Bound<'py, PyString> {
         // SAFETY: `StringOutput` guarantees that its ASCII flag matches its contents.
-        unsafe { cached_py_string_maybe_ascii(py, string_output.as_str(), string_output.ascii_only()) }
+        unsafe { guarded_py_string(py, guard, &string_output) }
     }
 }
 
 pub struct StringCacheKeys;
 
 impl StringMaybeCache for StringCacheKeys {
-    fn get_key<'py>(py: Python<'py>, string_output: StringOutput<'_, '_>) -> Bound<'py, PyString> {
+    fn get_key<'py>(
+        py: Python<'py>,
+        guard: &mut StringCacheGuard,
+        string_output: StringOutput<'_, '_>,
+    ) -> Bound<'py, PyString> {
         // SAFETY: `StringOutput` guarantees that its ASCII flag matches its contents.
-        unsafe { cached_py_string_maybe_ascii(py, string_output.as_str(), string_output.ascii_only()) }
+        unsafe { guarded_py_string(py, guard, &string_output) }
     }
 
-    fn get_value<'py>(py: Python<'py>, string_output: StringOutput<'_, '_>) -> Bound<'py, PyString> {
+    fn get_value<'py>(
+        py: Python<'py>,
+        _guard: &mut StringCacheGuard,
+        string_output: StringOutput<'_, '_>,
+    ) -> Bound<'py, PyString> {
         // SAFETY: `StringOutput` guarantees that its ASCII flag matches its contents.
         unsafe { pystring_fast_new_maybe_ascii(py, string_output.as_str(), string_output.ascii_only()) }
     }
@@ -78,33 +131,49 @@ impl StringMaybeCache for StringCacheKeys {
 pub struct StringNoCache;
 
 impl StringMaybeCache for StringNoCache {
-    fn get_key<'py>(py: Python<'py>, string_output: StringOutput<'_, '_>) -> Bound<'py, PyString> {
+    fn get_key<'py>(
+        py: Python<'py>,
+        _guard: &mut StringCacheGuard,
+        string_output: StringOutput<'_, '_>,
+    ) -> Bound<'py, PyString> {
         // SAFETY: `StringOutput` guarantees that its ASCII flag matches its contents.
         unsafe { pystring_fast_new_maybe_ascii(py, string_output.as_str(), string_output.ascii_only()) }
     }
 }
 
-static STRING_CACHE: OnceLock<Mutex<PyStringCache>> = OnceLock::new();
+/// The string caches no parse is using. A parse takes one out, or builds one if there are none,
+/// and puts it back when it's done, so the lock is never held while Python code can run. Under
+/// the GIL parses never overlap and there is only ever one cache; on free-threaded builds the
+/// pool grows to the number of parses that have overlapped, up to `MAX_POOLED_CACHES`.
+static STRING_CACHE: Mutex<SmallVec<[PyStringCache; 1]>> = Mutex::new(SmallVec::new_const());
 
-#[inline]
-fn get_string_cache() -> MutexGuard<'static, PyStringCache> {
-    match STRING_CACHE.get_or_init(|| Mutex::new(PyStringCache::default())).lock() {
-        Ok(cache) => cache,
-        Err(poisoned) => {
-            let mut cache = poisoned.into_inner();
-            // worst case if we panic while the cache is held, we just clear and keep going
-            cache.clear();
-            cache
-        }
+/// Each cache is a quarter of a megabyte, so a pool that grew to a large thread count would hold
+/// on to that memory for good; beyond this many, a returned cache is dropped instead.
+const MAX_POOLED_CACHES: usize = 8;
+
+fn string_cache_pool() -> MutexGuard<'static, SmallVec<[PyStringCache; 1]>> {
+    STRING_CACHE.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+fn take_string_cache() -> PyStringCache {
+    string_cache_pool().pop().unwrap_or_default()
+}
+
+fn return_string_cache(cache: PyStringCache) {
+    let mut pool = string_cache_pool();
+    if pool.len() < MAX_POOLED_CACHES {
+        pool.push(cache);
     }
 }
 
+/// The number of entries in the string caches no parse is using.
 pub fn cache_usage() -> usize {
-    get_string_cache().usage()
+    string_cache_pool().iter().map(PyStringCache::usage).sum()
 }
 
+/// Clear the string caches no parse is using; a cache in use by a parse is left as it is.
 pub fn cache_clear() {
-    get_string_cache().clear();
+    string_cache_pool().iter_mut().for_each(PyStringCache::clear);
 }
 
 /// Create a cached Python `str` from a string slice
@@ -133,7 +202,10 @@ unsafe fn cached_py_string_maybe_ascii<'py>(py: Python<'py>, s: &str, ascii_only
     unsafe {
         // from tests, 0 and 1 character strings are faster not cached
         if (2..64).contains(&s.len()) {
-            get_string_cache().get_or_insert(py, s, ascii_only)
+            let mut cache = take_string_cache();
+            let py_string = cache.get_or_insert(py, s, ascii_only);
+            return_string_cache(cache);
+            py_string
         } else {
             pystring_fast_new_maybe_ascii(py, s, ascii_only)
         }

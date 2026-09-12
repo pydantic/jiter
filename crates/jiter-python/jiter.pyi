@@ -35,7 +35,7 @@ def from_json(
 
 def cache_clear() -> None:
     """
-    Reset the string cache.
+    Reset the string cache. A cache in use by a parse on another thread is left as it is.
     """
 
 def cache_usage() -> int:
