@@ -2129,16 +2129,17 @@ fn test_scratch_after_error() {
 
 #[test]
 fn jiter_with_tape_reuses_buffer() {
-    let mut jiter = Jiter::with_tape(br#""a\nb""#, Vec::new());
+    // both documents fit in the minimum allocation a fresh Vec<u8> would make, so a seeded
+    // capacity is what tells reuse apart from a dropped buffer
+    let mut jiter = Jiter::with_tape(br#""a\nb""#, Vec::with_capacity(64));
     assert_eq!(jiter.next_str().unwrap(), "a\nb");
     let tape = jiter.into_tape();
-    let capacity = tape.capacity();
-    assert!(capacity >= 3);
+    assert_eq!(tape.capacity(), 64);
 
     let mut jiter = Jiter::with_tape(br#"{"k":"c\td"}"#, tape);
     assert_eq!(jiter.next_object().unwrap(), Some("k"));
     assert_eq!(jiter.next_str().unwrap(), "c\td");
     assert_eq!(jiter.next_key().unwrap(), None);
     jiter.finish().unwrap();
-    assert_eq!(jiter.into_tape().capacity(), capacity);
+    assert_eq!(jiter.into_tape().capacity(), 64);
 }
