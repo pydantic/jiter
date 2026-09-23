@@ -2126,3 +2126,19 @@ fn test_scratch_after_error() {
         JsonValue::parse_with_config(broken, false, PartialMode::On).unwrap()
     );
 }
+
+#[test]
+fn jiter_with_tape_reuses_buffer() {
+    let mut jiter = Jiter::with_tape(br#""a\nb""#, Vec::new());
+    assert_eq!(jiter.next_str().unwrap(), "a\nb");
+    let tape = jiter.into_tape();
+    let capacity = tape.capacity();
+    assert!(capacity >= 3);
+
+    let mut jiter = Jiter::with_tape(br#"{"k":"c\td"}"#, tape);
+    assert_eq!(jiter.next_object().unwrap(), Some("k"));
+    assert_eq!(jiter.next_str().unwrap(), "c\td");
+    assert_eq!(jiter.next_key().unwrap(), None);
+    jiter.finish().unwrap();
+    assert_eq!(jiter.into_tape().capacity(), capacity);
+}
