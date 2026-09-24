@@ -11,6 +11,11 @@ use std::arch::aarch64::{
     uint64x1_t,
     // 16 byte methods
     vld1q_u8 as simd_load_16,
+    vandq_u8 as simd_and_16,
+    vpaddq_u8 as simd_pairwise_add_16,
+    vmaxvq_u8 as simd_max_lane_16,
+    vreinterpretq_u64_u8 as simd_cast_u64_2,
+    vgetq_lane_u64 as simd_get_lane_u64_2,
     vcgtq_u8 as simd_gt_16,
     vcltq_u8 as simd_lt_16,
     vorrq_u8 as simd_or_16,
@@ -43,6 +48,8 @@ use crate::errors::{JsonResult, json_err};
 
 use crate::number_decoder::IntChunk;
 use crate::string_decoder::StringChunk;
+
+use super::structural::{BlockMasks, DigitMasks};
 
 use super::fallback_int::decode_int_chunk;
 use super::fallback_string::{CHAR_TYPE, CharType, JSON_ASCII};
@@ -350,4 +357,117 @@ fn mask_to_u64(mask: SimdVecu8_16) -> u64 {
 fn load_slice(bytes: &[u8; SIMD_STEP]) -> SimdVecu8_16 {
     // SAFETY: the array reference is valid for reading 16 contiguous bytes.
     unsafe { simd_load_16(bytes.as_ptr()) }
+}
+
+const OPEN_BRACE_16: SimdVecu8_16 = simd_const!([b'{'; 16]);
+const CLOSE_BRACE_16: SimdVecu8_16 = simd_const!([b'}'; 16]);
+const OPEN_BRACKET_16: SimdVecu8_16 = simd_const!([b'['; 16]);
+const CLOSE_BRACKET_16: SimdVecu8_16 = simd_const!([b']'; 16]);
+const COLON_16: SimdVecu8_16 = simd_const!([b':'; 16]);
+const COMMA_16: SimdVecu8_16 = simd_const!([b','; 16]);
+const SPACE_16: SimdVecu8_16 = simd_const!([b' '; 16]);
+const TAB_16: SimdVecu8_16 = simd_const!([b'\t'; 16]);
+const LINE_FEED_16: SimdVecu8_16 = simd_const!([b'\n'; 16]);
+const CARRIAGE_RETURN_16: SimdVecu8_16 = simd_const!([b'\r'; 16]);
+const DOT_16: SimdVecu8_16 = simd_const!([b'.'; 16]);
+const TEN_16: SimdVecu8_16 = simd_const!([10u8; 16]);
+/// one bit per lane, repeated for each half, for `masks_to_u64`
+const LANE_BITS_16: SimdVecu8_16 = simd_const!([1u8, 2, 4, 8, 16, 32, 64, 128, 1, 2, 4, 8, 16, 32, 64, 128]);
+
+/// `LANE_BITS_16` hidden from the optimiser, once per block: knowing the lane bits are
+/// disjoint, it would replace the pairwise adds of `masks_to_u64` with pairwise ors, which have
+/// no instruction and cost three shuffles each.
+#[inline(always)]
+fn lane_bits() -> SimdVecu8_16 {
+    std::hint::black_box(LANE_BITS_16)
+}
+
+#[inline(always)]
+fn load_block(block: &[u8; 64]) -> [SimdVecu8_16; 4] {
+    let (b0, rest) = block.split_first_chunk::<16>().unwrap();
+    let (b1, rest) = rest.split_first_chunk::<16>().unwrap();
+    let (b2, b3) = rest.split_first_chunk::<16>().unwrap();
+    [
+        load_slice(b0),
+        load_slice(b1),
+        load_slice(b2),
+        load_slice(b3.try_into().unwrap()),
+    ]
+}
+
+/// Four 16-lane 0x00/0xFF masks to one bit-per-byte `u64`, lane 0 of the first vector at bit 0
+/// (simdjson's arm64 `to_bitmask`: keep one bit per lane, then add lanes pairwise three times).
+#[target_feature(enable = "neon")]
+fn masks_to_u64(masks: [SimdVecu8_16; 4], lane_bits: SimdVecu8_16) -> u64 {
+    let [m0, m1, m2, m3] = masks;
+    let sum0 = simd_pairwise_add_16(simd_and_16(m0, lane_bits), simd_and_16(m1, lane_bits));
+    let sum1 = simd_pairwise_add_16(simd_and_16(m2, lane_bits), simd_and_16(m3, lane_bits));
+    let sum = simd_pairwise_add_16(sum0, sum1);
+    let sum = simd_pairwise_add_16(sum, sum);
+    simd_get_lane_u64_2::<0>(simd_cast_u64_2(sum))
+}
+
+#[rustfmt::skip]
+#[target_feature(enable = "neon")]
+fn bracket_mask(v: SimdVecu8_16) -> SimdVecu8_16 {
+    simd_or_16(
+        simd_or_16(simd_eq_16(v, OPEN_BRACE_16), simd_eq_16(v, CLOSE_BRACE_16)),
+        simd_or_16(simd_eq_16(v, OPEN_BRACKET_16), simd_eq_16(v, CLOSE_BRACKET_16)),
+    )
+}
+
+#[target_feature(enable = "neon")]
+fn punctuation_mask(v: SimdVecu8_16) -> SimdVecu8_16 {
+    simd_or_16(simd_eq_16(v, COLON_16), simd_eq_16(v, COMMA_16))
+}
+
+#[rustfmt::skip]
+#[target_feature(enable = "neon")]
+fn whitespace_mask(v: SimdVecu8_16) -> SimdVecu8_16 {
+    simd_or_16(
+        simd_or_16(simd_eq_16(v, SPACE_16), simd_eq_16(v, TAB_16)),
+        simd_or_16(simd_eq_16(v, LINE_FEED_16), simd_eq_16(v, CARRIAGE_RETURN_16)),
+    )
+}
+
+#[inline]
+#[target_feature(enable = "neon")]
+pub(crate) fn classify_block(block: &[u8; 64]) -> BlockMasks {
+    let v = load_block(block);
+    let lane_bits = lane_bits();
+    let brackets = v.map(|x| bracket_mask(x));
+    let structural = [0, 1, 2, 3].map(|i| simd_or_16(brackets[i], punctuation_mask(v[i])));
+    BlockMasks {
+        quote: masks_to_u64(v.map(|x| simd_eq_16(x, QUOTE_16)), lane_bits),
+        backslash: masks_to_u64(v.map(|x| simd_eq_16(x, BACKSLASH_16)), lane_bits),
+        structural: masks_to_u64(structural, lane_bits),
+        brackets: masks_to_u64(brackets, lane_bits),
+        comma: masks_to_u64(v.map(|x| simd_eq_16(x, COMMA_16)), lane_bits),
+        whitespace: masks_to_u64(v.map(|x| whitespace_mask(x)), lane_bits),
+        control: masks_to_u64(v.map(|x| simd_lt_16(x, CONTROL_16)), lane_bits),
+    }
+}
+
+#[inline]
+#[target_feature(enable = "neon")]
+pub(crate) fn digit_masks(block: &[u8; 64]) -> DigitMasks {
+    let v = load_block(block);
+    let lane_bits = lane_bits();
+    DigitMasks {
+        // a byte is a digit when subtracting '0' leaves a value below ten
+        digit: masks_to_u64(v.map(|x| simd_lt_16(simd_sub_16(x, ZERO_DIGIT_16), TEN_16)), lane_bits),
+        dot: masks_to_u64(v.map(|x| simd_eq_16(x, DOT_16)), lane_bits),
+    }
+}
+
+#[inline]
+#[target_feature(enable = "neon")]
+pub(crate) fn block_has_string_special(block: &[u8; 64]) -> bool {
+    let [v0, v1, v2, v3] = load_block(block).map(|x| {
+        simd_or_16(
+            simd_or_16(simd_eq_16(x, QUOTE_16), simd_eq_16(x, BACKSLASH_16)),
+            simd_lt_16(x, CONTROL_16),
+        )
+    });
+    simd_max_lane_16(simd_or_16(simd_or_16(v0, v1), simd_or_16(v2, v3))) != 0
 }

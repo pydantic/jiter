@@ -3,12 +3,16 @@ mod aarch64;
 mod fallback_int;
 mod fallback_string;
 mod number;
+#[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", target_endian = "little")))]
+mod structural;
 mod swar_int;
 #[cfg(target_arch = "x86_64")]
 mod x86_64;
 
 pub(crate) use fallback_int::decode_int_chunk as decode_int_chunk_small;
 pub(crate) use number::{NumberChunk, decode_number_chunk};
+#[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", target_endian = "little")))]
+pub(crate) use structural::{MIN_INPUT as SKIP_MIN_INPUT, skip_container};
 
 use crate::errors::JsonResult;
 use crate::number_decoder::IntChunk;
@@ -101,5 +105,54 @@ pub(crate) fn decode_int_chunk_big(data: &[u8], index: usize) -> (IntChunk, usiz
     #[cfg(not(any(target_arch = "x86_64", all(target_arch = "aarch64", target_endian = "little"))))]
     {
         fallback_int::decode_int_chunk(data, index, 0)
+    }
+}
+
+/// Classify a 64-byte block into the bit-per-byte masks the structural skip works on.
+#[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", target_endian = "little")))]
+#[inline(always)]
+fn classify_block(block: &[u8; 64]) -> structural::BlockMasks {
+    #[cfg(all(target_arch = "aarch64", target_endian = "little"))]
+    {
+        // SAFETY: all supported aarch64 targets support neon intrinsics.
+        unsafe { aarch64::classify_block(block) }
+    }
+    #[cfg(target_arch = "x86_64")]
+    {
+        // SAFETY: SSE2 is part of the x86_64 baseline.
+        unsafe { x86_64::classify_block(block) }
+    }
+}
+
+/// Does the block hold a quote, a backslash or a control character? For a block that lies
+/// entirely inside a string this is all the structural skip needs to know.
+#[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", target_endian = "little")))]
+#[inline(always)]
+fn block_has_string_special(block: &[u8; 64]) -> bool {
+    #[cfg(all(target_arch = "aarch64", target_endian = "little"))]
+    {
+        // SAFETY: all supported aarch64 targets support neon intrinsics.
+        unsafe { aarch64::block_has_string_special(block) }
+    }
+    #[cfg(target_arch = "x86_64")]
+    {
+        // SAFETY: SSE2 is part of the x86_64 baseline.
+        unsafe { x86_64::block_has_string_special(block) }
+    }
+}
+
+/// The digit and dot masks of a block, for checking a number token.
+#[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", target_endian = "little")))]
+#[inline(always)]
+fn digit_masks(block: &[u8; 64]) -> structural::DigitMasks {
+    #[cfg(all(target_arch = "aarch64", target_endian = "little"))]
+    {
+        // SAFETY: all supported aarch64 targets support neon intrinsics.
+        unsafe { aarch64::digit_masks(block) }
+    }
+    #[cfg(target_arch = "x86_64")]
+    {
+        // SAFETY: SSE2 is part of the x86_64 baseline.
+        unsafe { x86_64::digit_masks(block) }
     }
 }
