@@ -310,19 +310,39 @@ fn control_mask(v: SimdVec) -> SimdVec {
     simd_eq_16(simd_min_16(v, CONTROL_MAX_16), v)
 }
 
+/// Classify a block. With `outside_string`, a block without a quote holds no string at all, so
+/// its quote, backslash and control masks come back as zero without being extracted: a backslash
+/// or control byte outside a string is part of a number or literal token, which the token checks
+/// reject.
 #[inline]
 #[target_feature(enable = "sse2")]
-pub(crate) fn classify_block(block: &[u8; 64]) -> BlockMasks {
+pub(crate) fn classify_block(block: &[u8; 64], outside_string: bool) -> BlockMasks {
     let v = load_block(block);
+    let quotes = v.map(|x| simd_eq_16(x, QUOTE_16));
     let brackets = v.map(|x| bracket_mask(x));
-    let structural = [0, 1, 2, 3].map(|i| simd_or_16(brackets[i], punctuation_mask(v[i])));
+    let structural = masks_to_u64([0, 1, 2, 3].map(|i| simd_or_16(brackets[i], punctuation_mask(v[i]))));
+    let brackets = masks_to_u64(brackets);
+    let comma = masks_to_u64(v.map(|x| simd_eq_16(x, COMMA_16)));
+    let whitespace = masks_to_u64(v.map(|x| whitespace_mask(x)));
+    let [q0, q1, q2, q3] = quotes;
+    if outside_string && simd_movemask_16(simd_or_16(simd_or_16(q0, q1), simd_or_16(q2, q3))) == 0 {
+        return BlockMasks {
+            quote: 0,
+            backslash: 0,
+            structural,
+            brackets,
+            comma,
+            whitespace,
+            control: 0,
+        };
+    }
     BlockMasks {
-        quote: masks_to_u64(v.map(|x| simd_eq_16(x, QUOTE_16))),
+        quote: masks_to_u64(quotes),
         backslash: masks_to_u64(v.map(|x| simd_eq_16(x, BACKSLASH_16))),
-        structural: masks_to_u64(structural),
-        brackets: masks_to_u64(brackets),
-        comma: masks_to_u64(v.map(|x| simd_eq_16(x, COMMA_16))),
-        whitespace: masks_to_u64(v.map(|x| whitespace_mask(x))),
+        structural,
+        brackets,
+        comma,
+        whitespace,
         control: masks_to_u64(v.map(|x| control_mask(x))),
     }
 }

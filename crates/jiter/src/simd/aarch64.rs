@@ -430,20 +430,43 @@ fn whitespace_mask(v: SimdVecu8_16) -> SimdVecu8_16 {
     )
 }
 
+/// Classify a block. With `outside_string`, a block without a quote holds no string at all, so
+/// its quote, backslash and control masks come back as zero without being extracted: a backslash
+/// or control byte outside a string is part of a number or literal token, which the token checks
+/// reject.
 #[inline]
 #[target_feature(enable = "neon")]
-pub(crate) fn classify_block(block: &[u8; 64]) -> BlockMasks {
+pub(crate) fn classify_block(block: &[u8; 64], outside_string: bool) -> BlockMasks {
     let v = load_block(block);
     let lane_bits = lane_bits();
+    let quotes = v.map(|x| simd_eq_16(x, QUOTE_16));
     let brackets = v.map(|x| bracket_mask(x));
-    let structural = [0, 1, 2, 3].map(|i| simd_or_16(brackets[i], punctuation_mask(v[i])));
+    let structural = masks_to_u64(
+        [0, 1, 2, 3].map(|i| simd_or_16(brackets[i], punctuation_mask(v[i]))),
+        lane_bits,
+    );
+    let brackets = masks_to_u64(brackets, lane_bits);
+    let comma = masks_to_u64(v.map(|x| simd_eq_16(x, COMMA_16)), lane_bits);
+    let whitespace = masks_to_u64(v.map(|x| whitespace_mask(x)), lane_bits);
+    let [q0, q1, q2, q3] = quotes;
+    if outside_string && simd_max_lane_16(simd_or_16(simd_or_16(q0, q1), simd_or_16(q2, q3))) == 0 {
+        return BlockMasks {
+            quote: 0,
+            backslash: 0,
+            structural,
+            brackets,
+            comma,
+            whitespace,
+            control: 0,
+        };
+    }
     BlockMasks {
-        quote: masks_to_u64(v.map(|x| simd_eq_16(x, QUOTE_16)), lane_bits),
+        quote: masks_to_u64(quotes, lane_bits),
         backslash: masks_to_u64(v.map(|x| simd_eq_16(x, BACKSLASH_16)), lane_bits),
-        structural: masks_to_u64(structural, lane_bits),
-        brackets: masks_to_u64(brackets, lane_bits),
-        comma: masks_to_u64(v.map(|x| simd_eq_16(x, COMMA_16)), lane_bits),
-        whitespace: masks_to_u64(v.map(|x| whitespace_mask(x)), lane_bits),
+        structural,
+        brackets,
+        comma,
+        whitespace,
         control: masks_to_u64(v.map(|x| simd_lt_16(x, CONTROL_16)), lane_bits),
     }
 }

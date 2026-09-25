@@ -66,13 +66,23 @@ fn skip_container_impl(data: &[u8], start: usize, recursion_limit: u8, allow_inf
     let mut tail = [b' '; 64];
     loop {
         let (block, real) = block_at(data, pos, &mut tail);
-        let step = if scanner.inside_string() && !super::block_has_string_special(block) {
+        let inside_string = scanner.inside_string();
+        let step = if inside_string && !super::block_has_string_special(block) {
             // string content only: nothing in it can end the string, and only a character
             // escaped by a backslash at the end of the previous block can need checking
             scanner.skip_string_block(pos)?;
             Step::Continue(pos + 64)
         } else {
-            scanner.step(block, &super::classify_block(block), pos)?
+            let m = super::classify_block(block, !inside_string);
+            // A block that starts outside a string and holds no quote has no string bookkeeping
+            // to do (the block before it did not end with a backslash: outside a string that is
+            // a rejected token). On x86_64 such blocks take a copy of `step` with that
+            // bookkeeping folded away; on aarch64 the second copy costs more than it saves.
+            if cfg!(target_arch = "x86_64") && !inside_string && m.quote == 0 {
+                scanner.step::<true>(block, &m, pos)?
+            } else {
+                scanner.step::<false>(block, &m, pos)?
+            }
         };
         pos = match step {
             Step::Done(end) => return Some(end),
@@ -273,19 +283,29 @@ impl<'j> Scanner<'j> {
         Some(())
     }
 
-    /// Check the block at `pos`, whose masks are `m`, against the grammar.
+    /// Check the block at `pos`, whose masks are `m`, against the grammar. With `NO_STRINGS`
+    /// the block starts outside a string and holds no quote, so its quote, backslash and control
+    /// masks are zero and the string bookkeeping folds away.
     #[inline(always)]
-    fn step(&mut self, block: &[u8; 64], m: &BlockMasks, pos: usize) -> Option<Step> {
-        let escaped = if m.backslash == 0 {
+    fn step<const NO_STRINGS: bool>(&mut self, block: &[u8; 64], m: &BlockMasks, pos: usize) -> Option<Step> {
+        let escaped = if NO_STRINGS {
+            debug_assert_eq!(self.ends_odd_backslashes, 0);
+            debug_assert_eq!(self.in_string, 0);
+            0
+        } else if m.backslash == 0 {
             // only a run carried from the previous block can escape anything here, at bit 0
             std::mem::take(&mut self.ends_odd_backslashes)
         } else {
             find_escaped(m.backslash, &mut self.ends_odd_backslashes)
         };
-        let quotes = m.quote & !escaped;
+        let quotes = if NO_STRINGS { 0 } else { m.quote & !escaped };
         // bit `i` is set if byte `i` is inside a string, its opening quote included and its
         // closing quote not
-        let in_string = prefix_xor(quotes) ^ self.in_string;
+        let in_string = if NO_STRINGS {
+            0
+        } else {
+            prefix_xor(quotes) ^ self.in_string
+        };
         // all ones if bit 63 is set: the block ends inside a string
         self.in_string = 0u64.wrapping_sub(in_string >> 63);
 
@@ -355,10 +375,10 @@ impl<'j> Scanner<'j> {
         }
 
         // 4. Strings: no control characters, and every escaped character starting a legal escape.
-        if m.control & in_string & region != 0 {
+        if !NO_STRINGS && m.control & in_string & region != 0 {
             return None;
         }
-        let mut to_check = escaped & in_string & region;
+        let mut to_check = if NO_STRINGS { 0 } else { escaped & in_string & region };
         while to_check != 0 {
             let at = pos + to_check.trailing_zeros() as usize;
             to_check &= to_check - 1;
@@ -664,12 +684,21 @@ mod tests {
         #[test]
         fn classify_block_matches_reference(bytes in prop::collection::vec(interesting_byte(), 64)) {
             let block: &[u8; 64] = bytes.as_slice().try_into().unwrap();
-            let m = crate::simd::classify_block(block);
+            let m = crate::simd::classify_block(block, false);
             let d = crate::simd::digit_masks(block);
             prop_assert_eq!(
                 [m.quote, m.backslash, m.structural, m.brackets, m.comma, m.whitespace, m.control, d.digit, d.dot],
                 reference_masks(block)
             );
+            // outside a string, a block without a quote reports no quote, backslash or control
+            let want = reference_masks(block);
+            let o = crate::simd::classify_block(block, true);
+            if want[0] == 0 {
+                prop_assert_eq!([o.quote, o.backslash, o.control], [0, 0, 0]);
+                prop_assert_eq!([o.structural, o.brackets, o.comma, o.whitespace], [want[2], want[3], want[4], want[5]]);
+            } else {
+                prop_assert_eq!([o.quote, o.backslash, o.structural, o.brackets, o.comma, o.whitespace, o.control], [want[0], want[1], want[2], want[3], want[4], want[5], want[6]]);
+            }
             prop_assert_eq!(
                 crate::simd::block_has_string_special(block),
                 m.quote | m.backslash | m.control != 0
@@ -686,7 +715,7 @@ mod tests {
             let mut pos = 0;
             while pos < data.len() {
                 let (block, real) = block_at(&data, pos, &mut tail);
-                let m = crate::simd::classify_block(block);
+                let m = crate::simd::classify_block(block, false);
                 let escaped = find_escaped(m.backslash, &mut ends_odd);
                 let in_string = prefix_xor(m.quote & !escaped) ^ carried_in_string;
                 carried_in_string = 0u64.wrapping_sub(in_string >> 63);

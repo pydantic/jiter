@@ -108,19 +108,20 @@ pub(crate) fn decode_int_chunk_big(data: &[u8], index: usize) -> (IntChunk, usiz
     }
 }
 
-/// Classify a 64-byte block into the bit-per-byte masks the structural skip works on.
+/// Classify a 64-byte block into the bit-per-byte masks the structural skip works on. With
+/// `outside_string`, a block without a quote skips the masks only strings need.
 #[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", target_endian = "little")))]
 #[inline(always)]
-fn classify_block(block: &[u8; 64]) -> structural::BlockMasks {
+fn classify_block(block: &[u8; 64], outside_string: bool) -> structural::BlockMasks {
     #[cfg(all(target_arch = "aarch64", target_endian = "little"))]
     {
         // SAFETY: all supported aarch64 targets support neon intrinsics.
-        unsafe { aarch64::classify_block(block) }
+        unsafe { aarch64::classify_block(block, outside_string) }
     }
     #[cfg(target_arch = "x86_64")]
     {
         // SAFETY: SSE2 is part of the x86_64 baseline.
-        unsafe { x86_64::classify_block(block) }
+        unsafe { x86_64::classify_block(block, outside_string) }
     }
 }
 
