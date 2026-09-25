@@ -87,3 +87,48 @@ fn test_python_parse_default() {
         assert_eq!(v.to_string(), "[123]");
     });
 }
+
+#[test]
+fn test_string_cache_pool() {
+    // one test, not several: these assertions read the process-global pool, so they must not run
+    // beside each other
+    let json = br#"{"some_key": "some_value", "another_key": "another_value"}"#;
+    jiter::cache_clear();
+    Python::attach(|py| {
+        let parse = PythonParse {
+            cache_mode: StringCacheMode::All,
+            ..Default::default()
+        };
+        parse.python_parse(py, json).unwrap();
+        // the parse put its cache back, with the keys and values it interned still in it
+        assert_eq!(jiter::cache_usage(), 4);
+        // a second parse takes that same cache back out and finds them already there
+        parse.python_parse(py, json).unwrap();
+        assert_eq!(jiter::cache_usage(), 4);
+        jiter::cache_clear();
+        assert_eq!(jiter::cache_usage(), 0);
+    });
+
+    // parses from several threads must not lose or double-free a cache, and must not deadlock
+    std::thread::scope(|scope| {
+        for _ in 0..8 {
+            scope.spawn(|| {
+                Python::attach(|py| {
+                    let parse = PythonParse {
+                        cache_mode: StringCacheMode::All,
+                        ..Default::default()
+                    };
+                    for _ in 0..200 {
+                        parse.python_parse(py, json).unwrap();
+                    }
+                });
+            });
+        }
+    });
+    // every cache a thread built came back to the pool or was dropped, and each holds the same
+    // four strings, so usage is a multiple of four and bounded by the pool
+    let usage = jiter::cache_usage();
+    assert_eq!(usage % 4, 0, "unexpected cache usage {usage}");
+    assert!(usage <= 4 * 8, "pool grew past its bound: {usage}");
+    jiter::cache_clear();
+}
