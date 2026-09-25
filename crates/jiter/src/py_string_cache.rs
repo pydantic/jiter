@@ -184,22 +184,29 @@ fn return_string_cache(cache: Box<PyStringCache>) {
     drop(unsafe { Box::from_raw(cache) });
 }
 
-/// Take every cache out of the pool, hand each to `f`, and put them all back. A cache a parse is
-/// using is not in the pool, so it is left alone.
+/// Hand each pooled cache to `f`, one slot at a time. A cache a parse is using is not in the pool,
+/// so it is left alone.
+///
+/// Each cache goes back into the slot it came from, and only that one slot is empty while `f` runs,
+/// so a parse starting meanwhile still finds the other seven rather than building its own.
 fn for_each_pooled_cache(mut f: impl FnMut(&mut PyStringCache)) {
-    let mut taken: [Option<Box<PyStringCache>>; POOL_SLOTS] = Default::default();
-    for (slot, taken) in STRING_CACHE.iter().zip(&mut taken) {
+    for slot in &STRING_CACHE {
         let cache = slot.swap(std::ptr::null_mut(), Ordering::Acquire);
-        if !cache.is_null() {
-            // SAFETY: as in `take_pooled_cache`.
-            *taken = Some(unsafe { Box::from_raw(cache) });
+        if cache.is_null() {
+            continue;
         }
-    }
-    for cache in taken.iter_mut().flatten() {
-        f(cache);
-    }
-    for cache in taken.into_iter().flatten() {
-        return_string_cache(cache);
+        // SAFETY: as in `take_pooled_cache`.
+        let mut cache = unsafe { Box::from_raw(cache) };
+        f(&mut cache);
+        let cache = Box::into_raw(cache);
+        if slot
+            .compare_exchange(std::ptr::null_mut(), cache, Ordering::Release, Ordering::Relaxed)
+            .is_err()
+        {
+            // a parse put its own cache in this slot while we held ours
+            // SAFETY: no slot took the pointer, so it is still ours, and it came from `Box::into_raw`.
+            drop(unsafe { Box::from_raw(cache) });
+        }
     }
 }
 
