@@ -217,7 +217,13 @@ fn to_str(bytes: &[u8], ascii_only: bool, start: usize, allow_partial: bool) -> 
         // transmute from bytes to str
         Ok(unsafe { from_utf8_unchecked(bytes) })
     } else {
-        match from_utf8(bytes) {
+        // below one block, std's scalar loop costs about what the kernel's setup does
+        let checked = if bytes.len() < 16 {
+            from_utf8(bytes)
+        } else {
+            crate::simd::from_utf8(bytes)
+        };
+        match checked {
             Ok(s) => Ok(s),
             Err(e) if allow_partial && e.error_len().is_none() => {
                 // In partial mode, we handle incomplete (not invalid) UTF-8 sequences

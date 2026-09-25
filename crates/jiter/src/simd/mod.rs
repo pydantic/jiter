@@ -4,11 +4,13 @@ mod fallback_int;
 mod fallback_string;
 mod number;
 mod swar_int;
+mod utf8;
 #[cfg(target_arch = "x86_64")]
 mod x86_64;
 
 pub(crate) use fallback_int::decode_int_chunk as decode_int_chunk_small;
 pub(crate) use number::{NumberChunk, decode_number_chunk};
+pub(crate) use utf8::from_utf8;
 
 use crate::errors::JsonResult;
 use crate::number_decoder::IntChunk;
