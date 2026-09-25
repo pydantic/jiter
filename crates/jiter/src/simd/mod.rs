@@ -86,6 +86,9 @@ pub(crate) fn find_digit_run_end(data: &[u8], index: usize, limit: usize) -> Opt
     }
 }
 
+// only the bigint paths still decode the value of a long integer run; without `num-bigint`
+// this and everything only it reaches would otherwise be reported as dead code
+#[cfg_attr(not(feature = "num-bigint"), allow(dead_code))]
 #[inline(always)]
 pub(crate) fn decode_int_chunk_big(data: &[u8], index: usize) -> (IntChunk, usize) {
     #[cfg(all(target_arch = "aarch64", target_endian = "little"))]
