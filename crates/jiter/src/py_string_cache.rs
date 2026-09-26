@@ -399,3 +399,40 @@ pub unsafe fn pystring_ascii_new<'py>(py: Python<'py>, s: &str) -> Bound<'py, Py
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The pool must hand back every cache it is given, keep only as many as it has slots, and be
+    /// empty again once they are all taken out. Nothing here needs the interpreter: a cache that
+    /// has held no strings owns no Python objects.
+    #[test]
+    fn pool_keeps_at_most_its_slots() {
+        // more caches than there are slots, all live at once
+        let taken: Vec<Box<PyStringCache>> = (0..POOL_SLOTS + 2)
+            .map(|_| take_pooled_cache().unwrap_or_default())
+            .collect();
+        assert!(
+            take_pooled_cache().is_none(),
+            "the pool should be empty while they are out"
+        );
+
+        for cache in taken {
+            return_string_cache(cache);
+        }
+        let held = STRING_CACHE
+            .iter()
+            .filter(|slot| !slot.load(Ordering::Relaxed).is_null())
+            .count();
+        assert_eq!(held, POOL_SLOTS, "the pool keeps a slotful and drops the rest");
+
+        // and what it kept is still usable
+        let again: Vec<Box<PyStringCache>> = (0..POOL_SLOTS).map(|_| take_pooled_cache().unwrap()).collect();
+        assert!(take_pooled_cache().is_none(), "taking them all leaves it empty");
+        assert_eq!(cache_usage(), 0);
+        for cache in again {
+            return_string_cache(cache);
+        }
+    }
+}
