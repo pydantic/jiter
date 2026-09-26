@@ -427,12 +427,27 @@ mod tests {
             .count();
         assert_eq!(held, POOL_SLOTS, "the pool keeps a slotful and drops the rest");
 
-        // and what it kept is still usable
-        let again: Vec<Box<PyStringCache>> = (0..POOL_SLOTS).map(|_| take_pooled_cache().unwrap()).collect();
+        // and what it kept still works: each one interns a string and hands the same object back
+        let mut again: Vec<Box<PyStringCache>> = (0..POOL_SLOTS).map(|_| take_pooled_cache().unwrap()).collect();
         assert!(take_pooled_cache().is_none(), "taking them all leaves it empty");
-        assert_eq!(cache_usage(), 0);
+        Python::initialize();
+        Python::attach(|py| {
+            for (i, cache) in again.iter_mut().enumerate() {
+                let text = format!("slot number {i}");
+                // SAFETY: `text` is ASCII only.
+                let first = unsafe { cache.get_or_insert(py, &text, true) };
+                assert_eq!(first.to_str().unwrap(), text);
+                // SAFETY: as above.
+                let second = unsafe { cache.get_or_insert(py, &text, true) };
+                assert!(first.is(&second), "a second lookup should hit the entry just made");
+                assert_eq!(cache.usage(), 1);
+            }
+        });
         for cache in again {
             return_string_cache(cache);
         }
+        assert_eq!(cache_usage(), POOL_SLOTS, "every cache came back holding its string");
+        cache_clear();
+        assert_eq!(cache_usage(), 0);
     }
 }
