@@ -308,8 +308,9 @@ macro_rules! test_cases {
 
 /// `next_skip` is one code path that decodes neither numbers nor strings, so it is benchmarked
 /// over a few shapes rather than over every file `test_cases!` covers: `big` for a large mixed
-/// document, `pass1`/`pass2` for a shallow grab-bag and a deep nest, and `string_array` and
-/// `unicode_dense` for the ASCII and non-ASCII string scanners it does still run.
+/// document, `pass1`/`pass2` for a shallow grab-bag and a deep nest, `string_array` and
+/// `unicode_dense` for the ASCII and non-ASCII string scanners it does still run, and
+/// `massive_ints_array` and `true_array` for dense runs of number and literal tokens.
 macro_rules! skip_case {
     ($file_name:ident) => {
         paste::item! {
@@ -326,6 +327,8 @@ skip_case!(pass1);
 skip_case!(pass2);
 skip_case!(string_array);
 skip_case!(unicode_dense);
+skip_case!(massive_ints_array);
+skip_case!(true_array);
 
 // https://json.org/JSON_checker/test/pass1.json
 // see https://github.com/python/cpython/blob/main/Lib/test/test_json/test_pass1.py
@@ -410,6 +413,7 @@ criterion_group!(
     long_significand_floats_jiter_value,
     long_significand_floats_serde_value,
     massive_ints_array_jiter_iter,
+    massive_ints_array_jiter_skip,
     massive_ints_array_jiter_value,
     massive_ints_array_serde_value,
     medium_response_jiter_iter,
@@ -444,6 +448,7 @@ criterion_group!(
     string_array_jiter_value_owned,
     string_array_serde_value,
     true_array_jiter_iter,
+    true_array_jiter_skip,
     true_array_jiter_value,
     true_array_serde_value,
     true_object_jiter_iter,

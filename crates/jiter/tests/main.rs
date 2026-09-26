@@ -9,6 +9,8 @@ use std::sync::Arc;
 #[cfg(feature = "num-bigint")]
 use num_bigint::BigInt;
 
+mod skip_parity;
+
 use jiter::{
     Jiter, JiterErrorType, JiterResult, JsonErrorType, JsonObject, JsonType, JsonValue, JsonValueScratch, LinePosition,
     NumberAny, NumberFloat, NumberInt, PartialMode, Peek,
@@ -2125,6 +2127,44 @@ fn test_scratch_after_error() {
         scratch.parse(broken, false, PartialMode::On).unwrap(),
         JsonValue::parse_with_config(broken, false, PartialMode::On).unwrap()
     );
+}
+
+/// `next_skip` must agree with `JsonValue::parse` on what is valid and, when it is not, on the
+/// error and its position: arrays and objects are skipped by a SIMD scan that hands anything
+/// it rejects back to the per-value walk to report.
+#[test]
+fn skip_agrees_with_parse() {
+    let deep = |open: &str, close: &str, n: usize| format!("{}1{}", open.repeat(n), close.repeat(n));
+    let long = "x".repeat(300);
+    let cases = [
+        r#"{"a":[1,2,{"b":"c\"}\u00e9\ud83d\ude00"}],"d":null,"e":true,"f":-1.5e3}"#.to_string(),
+        format!(r#"["{long}",{{"k":"{long}\n{long}"}}]"#),
+        format!("[{}]", "\"x\",".repeat(40) + "1"),
+        "[1,]".to_string(),
+        r#"{"a":1,}"#.to_string(),
+        r#"{"a" 1}"#.to_string(),
+        "[1 2]".to_string(),
+        r#"["\ud83d"]"#.to_string(),
+        r#"["\x"]"#.to_string(),
+        "[\"\u{1}\"]".to_string(),
+        "[01]".to_string(),
+        "[truex]".to_string(),
+        "[NaN]".to_string(),
+        "[1,2".to_string(),
+        r#"{"a":"#.to_string(),
+        deep("[", "]", 200),
+        deep("[", "]", 201),
+        deep("{\"a\":", "}", 201),
+    ];
+    for case in &cases {
+        for allow_inf_nan in [false, true] {
+            assert_eq!(
+                skip_parity::skip_outcome(case.as_bytes(), allow_inf_nan),
+                skip_parity::parse_outcome(case.as_bytes(), allow_inf_nan),
+                "allow_inf_nan={allow_inf_nan} on {case:?}"
+            );
+        }
+    }
 }
 
 #[test]
