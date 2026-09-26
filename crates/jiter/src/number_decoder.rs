@@ -9,10 +9,12 @@ use std::ops::Range;
 
 use lexical_parse_float::{FromLexicalWithOptions, Options as ParseFloatOptions, format as lexical_format};
 
+#[cfg(feature = "num-bigint")]
+use crate::simd::decode_int_chunk_big;
 use crate::{
     JsonErrorType::FloatExpectingInt,
     errors::{JsonError, JsonResult, json_err, json_error},
-    simd::{NumberChunk, decode_int_chunk_big, decode_int_chunk_small, decode_number_chunk, find_digit_run_end},
+    simd::{NumberChunk, decode_int_chunk_small, decode_number_chunk, find_digit_run_end},
 };
 use lexical_format::JSON;
 
@@ -533,53 +535,65 @@ impl AbstractNumberDecoder for NumberRange {
             _ => return json_err!(InvalidNumber, index),
         }
 
+        // `first` is the leading significant digit. Only the extent of the integer run is
+        // needed here, not its value, so find its end and classify the byte that ends it.
+        // The scan is bounded so an over-long integer is rejected without walking it in full.
         index += 1;
-        for _ in 0..18 {
-            if let Some(digit) = data.get(index) {
-                if INT_CHAR_MAP[*digit as usize] {
-                    index += 1;
-                    continue;
-                } else if matches!(digit, b'.') {
-                    index += 1;
-                    let end = consume_decimal(data, index)?;
-                    return Ok((Self::float(start..end), end));
-                } else if matches!(digit, b'e' | b'E') {
-                    index += 1;
-                    let end = consume_exponential(data, index)?;
-                    return Ok((Self::float(start..end), end));
-                }
-            }
-            return Ok((Self::int(start..index), index));
-        }
         let digit_start = start + usize::from(!positive);
-        loop {
-            let (chunk, new_index) = decode_int_chunk_big(data, index);
-            if (new_index - digit_start) > 4300 {
-                return json_err!(NumberOutOfRange, digit_start + 4301);
+        index = digit_run_end(data, index, digit_start + 4300)
+            .ok_or_else(|| json_error!(NumberOutOfRange, digit_start + 4301))?;
+        match data.get(index) {
+            Some(b'.') => {
+                let end = consume_decimal(data, index + 1)?;
+                Ok((Self::float(start..end), end))
             }
-            #[allow(clippy::single_match_else)]
-            match chunk {
-                IntChunk::Ongoing(_) => {
-                    index = new_index;
-                }
-                IntChunk::Done(_) => return Ok((Self::int(start..new_index), new_index)),
-                IntChunk::Float => {
-                    return match data.get(new_index) {
-                        Some(b'.') => {
-                            index = new_index + 1;
-                            let end = consume_decimal(data, index)?;
-                            Ok((Self::float(start..end), end))
-                        }
-                        _ => {
-                            index = new_index + 1;
-                            let end = consume_exponential(data, index)?;
-                            Ok((Self::float(start..end), end))
-                        }
-                    };
-                }
+            Some(b'e' | b'E') => {
+                let end = consume_exponential(data, index + 1)?;
+                Ok((Self::float(start..end), end))
             }
+            _ => Ok((Self::int(start..index), index)),
         }
     }
+}
+
+/// How many digits of a run are taken one byte at a time before switching to the wide scan.
+///
+/// The scan's result sits on the parser's critical path: it waits on where the number ends.
+/// On x86_64 that result is a `pmovmskb` and a `tzcnt` away, cheaper than any byte loop, so
+/// every run goes straight to the scan: measured on a Xeon, a prefix of 4 to 16 digits costs
+/// 20 to 40% more cycles on arrays of floats and long integers and gains nothing on short
+/// numbers. On aarch64 the mask must first cross from a vector to a general register, and that
+/// latency loses to a short byte loop: without a prefix, short numbers are 10 to 90% slower on
+/// an M-series core, while 4 to 16 digits are within noise of each other. Eight keeps the
+/// common shapes on the byte loop there.
+#[cfg(not(target_arch = "x86_64"))]
+const SCALAR_DIGITS: usize = 8;
+
+/// The end of the run of ASCII digits starting at `index`: the first `SCALAR_DIGITS` one byte
+/// at a time where that pays, the rest with [`find_digit_run_end`], whose contract this shares:
+/// `None` if the run reaches `limit`, which must lie at least `SCALAR_DIGITS` bytes past `index`
+/// or at the end of `data`.
+#[inline(always)]
+fn digit_run_end(data: &[u8], index: usize, limit: usize) -> Option<usize> {
+    #[cfg(not(target_arch = "x86_64"))]
+    let index = {
+        let mut index = index;
+        for _ in 0..SCALAR_DIGITS {
+            match data.get(index) {
+                Some(digit) if digit.is_ascii_digit() => index += 1,
+                _ => return Some(index),
+            }
+        }
+        index
+    };
+    find_digit_run_end(data, index, limit)
+}
+
+/// The index just past the run of ASCII digits starting at `index`, or `data.len()`.
+#[inline(always)]
+fn digit_run_end_unbounded(data: &[u8], index: usize) -> usize {
+    // a run that reaches the limit, the end of the data, ends there
+    digit_run_end(data, index, data.len()).unwrap_or(data.len())
 }
 
 fn consume_exponential(data: &[u8], mut index: usize) -> JsonResult<usize> {
@@ -592,43 +606,184 @@ fn consume_exponential(data: &[u8], mut index: usize) -> JsonResult<usize> {
         None => return json_err!(EofWhileParsingValue, index),
     }
 
+    // at least one exponent digit is required
     match data.get(index) {
         Some(v) if v.is_ascii_digit() => (),
         Some(_) => return json_err!(InvalidNumber, index),
         None => return json_err!(EofWhileParsingValue, index),
     }
-    index += 1;
 
-    while let Some(next) = data.get(index) {
-        match next {
-            b'0'..=b'9' => (),
-            _ => break,
-        }
-        index += 1;
-    }
-
-    Ok(index)
+    Ok(digit_run_end_unbounded(data, index + 1))
 }
 
-fn consume_decimal(data: &[u8], mut index: usize) -> JsonResult<usize> {
+fn consume_decimal(data: &[u8], index: usize) -> JsonResult<usize> {
+    // at least one fractional digit is required
     match data.get(index) {
         Some(v) if v.is_ascii_digit() => (),
         Some(_) => return json_err!(InvalidNumber, index),
         None => return json_err!(EofWhileParsingValue, index),
     }
-    index += 1;
 
-    while let Some(next) = data.get(index) {
-        match next {
-            b'0'..=b'9' => (),
-            b'e' | b'E' => {
-                index += 1;
-                return consume_exponential(data, index);
-            }
-            _ => break,
-        }
-        index += 1;
+    let index = digit_run_end_unbounded(data, index + 1);
+    match data.get(index) {
+        Some(b'e' | b'E') => consume_exponential(data, index + 1),
+        _ => Ok(index),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AbstractNumberDecoder, NumberAny, NumberRange, consume_decimal, consume_exponential};
+    use crate::errors::{JsonErrorType, JsonResult, json_err};
+    use proptest::prelude::*;
+
+    fn norm(r: JsonResult<usize>) -> Result<usize, (JsonErrorType, usize)> {
+        r.map_err(|e| (e.error_type, e.index))
     }
 
-    Ok(index)
+    /// Byte-at-a-time reference: `consume_exponential` as it was before the digit-run scan.
+    fn consume_exponential_scalar(data: &[u8], mut index: usize) -> JsonResult<usize> {
+        match data.get(index) {
+            Some(b'-' | b'+') => index += 1,
+            Some(v) if v.is_ascii_digit() => (),
+            Some(_) => return json_err!(InvalidNumber, index),
+            None => return json_err!(EofWhileParsingValue, index),
+        }
+        match data.get(index) {
+            Some(v) if v.is_ascii_digit() => (),
+            Some(_) => return json_err!(InvalidNumber, index),
+            None => return json_err!(EofWhileParsingValue, index),
+        }
+        index += 1;
+        while let Some(b'0'..=b'9') = data.get(index) {
+            index += 1;
+        }
+        Ok(index)
+    }
+
+    /// Byte-at-a-time reference: `consume_decimal` as it was before the digit-run scan.
+    fn consume_decimal_scalar(data: &[u8], mut index: usize) -> JsonResult<usize> {
+        match data.get(index) {
+            Some(v) if v.is_ascii_digit() => (),
+            Some(_) => return json_err!(InvalidNumber, index),
+            None => return json_err!(EofWhileParsingValue, index),
+        }
+        index += 1;
+        while let Some(next) = data.get(index) {
+            match next {
+                b'0'..=b'9' => index += 1,
+                b'e' | b'E' => return consume_exponential_scalar(data, index + 1),
+                _ => break,
+            }
+        }
+        Ok(index)
+    }
+
+    /// Bytes biased towards digits and number punctuation, long enough to cross the
+    /// 16-byte SIMD chunks the digit-run scan works in.
+    fn number_soup() -> impl Strategy<Value = Vec<u8>> {
+        prop::collection::vec(
+            prop_oneof![
+                12 => b'0'..=b'9',
+                1 => Just(b'e'),
+                1 => Just(b'E'),
+                1 => Just(b'+'),
+                1 => Just(b'-'),
+                1 => Just(b'.'),
+                1 => Just(b','),
+                1 => any::<u8>(),
+            ],
+            0..48,
+        )
+    }
+
+    /// `NumberRange::decode` reduced to `(range, end)` on success and `(kind, index)` on error.
+    type RangeResult = Result<(std::ops::Range<usize>, usize), (JsonErrorType, usize)>;
+
+    fn number_range(data: &[u8]) -> RangeResult {
+        match NumberRange::decode(data, 0, data[0], false) {
+            Ok((number, end)) => Ok((number.range, end)),
+            Err(e) => Err((e.error_type, e.index)),
+        }
+    }
+
+    /// The integer-part digit limit applies to floats too, and is checked before the
+    /// fraction is looked at.
+    #[test]
+    fn float_integer_part_digit_limit() {
+        let ok = format!("{}.5", "1".repeat(4300));
+        assert_eq!(number_range(ok.as_bytes()), Ok((0..ok.len(), ok.len())));
+
+        let too_long = format!("{}.5", "1".repeat(4301));
+        assert_eq!(
+            number_range(too_long.as_bytes()),
+            Err((JsonErrorType::NumberOutOfRange, 4301))
+        );
+
+        let negative = format!("-{}.5", "1".repeat(4301));
+        assert_eq!(
+            number_range(negative.as_bytes()),
+            Err((JsonErrorType::NumberOutOfRange, 4302))
+        );
+    }
+
+    /// Runs that end just before, at, and after the scalar prefix and the 16-byte SIMD
+    /// chunk must all be measured exactly, in every position a run can occur.
+    #[test]
+    fn digit_runs_around_the_scan_boundaries() {
+        for len in [1, 7, 8, 9, 15, 16, 17, 23, 24, 25, 40] {
+            let digits = "7".repeat(len);
+            for number in [
+                digits.clone(),
+                format!("-{digits}"),
+                format!("1.{digits}"),
+                format!("1.5e{digits}"),
+                format!("{digits}.{digits}e-{digits}"),
+            ] {
+                for trail in ["", ",", "]", " "] {
+                    let json = format!("{number}{trail}");
+                    assert_eq!(
+                        number_range(json.as_bytes()),
+                        Ok((0..number.len(), number.len())),
+                        "{json:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(2048))]
+
+        /// The digit consumers must match the scalar loops they replaced on arbitrary input:
+        /// the same end index on success, the same error kind and position otherwise.
+        #[test]
+        fn consume_decimal_matches_scalar(data in number_soup(), start in 0usize..4) {
+            let start = start.min(data.len());
+            prop_assert_eq!(norm(consume_decimal(&data, start)), norm(consume_decimal_scalar(&data, start)));
+        }
+
+        #[test]
+        fn consume_exponential_matches_scalar(data in number_soup(), start in 0usize..4) {
+            let start = start.min(data.len());
+            prop_assert_eq!(norm(consume_exponential(&data, start)), norm(consume_exponential_scalar(&data, start)));
+        }
+
+        /// `NumberRange` must cover exactly the number and stop where `NumberAny` stops, with
+        /// digit runs long enough to cross the 16-byte SIMD chunks.
+        #[test]
+        fn number_range_covers_number(
+            number in r"-?(0|[1-9][0-9]{0,40})(\.[0-9]{1,40})?([eE][+-]?[0-9]{1,20})?",
+            trail in prop::sample::select(vec!["", ",", "]", "}", " ", "x"]),
+        ) {
+            let json = format!("{number}{trail}");
+            let data = json.as_bytes();
+            prop_assert_eq!(number_range(data), Ok((0..number.len(), number.len())));
+            match NumberAny::decode(data, 0, data[0], false) {
+                Ok((_, any_end)) => prop_assert_eq!(any_end, number.len()),
+                // only possible without `num-bigint`, for integers beyond i64
+                Err(e) => prop_assert_eq!(e.error_type, JsonErrorType::NumberOutOfRange),
+            }
+        }
+    }
 }
