@@ -46,6 +46,25 @@ impl<'j> Jiter<'j> {
         }
     }
 
+    /// Constructs a `Jiter` that decodes escaped strings into `tape`, keeping its capacity.
+    ///
+    /// Pair with [`Jiter::into_tape`] to parse many documents with one buffer: a `Jiter::new`
+    /// allocates a fresh tape the first time a document needs one.
+    pub fn with_tape(data: &'j [u8], tape: Vec<u8>) -> Self {
+        Self {
+            data,
+            parser: Parser::new(data),
+            tape,
+            allow_inf_nan: false,
+            allow_partial_strings: false,
+        }
+    }
+
+    /// Returns the tape, for [`Jiter::with_tape`] on the next document.
+    pub fn into_tape(self) -> Vec<u8> {
+        self.tape
+    }
+
     pub fn with_allow_inf_nan(mut self) -> Self {
         self.allow_inf_nan = true;
         self
