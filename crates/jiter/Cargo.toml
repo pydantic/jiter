@@ -39,6 +39,7 @@ serde = { version = "1.0.147", features = ["derive"] }
 pyo3 = { workspace = true, features = ["auto-initialize"] }
 codspeed-criterion-compat = "5.0.1"
 proptest = "1.4.0"
+simdutf8 = "0.1.5"
 
 [build-dependencies]
 pyo3-build-config = { workspace = true, optional = true }

@@ -123,6 +123,11 @@ jobs:
         env:
           RUST_BACKTRACE: 1
 
+      # the exhaustive UTF-8 window test is ignored by default (sixteen million cases per offset);
+      # run it in release on the two stable targets, x86_64 for both kernels and aarch64 for NEON
+      - if: matrix.rust-version == 'stable' && matrix.python-version == ''
+        run: cargo test -p jiter --release --lib every_three_byte_window -- --ignored
+
       - uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
         with:
           env_vars: RUNS_ON,RUST_VERSION
