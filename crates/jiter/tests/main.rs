@@ -2143,3 +2143,32 @@ fn jiter_with_tape_reuses_buffer() {
     jiter.finish().unwrap();
     assert_eq!(jiter.into_tape().capacity(), 64);
 }
+
+#[test]
+fn partial_string_current_index_never_out_of_bounds() {
+    // For every strict prefix of these documents, partial string parsing must leave
+    // `current_index` within `data.len()`, otherwise `slice_to_current` (and any caller
+    // slicing `data[..current_index]`) would panic (#267).
+    let cases: [&[u8]; 4] = [
+        br#"["foo"#,
+        br#"["foobar"#,
+        br#"["a,b"#,
+        br#""just a string"#,
+    ];
+    for full in cases {
+        for k in 0..full.len() {
+            let data = &full[..k];
+            let mut jiter = Jiter::new(data).with_allow_partial_strings();
+            if data.starts_with(b"[") {
+                let _ = jiter.next_array();
+            }
+            match jiter.next_str() {
+                Ok(_) => {
+                    let idx = jiter.current_index();
+                    assert!(idx <= data.len(), "current_index {idx} > len {} for {:?}", data.len(), String::from_utf8_lossy(data));
+                }
+                Err(_) => {}
+            }
+        }
+    }
+}

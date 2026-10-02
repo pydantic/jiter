@@ -125,7 +125,13 @@ where
             (StringChunk::StringEnd, ascii_only, index) => {
                 let s = to_str(&data[start..index], ascii_only, start, allow_partial)?;
                 // SAFETY: `ascii_only` tracks whether the decoded string contains only ASCII.
-                Ok((unsafe { StringOutput::data(s, ascii_only) }, index + 1))
+                //
+                // `decode_string_chunk` returns `StringEnd` both when a closing quote was found
+                // (at `index`) and, in partial mode, at end-of-input. Only advance past the
+                // quote when one was actually consumed, otherwise `current_index` could exceed
+                // the length of the input (#267).
+                let consumed = if index < data.len() { index + 1 } else { index };
+                Ok((unsafe { StringOutput::data(s, ascii_only) }, consumed))
             }
             (StringChunk::Backslash, ascii_only, index) => {
                 decode_to_tape(data, index, tape, start, ascii_only, allow_partial)
@@ -192,7 +198,9 @@ fn decode_to_tape<'t, 'j>(
         match decode_string_chunk(data, index, ascii_only, allow_partial)? {
             (StringChunk::StringEnd, ascii_only, new_index) => {
                 tape.extend_from_slice(&data[index..new_index]);
-                index = new_index + 1;
+                // See the note on `StringEnd` in `StringDecoder::decode`: only advance past the
+                // closing quote when it was actually present in the input (#267).
+                index = if new_index < data.len() { new_index + 1 } else { new_index };
                 let s = to_str(tape, ascii_only, start, allow_partial)?;
                 // SAFETY: `ascii_only` tracks whether the decoded string contains only ASCII.
                 return Ok((unsafe { StringOutput::tape(s, ascii_only) }, index));
@@ -307,7 +315,9 @@ where
             index = match decode_string_chunk(data, index, true, allow_partial)? {
                 (StringChunk::StringEnd, _, index) => {
                     let r = start..index;
-                    return Ok((r, index + 1));
+                    // See the note on `StringEnd` in `StringDecoder::decode`: only advance past
+                    // the closing quote when it was actually present in the input (#267).
+                    return Ok((r, if index < data.len() { index + 1 } else { index }));
                 }
                 (StringChunk::Backslash, _, index) => index,
             };
