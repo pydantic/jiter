@@ -2143,3 +2143,26 @@ fn jiter_with_tape_reuses_buffer() {
     jiter.finish().unwrap();
     assert_eq!(jiter.into_tape().capacity(), 64);
 }
+
+#[test]
+fn partial_mode_next_str_and_next_bytes_agree_on_truncated_escapes() {
+    // For any strict prefix of these inputs, `next_str` and `next_bytes` must agree on
+    // whether the string can be parsed. Previously, truncating inside a `\` or `\uXXXX`
+    // escape made `next_str` succeed while `next_bytes` reported `EofWhileParsingString`
+    // (#272).
+    let fulls: [&[u8]; 4] = [br#"["foo\"#, br#"["foo\u"#, br#"["foo\u1234"#, br#"["a\nb\uAB"#];
+    for full in fulls {
+        for k in 0..full.len() {
+            let data = &full[..k];
+            let mut j = Jiter::new(data).with_allow_partial_strings();
+            let str_ok = j.next_array().is_ok() && j.next_str().is_ok();
+            let mut j = Jiter::new(data).with_allow_partial_strings();
+            let bytes_ok = j.next_array().is_ok() && j.next_bytes().is_ok();
+            assert!(
+                str_ok == bytes_ok,
+                "disagree on {:?}: next_str ok={str_ok}, next_bytes ok={bytes_ok}",
+                String::from_utf8_lossy(data)
+            );
+        }
+    }
+}

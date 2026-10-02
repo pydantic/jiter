@@ -316,14 +316,27 @@ where
                 match next_inner {
                     // these escapes are easy to validate
                     b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't' => (),
-                    b'u' => {
-                        let (_, new_index) = parse_escape(data, index)?;
-                        index = new_index;
-                    }
+                    b'u' => match parse_escape(data, index) {
+                        Ok((_, new_index)) => index = new_index,
+                        Err(e) if allow_partial && e.error_type == JsonErrorType::EofWhileParsingString => {
+                            // In partial mode, truncation inside a `\uXXXX` escape accepts the
+                            // content parsed so far. Match `StringDecoder` (used by `next_str`),
+                            // which must succeed on the same input (#272): keep the raw content
+                            // up to the dangling escape.
+                            return Ok((start..index - 1, e.index));
+                        }
+                        Err(e) => return Err(e),
+                    },
                     _ => return json_err!(InvalidEscape, index),
                 }
                 index += 1;
             } else {
+                if allow_partial {
+                    // Truncation immediately after a backslash: the dangling escape carries no
+                    // content, so drop it from the accepted range to match `StringDecoder`'s
+                    // partial behaviour (#272).
+                    return Ok((start..index - 1, index));
+                }
                 return json_err!(EofWhileParsingString, index);
             }
         }
