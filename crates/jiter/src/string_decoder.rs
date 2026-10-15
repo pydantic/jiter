@@ -227,7 +227,7 @@ fn to_str(bytes: &[u8], ascii_only: bool, start: usize, allow_partial: bool) -> 
                 // SAFETY: `valid_up_to()` returns the byte index up to which the input is valid UTF-8
                 Ok(unsafe { from_utf8_unchecked(&bytes[..valid_up_to]) })
             }
-            Err(e) => Err(json_error!(InvalidUnicodeCodePoint, start + e.valid_up_to() + 1)),
+            Err(e) => Err(json_error!(InvalidUnicodeCodePoint, start + e.valid_up_to())),
         }
     }
 }
