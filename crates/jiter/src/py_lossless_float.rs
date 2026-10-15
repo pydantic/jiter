@@ -34,7 +34,7 @@ impl<'py> FromPyObject<'_, 'py> for FloatMode {
 
 /// Represents a float from JSON, by holding the underlying bytes representing a float from JSON.
 #[derive(Debug, Clone)]
-#[pyclass(module = "jiter", skip_from_py_object)]
+#[pyclass(module = "jiter")]
 pub struct LosslessFloat(Vec<u8>);
 
 impl LosslessFloat {
