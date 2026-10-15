@@ -30,7 +30,7 @@ serde = ["dep:serde"]
 
 [dev-dependencies]
 paste = "1.0.7"
-serde_json = { version = "1.0.87", features = [
+serde_json = { version = "1.0.154", features = [
     "preserve_order",
     "arbitrary_precision",
     "float_roundtrip",
