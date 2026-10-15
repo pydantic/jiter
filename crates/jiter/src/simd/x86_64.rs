@@ -24,6 +24,8 @@ use crate::errors::{JsonResult, json_err};
 use crate::number_decoder::IntChunk;
 use crate::string_decoder::StringChunk;
 
+use super::structural::{BlockMasks, DigitMasks};
+
 use super::fallback_int::decode_int_chunk;
 use super::fallback_string::{CHAR_TYPE, CharType, JSON_ASCII};
 
@@ -239,4 +241,130 @@ fn mask_to_u32(mask: SimdVec) -> u32 {
 fn load_slice(bytes: &[u8]) -> SimdVec {
     debug_assert_eq!(bytes.len(), 16);
     unsafe { simd_load_16(bytes.as_ptr().cast()) }
+}
+
+const OPEN_BRACE_16: SimdVec = simd_const!([b'{'; 16]);
+const CLOSE_BRACE_16: SimdVec = simd_const!([b'}'; 16]);
+const OPEN_BRACKET_16: SimdVec = simd_const!([b'['; 16]);
+const CLOSE_BRACKET_16: SimdVec = simd_const!([b']'; 16]);
+const COLON_16: SimdVec = simd_const!([b':'; 16]);
+const COMMA_16: SimdVec = simd_const!([b','; 16]);
+const SPACE_16: SimdVec = simd_const!([b' '; 16]);
+const TAB_16: SimdVec = simd_const!([b'\t'; 16]);
+const LINE_FEED_16: SimdVec = simd_const!([b'\n'; 16]);
+const CARRIAGE_RETURN_16: SimdVec = simd_const!([b'\r'; 16]);
+const DOT_16: SimdVec = simd_const!([b'.'; 16]);
+
+#[inline]
+#[target_feature(enable = "sse2")]
+fn load_block(block: &[u8; 64]) -> [SimdVec; 4] {
+    [
+        load_slice(&block[..16]),
+        load_slice(&block[16..32]),
+        load_slice(&block[32..48]),
+        load_slice(&block[48..]),
+    ]
+}
+
+/// Four 16-lane 0x00/0xFF masks to one bit-per-byte `u64`, lane 0 of the first vector at bit 0.
+#[inline]
+#[target_feature(enable = "sse2")]
+fn masks_to_u64(masks: [SimdVec; 4]) -> u64 {
+    let [m0, m1, m2, m3] = masks.map(|m| u64::from(simd_movemask_16(m).cast_unsigned()));
+    m0 | (m1 << 16) | (m2 << 32) | (m3 << 48)
+}
+
+#[rustfmt::skip]
+#[target_feature(enable = "sse2")]
+fn bracket_mask(v: SimdVec) -> SimdVec {
+    simd_or_16(
+        simd_or_16(simd_eq_16(v, OPEN_BRACE_16), simd_eq_16(v, CLOSE_BRACE_16)),
+        simd_or_16(simd_eq_16(v, OPEN_BRACKET_16), simd_eq_16(v, CLOSE_BRACKET_16)),
+    )
+}
+
+#[target_feature(enable = "sse2")]
+fn punctuation_mask(v: SimdVec) -> SimdVec {
+    simd_or_16(simd_eq_16(v, COLON_16), simd_eq_16(v, COMMA_16))
+}
+
+/// a byte is a digit when subtracting '0' leaves a value of at most nine: `min(d, 9) == d`
+#[target_feature(enable = "sse2")]
+fn digit_mask(v: SimdVec) -> SimdVec {
+    let d = simd_sub_16(v, ZERO_DIGIT_16);
+    simd_eq_16(simd_min_16(d, NINE_VAL_16), d)
+}
+
+#[rustfmt::skip]
+#[target_feature(enable = "sse2")]
+fn whitespace_mask(v: SimdVec) -> SimdVec {
+    simd_or_16(
+        simd_or_16(simd_eq_16(v, SPACE_16), simd_eq_16(v, TAB_16)),
+        simd_or_16(simd_eq_16(v, LINE_FEED_16), simd_eq_16(v, CARRIAGE_RETURN_16)),
+    )
+}
+
+/// bytes below 0x20: unsigned `v <= 0x1f` is `min(v, 0x1f) == v`
+#[target_feature(enable = "sse2")]
+fn control_mask(v: SimdVec) -> SimdVec {
+    simd_eq_16(simd_min_16(v, CONTROL_MAX_16), v)
+}
+
+/// Classify a block. With `outside_string`, a block without a quote holds no string at all, so
+/// its quote, backslash and control masks come back as zero without being extracted: a backslash
+/// or control byte outside a string is part of a number or literal token, which the token checks
+/// reject.
+#[inline]
+#[target_feature(enable = "sse2")]
+pub(crate) fn classify_block(block: &[u8; 64], outside_string: bool) -> BlockMasks {
+    let v = load_block(block);
+    let quotes = v.map(|x| simd_eq_16(x, QUOTE_16));
+    let brackets = v.map(|x| bracket_mask(x));
+    let structural = masks_to_u64([0, 1, 2, 3].map(|i| simd_or_16(brackets[i], punctuation_mask(v[i]))));
+    let brackets = masks_to_u64(brackets);
+    let comma = masks_to_u64(v.map(|x| simd_eq_16(x, COMMA_16)));
+    let whitespace = masks_to_u64(v.map(|x| whitespace_mask(x)));
+    let [q0, q1, q2, q3] = quotes;
+    if outside_string && simd_movemask_16(simd_or_16(simd_or_16(q0, q1), simd_or_16(q2, q3))) == 0 {
+        return BlockMasks {
+            quote: 0,
+            backslash: 0,
+            structural,
+            brackets,
+            comma,
+            whitespace,
+            control: 0,
+        };
+    }
+    BlockMasks {
+        quote: masks_to_u64(quotes),
+        backslash: masks_to_u64(v.map(|x| simd_eq_16(x, BACKSLASH_16))),
+        structural,
+        brackets,
+        comma,
+        whitespace,
+        control: masks_to_u64(v.map(|x| control_mask(x))),
+    }
+}
+
+#[inline]
+#[target_feature(enable = "sse2")]
+pub(crate) fn digit_masks(block: &[u8; 64]) -> DigitMasks {
+    let v = load_block(block);
+    DigitMasks {
+        digit: masks_to_u64(v.map(|x| digit_mask(x))),
+        dot: masks_to_u64(v.map(|x| simd_eq_16(x, DOT_16))),
+    }
+}
+
+#[inline]
+#[target_feature(enable = "sse2")]
+pub(crate) fn block_has_string_special(block: &[u8; 64]) -> bool {
+    let [v0, v1, v2, v3] = load_block(block).map(|x| {
+        simd_or_16(
+            simd_or_16(simd_eq_16(x, QUOTE_16), simd_eq_16(x, BACKSLASH_16)),
+            control_mask(x),
+        )
+    });
+    simd_movemask_16(simd_or_16(simd_or_16(v0, v1), simd_or_16(v2, v3))) != 0
 }
