@@ -867,14 +867,14 @@ mod tests {
         // a completed member, an element and a decoded escape are on the buffers when this fails
         let broken: &[u8] = br#"{"a": "escaped\nvalue", "b": [1, 2, {"c": [3, "#;
         assert!(scratch.parse_owned(broken, false, PartialMode::Off).is_err());
-        assert!(scratch.stacks.elements.is_empty());
-        assert!(scratch.stacks.members.is_empty());
+        assert_eq!(scratch.stacks.elements, []);
+        assert_eq!(scratch.stacks.members, []);
         assert!(scratch.stacks.elements.capacity() > 0);
         assert!(scratch.stacks.members.capacity() > 0);
         assert!(scratch.tape.capacity() > 0);
 
         assert!(scratch.parse_owned(b"[1] x", false, PartialMode::Off).is_err());
-        assert!(scratch.stacks.elements.is_empty());
+        assert_eq!(scratch.stacks.elements, []);
         assert_eq!(
             scratch
                 .parse_owned(br#"["ok\n", {"d": 4}]"#, false, PartialMode::Off)
