@@ -349,8 +349,8 @@ fn invalid_unicode_code() {
         e.error_type,
         JiterErrorType::JsonError(JsonErrorType::InvalidUnicodeCodePoint)
     );
-    assert_eq!(e.index, 3);
-    assert_eq!(jiter.error_position(e.index), LinePosition::new(1, 4));
+    assert_eq!(e.index, 2);
+    assert_eq!(jiter.error_position(e.index), LinePosition::new(1, 3));
 }
 
 #[test]
@@ -363,8 +363,36 @@ fn invalid_control() {
         e.error_type,
         JiterErrorType::JsonError(JsonErrorType::InvalidUnicodeCodePoint)
     );
-    assert_eq!(e.index, 2);
-    assert_eq!(jiter.error_position(e.index), LinePosition::new(1, 3));
+    assert_eq!(e.index, 1);
+    assert_eq!(jiter.error_position(e.index), LinePosition::new(1, 2));
+}
+
+#[test]
+fn invalid_utf8_position() {
+    for padding in [0, 1, 15, 16, 31, 32, 63, 64] {
+        for invalid in [
+            b"\x80".as_slice(),
+            b"\xc0",
+            b"\xff",
+            b"\xc2",
+            b"\xe2\x82",
+            b"\xf0\x9f\x92",
+            b"\xc2x",
+        ] {
+            let mut json = "\n  \"é".as_bytes().to_vec();
+            json.extend(std::iter::repeat_n(b' ', padding));
+            let index = json.len();
+            json.extend_from_slice(invalid);
+            json.extend_from_slice(b"\"");
+
+            let err = JsonValue::parse(&json, false).unwrap_err();
+            assert_eq!(err.error_type, JsonErrorType::InvalidUnicodeCodePoint);
+            assert_eq!(err.index, index);
+            assert_eq!(err.get_position(&json), LinePosition::new(2, index));
+            let serde_err = serde_json::from_slice::<String>(&json).unwrap_err();
+            assert_eq!(err.description(&json), serde_err.to_string());
+        }
+    }
 }
 
 #[test]
@@ -405,8 +433,7 @@ fn utf8_range_long() {
             }
             Err(serde_err) => {
                 let jiter_err = jiter_result.unwrap_err();
-                // just compare the start of the error - https://github.com/serde-rs/json/issues/1110
-                assert!(serde_err.to_string().starts_with(&jiter_err.error_type.to_string()));
+                assert_eq!(jiter_err.description(&json), serde_err.to_string());
             }
         }
     }
@@ -602,8 +629,8 @@ fn bad_high_order_string() {
     let bytes: Vec<u8> = vec![34, 32, 32, 210, 34];
     let e = JsonValue::parse(&bytes, false).unwrap_err();
     assert_eq!(e.error_type, JsonErrorType::InvalidUnicodeCodePoint);
-    assert_eq!(e.index, 4);
-    assert_eq!(e.description(&bytes), "invalid unicode code point at line 1 column 5");
+    assert_eq!(e.index, 3);
+    assert_eq!(e.description(&bytes), "invalid unicode code point at line 1 column 4");
 }
 
 #[test]
@@ -614,8 +641,8 @@ fn bad_high_order_string_tail() {
     // dbg!(json.iter().map(|b| *b as char).collect::<Vec<_>>());
     let e = JsonValue::parse(&bytes, false).unwrap_err();
     assert_eq!(e.error_type, JsonErrorType::InvalidUnicodeCodePoint);
-    assert_eq!(e.index, 4);
-    assert_eq!(e.description(&bytes), "invalid unicode code point at line 1 column 5");
+    assert_eq!(e.index, 3);
+    assert_eq!(e.description(&bytes), "invalid unicode code point at line 1 column 4");
 }
 
 #[test]

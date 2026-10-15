@@ -77,9 +77,9 @@ fn known_difference(mismatch: &Mismatch) -> Option<&'static str> {
         {
             Some("jiter's recursion limit is 200, serde_json's is 128")
         }
-        // the two agree that the document is malformed and on why, but not on where: serde_json
-        // reports the start of the string for an invalid code point (serde-rs/json#1083), and the
-        // two count the start of an invalid escape differently (pydantic/jiter#130)
+        // the two agree that the document is malformed and on why, but not on where: invalid
+        // UTF-8 positions can differ in strings containing escapes, and the two count the start
+        // of an invalid escape differently (pydantic/jiter#130)
         Mismatch::Error {
             jiter_error,
             serde_error,
