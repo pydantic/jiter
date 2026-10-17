@@ -93,6 +93,7 @@ struct PythonParser<'j, StringCache, KeyCheck, ParseNumber> {
     recursion_limit: u8,
     allow_inf_nan: bool,
     partial_mode: PartialMode,
+    partial_eof: bool,
 }
 
 impl<StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: MaybeParseNumber>
@@ -114,6 +115,7 @@ impl<StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: MaybeP
             recursion_limit: DEFAULT_RECURSION_LIMIT,
             allow_inf_nan,
             partial_mode,
+            partial_eof: false,
         };
 
         let peek = slf.parser.peek()?;
@@ -183,7 +185,9 @@ impl<StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: MaybeP
     ) -> JsonResult<()> {
         let v = self.check_take_value(py, peek_first)?;
         vec.push(v);
-        while let Some(peek) = self.parser.array_step()? {
+        while !self.partial_eof
+            && let Some(peek) = self.parser.array_step()?
+        {
             let v = self.check_take_value(py, peek)?;
             vec.push(v);
         }
@@ -208,7 +212,9 @@ impl<StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: MaybeP
             let peek = self.parser.peek()?;
             let first_value = self.check_take_value(py, peek)?;
             set_item(first_key, first_value);
-            while let Some(key) = self.parser.object_step::<StringDecoder>(&mut self.tape)? {
+            while !self.partial_eof
+                && let Some(key) = self.parser.object_step::<StringDecoder>(&mut self.tape)?
+            {
                 let key_s = key.as_str();
                 check_keys.check(key_s, self.parser.index)?;
                 let key = StringCache::get_key(py, &mut self.string_cache, key);
@@ -220,9 +226,12 @@ impl<StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: MaybeP
         Ok(())
     }
 
-    fn allow_partial_err(&self, e: &JsonError) -> bool {
-        if self.partial_mode.is_active() {
-            e.allowed_if_partial()
+    fn allow_partial_err(&mut self, e: &JsonError) -> bool {
+        if self.partial_mode.is_active() && e.allowed_if_partial() {
+            // A truncated token can leave the cursor before EOF. Only unwind the
+            // enclosing containers; do not interpret that token as a delimiter.
+            self.partial_eof = true;
+            true
         } else {
             false
         }
