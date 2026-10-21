@@ -1,10 +1,9 @@
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::atomic::{AtomicPtr, Ordering};
 
 use ahash::random_state::RandomState;
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyString};
-use smallvec::SmallVec;
 
 use crate::string_decoder::StringOutput;
 
@@ -48,7 +47,7 @@ impl From<bool> for StringCacheMode {
 /// The string cache a parse works on, taken from the pool on the first cacheable string and
 /// returned to it when the parse ends.
 #[derive(Default)]
-pub(crate) struct StringCacheGuard(Option<PyStringCache>);
+pub(crate) struct StringCacheGuard(Option<Box<PyStringCache>>);
 
 impl Drop for StringCacheGuard {
     fn drop(&mut self) {
@@ -86,7 +85,7 @@ unsafe fn guarded_py_string<'py>(
     let s = string_output.as_str();
     let ascii_only = string_output.ascii_only();
     if (2..64).contains(&s.len()) {
-        let cache = guard.0.get_or_insert_with(take_string_cache);
+        let cache = guard.0.get_or_insert_with(|| take_pooled_cache().unwrap_or_default());
         unsafe { cache.get_or_insert(py, s, ascii_only) }
     } else {
         unsafe { pystring_fast_new_maybe_ascii(py, s, ascii_only) }
@@ -141,39 +140,86 @@ impl StringMaybeCache for StringNoCache {
     }
 }
 
-/// The string caches no parse is using. A parse takes one out, or builds one if there are none,
-/// and puts it back when it's done, so the lock is never held while Python code can run. Under
-/// the GIL parses never overlap and there is only ever one cache; on free-threaded builds the
-/// pool grows to the number of parses that have overlapped, up to `MAX_POOLED_CACHES`.
-static STRING_CACHE: Mutex<SmallVec<[PyStringCache; 1]>> = Mutex::new(SmallVec::new_const());
-
 /// Each cache is a quarter of a megabyte, so a pool that grew to a large thread count would hold
-/// on to that memory for good; beyond this many, a returned cache is dropped instead.
-const MAX_POOLED_CACHES: usize = 8;
+/// on to that memory for good; when every slot is taken, a returned cache is dropped instead.
+const POOL_SLOTS: usize = 8;
 
-fn string_cache_pool() -> MutexGuard<'static, SmallVec<[PyStringCache; 1]>> {
-    STRING_CACHE.lock().unwrap_or_else(PoisonError::into_inner)
+/// The string caches no parse is using, parked one per slot as `Box::into_raw`. A parse swaps one
+/// out, or builds its own if every slot is empty, and puts it back when it is done, so a cache is
+/// only ever reachable from one parse at a time and nothing is held while Python code can run.
+///
+/// Taking a cache is a single exchange, which is what makes taking one per string affordable for
+/// callers of `cached_py_string` that cannot hold onto one. Under the GIL parses never overlap and
+/// only the first slot is ever used; on free-threaded builds overlapping parses take different
+/// slots and never wait on each other. A slot is only ever written when it is empty, so putting a
+/// cache back cannot displace another parse's.
+static STRING_CACHE: [AtomicPtr<PyStringCache>; POOL_SLOTS] =
+    [const { AtomicPtr::new(std::ptr::null_mut()) }; POOL_SLOTS];
+
+/// Take a cache out of the pool, or `None` if every slot is empty.
+fn take_pooled_cache() -> Option<Box<PyStringCache>> {
+    for slot in &STRING_CACHE {
+        let cache = slot.swap(std::ptr::null_mut(), Ordering::Acquire);
+        if !cache.is_null() {
+            // SAFETY: a non-null slot holds `Box::into_raw` of a cache no parse is using, and
+            // swapping in null is the only way to reach it, so the box is now ours alone.
+            return Some(unsafe { Box::from_raw(cache) });
+        }
+    }
+    None
 }
 
-fn take_string_cache() -> PyStringCache {
-    string_cache_pool().pop().unwrap_or_default()
+/// Put a cache back in the first empty slot, or drop it if the pool is full.
+fn return_string_cache(cache: Box<PyStringCache>) {
+    let cache = Box::into_raw(cache);
+    for slot in &STRING_CACHE {
+        if slot
+            .compare_exchange(std::ptr::null_mut(), cache, Ordering::Release, Ordering::Relaxed)
+            .is_ok()
+        {
+            return;
+        }
+    }
+    // SAFETY: no slot took the pointer, so it is still ours, and it came from `Box::into_raw`.
+    drop(unsafe { Box::from_raw(cache) });
 }
 
-fn return_string_cache(cache: PyStringCache) {
-    let mut pool = string_cache_pool();
-    if pool.len() < MAX_POOLED_CACHES {
-        pool.push(cache);
+/// Hand each pooled cache to `f`, one slot at a time. A cache a parse is using is not in the pool,
+/// so it is left alone.
+///
+/// Each cache goes back into the slot it came from, and only that one slot is empty while `f` runs,
+/// so a parse starting meanwhile still finds the other seven rather than building its own.
+fn for_each_pooled_cache(mut f: impl FnMut(&mut PyStringCache)) {
+    for slot in &STRING_CACHE {
+        let cache = slot.swap(std::ptr::null_mut(), Ordering::Acquire);
+        if cache.is_null() {
+            continue;
+        }
+        // SAFETY: as in `take_pooled_cache`.
+        let mut cache = unsafe { Box::from_raw(cache) };
+        f(&mut cache);
+        let cache = Box::into_raw(cache);
+        if slot
+            .compare_exchange(std::ptr::null_mut(), cache, Ordering::Release, Ordering::Relaxed)
+            .is_err()
+        {
+            // a parse put its own cache in this slot while we held ours
+            // SAFETY: no slot took the pointer, so it is still ours, and it came from `Box::into_raw`.
+            drop(unsafe { Box::from_raw(cache) });
+        }
     }
 }
 
 /// The number of entries in the string caches no parse is using.
 pub fn cache_usage() -> usize {
-    string_cache_pool().iter().map(PyStringCache::usage).sum()
+    let mut usage = 0;
+    for_each_pooled_cache(|cache| usage += cache.usage());
+    usage
 }
 
 /// Clear the string caches no parse is using; a cache in use by a parse is left as it is.
 pub fn cache_clear() {
-    string_cache_pool().iter_mut().for_each(PyStringCache::clear);
+    for_each_pooled_cache(PyStringCache::clear);
 }
 
 /// Create a cached Python `str` from a string slice
@@ -202,7 +248,7 @@ unsafe fn cached_py_string_maybe_ascii<'py>(py: Python<'py>, s: &str, ascii_only
     unsafe {
         // from tests, 0 and 1 character strings are faster not cached
         if (2..64).contains(&s.len()) {
-            let mut cache = take_string_cache();
+            let mut cache = take_pooled_cache().unwrap_or_default();
             let py_string = cache.get_or_insert(py, s, ascii_only);
             return_string_cache(cache);
             py_string
@@ -351,5 +397,57 @@ pub unsafe fn pystring_ascii_new<'py>(py: Python<'py>, s: &str) -> Bound<'py, Py
         {
             PyString::new(py, s)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The pool must hand back every cache it is given, keep only as many as it has slots, and be
+    /// empty again once they are all taken out. Nothing here needs the interpreter: a cache that
+    /// has held no strings owns no Python objects.
+    #[test]
+    fn pool_keeps_at_most_its_slots() {
+        // more caches than there are slots, all live at once
+        let taken: Vec<Box<PyStringCache>> = (0..POOL_SLOTS + 2)
+            .map(|_| take_pooled_cache().unwrap_or_default())
+            .collect();
+        assert!(
+            take_pooled_cache().is_none(),
+            "the pool should be empty while they are out"
+        );
+
+        for cache in taken {
+            return_string_cache(cache);
+        }
+        let held = STRING_CACHE
+            .iter()
+            .filter(|slot| !slot.load(Ordering::Relaxed).is_null())
+            .count();
+        assert_eq!(held, POOL_SLOTS, "the pool keeps a slotful and drops the rest");
+
+        // and what it kept still works: each one interns a string and hands the same object back
+        let mut again: Vec<Box<PyStringCache>> = (0..POOL_SLOTS).map(|_| take_pooled_cache().unwrap()).collect();
+        assert!(take_pooled_cache().is_none(), "taking them all leaves it empty");
+        Python::initialize();
+        Python::attach(|py| {
+            for (i, cache) in again.iter_mut().enumerate() {
+                let text = format!("slot number {i}");
+                // SAFETY: `text` is ASCII only.
+                let first = unsafe { cache.get_or_insert(py, &text, true) };
+                assert_eq!(first.to_str().unwrap(), text);
+                // SAFETY: as above.
+                let second = unsafe { cache.get_or_insert(py, &text, true) };
+                assert!(first.is(&second), "a second lookup should hit the entry just made");
+                assert_eq!(cache.usage(), 1);
+            }
+        });
+        for cache in again {
+            return_string_cache(cache);
+        }
+        assert_eq!(cache_usage(), POOL_SLOTS, "every cache came back holding its string");
+        cache_clear();
+        assert_eq!(cache_usage(), 0);
     }
 }
