@@ -25,7 +25,9 @@ pyodide-build = [
 ]
 
 [tool.uv]
+required-version = ">=0.13.5"
 package = false
+exclude-newer = "7 days"
 
 [tool.uv.workspace]
 members = ["crates/jiter-python"]
