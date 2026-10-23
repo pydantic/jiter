@@ -12,6 +12,7 @@ permissions: {}
 
 env:
   JITER_BENCH_SEED: '0'
+  UV_LOCKED: '1'
   # the json-cases corpus the json_cases test and benchmark run over; pinned so that a commit there
   # can't turn this repository's CI red, and so the benchmark numbers stay comparable between runs
   JSON_CASES_REF: 12caaa624f399d603db09dd634ae866425f737f0 # 2026-08-22
@@ -677,6 +678,7 @@ jobs:
             fi
           env: |
             UV_NO_PROGRESS: '1'
+            UV_LOCKED: '1'
           run: |
             set -x
             curl -LsSf https://astral.sh/uv/install.sh | sh
