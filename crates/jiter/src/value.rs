@@ -731,6 +731,29 @@ pub(crate) fn take_value_skip(
     recursion_limit: u8,
     allow_inf_nan: bool,
 ) -> JsonResult<()> {
+    // Arrays and objects are skipped with the structural bitmap scan where SIMD is available.
+    // It only says whether the container is valid; if it is not, the per-value skip reports
+    // the error where and as it always has.
+    #[cfg(any(target_arch = "x86_64", all(target_arch = "aarch64", target_endian = "little")))]
+    if matches!(peek, Peek::Array | Peek::Object)
+        && parser.data.len() - parser.index >= crate::simd::SKIP_MIN_INPUT
+        && let Some(end) = crate::simd::skip_container(parser.data, parser.index, recursion_limit, allow_inf_nan)
+    {
+        parser.index = end;
+        return Ok(());
+    }
+    take_value_skip_per_value(peek, parser, tape, recursion_limit, allow_inf_nan)
+}
+
+/// Skip a value by walking it value by value: the path that reports errors, and the whole of
+/// the skip where the structural scan is unavailable.
+pub(crate) fn take_value_skip_per_value(
+    peek: Peek,
+    parser: &mut Parser,
+    tape: &mut Tape,
+    recursion_limit: u8,
+    allow_inf_nan: bool,
+) -> JsonResult<()> {
     match peek {
         Peek::True => parser.consume_true(),
         Peek::False => parser.consume_false(),
