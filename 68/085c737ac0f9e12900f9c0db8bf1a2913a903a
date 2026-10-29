@@ -1,0 +1,14 @@
+crates/jiter/benches/python.rs
+  h_d9dd17644dded9 1-2,154-168,184-186
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "68085c737ac0f9e12900f9c0db8bf1a2913a903a",
+  "prompts": {},
+  "humans": {
+    "h_d9dd17644dded9": {
+      "author": "Alex Hall <alex.mojaki@gmail.com>"
+    }
+  }
+}
