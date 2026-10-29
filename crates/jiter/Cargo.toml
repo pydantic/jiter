@@ -1,5 +1,6 @@
 [package]
 name = "jiter"
+autobenches = false
 description = "Fast Iterable JSON parser"
 readme = "../../README.md"
 version = { workspace = true }
