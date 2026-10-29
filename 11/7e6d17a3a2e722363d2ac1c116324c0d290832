@@ -1,0 +1,19 @@
+crates/jiter/benches/main.rs
+  s_24892abdc3937e::t_87418e1886a70f 326,478-479
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "117e6d17a3a2e722363d2ac1c116324c0d290832",
+  "prompts": {},
+  "sessions": {
+    "s_24892abdc3937e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1875e-83ce-7681-b5f9-f00c8df89771",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Alex Hall <alex.mojaki@gmail.com>"
+    }
+  }
+}
