@@ -239,6 +239,56 @@ def test_partial_error():
         jiter.from_json(json, partial_mode=123)  # type: ignore
 
 
+@pytest.mark.parametrize('partial_mode', ['off', 'on', 'trailing-strings'])
+@pytest.mark.parametrize(
+    'json, error',
+    [
+        (
+            b'[{"a": "foo", "b": 1}, {"a": "bar": 2}, {"a": "baz", "b": 3}]',
+            'expected `,` or `}`',
+        ),
+        (b'[1 2]', 'expected `,` or `]`'),
+        (b'[1;2]', 'expected `,` or `]`'),
+        (b'{"a": 1 "b": 2}', 'expected `,` or `}`'),
+        (b'{"a": 1; "b": 2}', 'expected `,` or `}`'),
+        (b'{"a": [1 2]}', 'expected `,` or `]`'),
+        (b'[{"a": 1 "b": 2}]', 'expected `,` or `}`'),
+    ],
+)
+def test_partial_invalid_delimiters(json, error, partial_mode):
+    with pytest.raises(ValueError) as exc_info:
+        jiter.from_json(json, partial_mode=partial_mode)
+    assert str(exc_info.value).startswith(error)
+
+
+@pytest.mark.parametrize('partial_mode', ['on', 'trailing-strings'])
+@pytest.mark.parametrize('cache_mode', ['all', 'keys', 'none'])
+@pytest.mark.parametrize('float_mode', ['float', 'decimal', 'lossless-float'])
+@pytest.mark.parametrize('catch_duplicate_keys', [False, True])
+def test_partial_invalid_delimiters_options(
+    partial_mode, cache_mode, float_mode, catch_duplicate_keys
+):
+    with pytest.raises(ValueError, match='expected `,` or `}`'):
+        jiter.from_json(
+            b'{"a": 1.5; "b": 2}',
+            partial_mode=partial_mode,
+            cache_mode=cache_mode,
+            float_mode=float_mode,
+            catch_duplicate_keys=catch_duplicate_keys,
+        )
+
+
+@pytest.mark.parametrize('partial_mode', ['on', 'trailing-strings'])
+def test_partial_valid_prefixes(partial_mode):
+    json = b'{"a": [1, 2.5, true, false, null, "text"], "b": {"c": 3}}'
+    for end in range(1, len(json) + 1):
+        assert isinstance(jiter.from_json(json[:end], partial_mode=partial_mode), dict)
+    # Partial mode still ignores bytes following a complete root value.
+    assert jiter.from_json(b'[1] trailing', partial_mode=partial_mode) == [1]
+    with pytest.raises(ValueError, match='trailing characters'):
+        jiter.from_json(b'[1] trailing', partial_mode=False)
+
+
 def test_python_cache_usage_all():
     jiter.cache_clear()
     parsed = jiter.from_json(b'{"foo": "bar", "spam": 3}', cache_mode='all')
