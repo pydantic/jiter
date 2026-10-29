@@ -1,0 +1,19 @@
+crates/jiter/benches/data/README.md
+  s_a7430aec8d08b9::t_7c4c98bd99c40d 1-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ad1bb14fc26a422fd8b05515ef4856d404c1e3ee",
+  "prompts": {},
+  "sessions": {
+    "s_a7430aec8d08b9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1873f-b7f3-7253-9707-2a2ed6be2f05",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Alex Hall <alex.mojaki@gmail.com>"
+    }
+  }
+}
