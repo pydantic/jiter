@@ -1,3 +1,5 @@
+mod documents;
+
 use codspeed_criterion_compat::{Criterion, criterion_group, criterion_main};
 
 use std::fs::File;
@@ -306,6 +308,27 @@ macro_rules! test_cases {
     };
 }
 
+/// Whole-document parser cases, without an iterator benchmark that would need a document schema.
+macro_rules! document_case {
+    ($file_name:ident) => {
+        paste::item! {
+            fn [< $file_name _jiter_value >](c: &mut Criterion) {
+                documents::prepare();
+                jiter_value(concat!("./benches/", stringify!($file_name), ".json"), c);
+            }
+
+            fn [< $file_name _serde_value >](c: &mut Criterion) {
+                documents::prepare();
+                serde_value(concat!("./benches/", stringify!($file_name), ".json"), c);
+            }
+        }
+    };
+}
+
+document_case!(twitter);
+document_case!(canada);
+document_case!(citm_catalog);
+
 /// `next_skip` is one code path that decodes neither numbers nor strings, so it is benchmarked
 /// over a few shapes rather than over every file `test_cases!` covers: `big` for a large mixed
 /// document, `pass1`/`pass2` for a shallow grab-bag and a deep nest, and `string_array` and
@@ -452,5 +475,11 @@ criterion_group!(
     short_numbers_jiter_iter,
     short_numbers_jiter_value,
     short_numbers_serde_value,
+    twitter_jiter_value,
+    twitter_serde_value,
+    canada_jiter_value,
+    canada_serde_value,
+    citm_catalog_jiter_value,
+    citm_catalog_serde_value,
 );
 criterion_main!(benches);

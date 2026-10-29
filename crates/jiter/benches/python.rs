@@ -1,3 +1,5 @@
+mod documents;
+
 use codspeed_criterion_compat::{Criterion, criterion_group, criterion_main};
 
 use std::fs::File;
@@ -149,6 +151,21 @@ fn python_parse_true_array(c: &mut Criterion) {
     python_parse_file("./benches/true_array.json", c, StringCacheMode::All);
 }
 
+fn python_parse_twitter(c: &mut Criterion) {
+    documents::prepare();
+    python_parse_file("./benches/twitter.json", c, StringCacheMode::All);
+}
+
+fn python_parse_canada(c: &mut Criterion) {
+    documents::prepare();
+    python_parse_file("./benches/canada.json", c, StringCacheMode::All);
+}
+
+fn python_parse_citm_catalog(c: &mut Criterion) {
+    documents::prepare();
+    python_parse_file("./benches/citm_catalog.json", c, StringCacheMode::All);
+}
+
 criterion_group!(
     benches,
     python_parse_numeric,
@@ -164,5 +181,8 @@ criterion_group!(
     python_parse_true_object,
     python_parse_true_array,
     python_parse_massive_ints_array,
+    python_parse_twitter,
+    python_parse_canada,
+    python_parse_citm_catalog,
 );
 criterion_main!(benches);

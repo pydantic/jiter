@@ -11,3 +11,7 @@ profile.json
 __pycache__
 /worktrees/
 /crates/fuzz/Cargo.lock
+
+/crates/jiter/benches/twitter.json
+/crates/jiter/benches/canada.json
+/crates/jiter/benches/citm_catalog.json
