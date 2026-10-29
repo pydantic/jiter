@@ -1,0 +1,18 @@
+.gitignore
+  h_d9dd17644dded9 14-17
+Makefile
+  h_d9dd17644dded9 2,71
+crates/jiter/benches/prepare_documents.py
+  h_d9dd17644dded9 1-43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "746d2cfc96c5c3837d7f1ab9295ffbfba922d1ef",
+  "prompts": {},
+  "humans": {
+    "h_d9dd17644dded9": {
+      "author": "Alex Hall <alex.mojaki@gmail.com>"
+    }
+  }
+}
