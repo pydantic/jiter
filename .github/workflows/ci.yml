@@ -446,7 +446,7 @@ jobs:
           # all versions x86_64
           - os: macos
             target: x86_64
-            interpreter: 3.10 3.11 3.12 3.13 3.14 3.15 graalpy3.11 graalpy3.12
+            interpreter: 3.11 3.12 3.13 3.14 3.15 graalpy3.11 graalpy3.12
           - os: macos
             target: aarch64
             interpreter: graalpy3.11 graalpy3.12
@@ -478,7 +478,7 @@ jobs:
         with:
           target: ${{ matrix.target }}
           manylinux: ${{ matrix.manylinux }}
-          args: --release --out dist --interpreter ${{ matrix.interpreter || '3.10 3.11 3.12 3.13 3.14 3.14t 3.15 3.15t' }}
+          args: --release --out dist --interpreter ${{ matrix.interpreter || '3.11 3.12 3.13 3.14 3.14t 3.15 3.15t' }}
           rust-toolchain: stable
           working-directory: crates/jiter-python
 
@@ -505,7 +505,7 @@ jobs:
           - {os: linux_aarch64, runs-on: ubuntu-24.04-arm}
           - {os: windows, runs-on: windows-latest}
           - {os: macos, runs-on: macos-latest}
-        interpreter: ['3.10', '3.11', '3.12', '3.13', '3.14', '3.14t', '3.15', '3.15t']
+        interpreter: ['3.11', '3.12', '3.13', '3.14', '3.14t', '3.15', '3.15t']
 
     runs-on: ${{ matrix.platform.runs-on }}
     steps:
@@ -630,8 +630,8 @@ jobs:
 
       - name: extract and list wheel file
         run: |
-          ls dist/*cp310-manylinux*x86_64.whl | head -n 1
-          python -m zipfile --list `ls dist/*cp310-manylinux*x86_64.whl | head -n 1`
+          ls dist/*cp311-manylinux*x86_64.whl | head -n 1
+          python -m zipfile --list `ls dist/*cp311-manylinux*x86_64.whl | head -n 1`
 
   test-builds-arch:
     name: test build on ${{ matrix.target }}-${{ matrix.distro }}
