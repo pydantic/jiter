@@ -2,9 +2,9 @@
 
 These documents come from [nativejson-benchmark](https://github.com/miloyip/nativejson-benchmark/tree/master/data):
 
-* `twitter.json`: API response with multilingual text
-* `canada.json`: GeoJSON with roughly 111,000 floating-point coordinates
-* `citm_catalog.json`: nested concert-ticketing catalogue
+- `twitter.json`: API response with multilingual text
+- `canada.json`: GeoJSON with roughly 111,000 floating-point coordinates
+- `citm_catalog.json`: nested concert-ticketing catalogue
 
 The same compressed files are used by [Pydantic's document-shape benchmarks](https://github.com/pydantic/pydantic/pull/13879). The source link is above; `../prepare_documents.py` records the SHA-256 hashes of both the compressed and decompressed bytes. Benchmark setup runs it automatically to verify and extract the documents into `benches/`; the extracted files are ignored by Git.
 
