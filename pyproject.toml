@@ -28,6 +28,7 @@ pyodide-build = [
 required-version = ">=0.13.4"
 package = false
 exclude-newer = "7 days"
+exclude-newer-package = { virtualenv = "2026-10-23T00:00:00Z" }
 
 [tool.uv.workspace]
 members = ["crates/jiter-python"]
