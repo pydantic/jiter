@@ -1,0 +1,14 @@
+crates/jiter/benches/data/README.md
+  h_d9dd17644dded9 1-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f3be563d637090bbc71d07fe4ae45f9851d51d27",
+  "prompts": {},
+  "humans": {
+    "h_d9dd17644dded9": {
+      "author": "Alex Hall <alex.mojaki@gmail.com>"
+    }
+  }
+}
