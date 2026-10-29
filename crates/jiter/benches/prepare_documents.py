@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Verify and extract the vendored JSON documents before benchmarking."""
 
 import hashlib
