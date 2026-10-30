@@ -5,7 +5,7 @@ requires-python = ">=3.11"
 
 [dependency-groups]
 dev = [
-    "maturin>=1.15",
+    "maturin>=1.16",
     "pytest",
     "pytest-pretty",
     "dirty-equals",
@@ -28,6 +28,8 @@ pyodide-build = [
 required-version = ">=0.13.4"
 package = false
 exclude-newer = "7 days"
+# Allow maturin 1.16 for GraalPy 3.13; remove this exception after 2026-11-05.
+exclude-newer-package = { maturin = "2026-10-30T00:00:00Z" }
 
 [tool.uv.workspace]
 members = ["crates/jiter-python"]

@@ -427,11 +427,11 @@ jobs:
           - os: linux
             manylinux: auto
             target: x86_64
-            interpreter: graalpy3.11 graalpy3.12
+            interpreter: graalpy3.12 graalpy3.13
           - os: linux
             manylinux: auto
             target: aarch64
-            interpreter: graalpy3.11 graalpy3.12
+            interpreter: graalpy3.12 graalpy3.13
 
           # musllinux
           - os: linux
@@ -446,10 +446,10 @@ jobs:
           # all versions x86_64
           - os: macos
             target: x86_64
-            interpreter: 3.11 3.12 3.13 3.14 3.15 graalpy3.11 graalpy3.12
+            interpreter: 3.11 3.12 3.13 3.14 3.15 graalpy3.12
           - os: macos
             target: aarch64
-            interpreter: graalpy3.11 graalpy3.12
+            interpreter: graalpy3.12 graalpy3.13
 
           # windows 11 arm supports 3.11 and up
           - os: windows
