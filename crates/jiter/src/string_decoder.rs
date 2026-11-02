@@ -164,7 +164,10 @@ fn decode_to_tape<'t, 'j>(
                 b't' => tape.push(b'\t'),
                 b'u' => match parse_escape(data, index) {
                     Ok((c, new_index)) => {
-                        ascii_only = false;
+                        // an escape that decodes to ASCII keeps the string ASCII
+                        if !c.is_ascii() {
+                            ascii_only = false;
+                        }
                         index = new_index;
                         tape.extend_from_slice(c.encode_utf8(&mut [0_u8; 4]).as_bytes());
                     }
@@ -217,7 +220,13 @@ fn to_str(bytes: &[u8], ascii_only: bool, start: usize, allow_partial: bool) -> 
         // transmute from bytes to str
         Ok(unsafe { from_utf8_unchecked(bytes) })
     } else {
-        match from_utf8(bytes) {
+        // below one block, std's scalar loop costs about what the kernel's setup does
+        let checked = if bytes.len() < 16 {
+            from_utf8(bytes)
+        } else {
+            crate::simd::from_utf8(bytes)
+        };
+        match checked {
             Ok(s) => Ok(s),
             Err(e) if allow_partial && e.error_len().is_none() => {
                 // In partial mode, we handle incomplete (not invalid) UTF-8 sequences
@@ -327,5 +336,30 @@ where
                 return json_err!(EofWhileParsingString, index);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ascii_only(json: &[u8]) -> bool {
+        let mut tape = Tape::new();
+        let (output, end) = StringDecoder::decode(json, 0, &mut tape, false).unwrap();
+        assert_eq!(end, json.len());
+        output.ascii_only()
+    }
+
+    /// The flag lets a string skip UTF-8 validation and take the ASCII path into Python, so it
+    /// must be set exactly when the decoded string is ASCII, escapes included.
+    #[test]
+    fn ascii_flag_follows_the_decoded_string() {
+        assert!(ascii_only(br#""plain""#));
+        assert!(ascii_only(br#""tab\tquote\" and \u0041\u007f""#));
+        assert!(!ascii_only(br#""\u00e9""#));
+        assert!(!ascii_only(br#""\u0080""#));
+        assert!(!ascii_only(br#""\ud83d\ude00""#));
+        assert!(!ascii_only("\"\\u0041é\"".as_bytes()));
+        assert!(!ascii_only("\"é\\u0041\"".as_bytes()));
     }
 }
