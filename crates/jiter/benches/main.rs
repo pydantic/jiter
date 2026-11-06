@@ -7,7 +7,7 @@ use std::hint::black_box;
 use std::io::Read;
 use std::path::Path;
 
-use jiter::{Jiter, JsonValueScratch, PartialMode, Peek};
+use jiter::{Jiter, JsonValue, JsonValueScratch, PartialMode, Peek};
 use serde_json::Value;
 
 /// serde_json is the local comparison baseline; CodSpeed tracks jiter's own history, so the serde
@@ -43,6 +43,20 @@ fn jiter_value(path: &str, c: &mut Criterion) {
     c.bench_function(&title, |bench| {
         bench.iter(|| {
             let v = scratch.parse(black_box(json_data), false, PartialMode::Off).unwrap();
+            black_box(v)
+        });
+    });
+}
+
+/// Like `jiter_value`, without a scratch.
+fn jiter_value_parse(path: &str, c: &mut Criterion) {
+    let title = read_title(path) + "_jiter_value_parse";
+    let json = read_file(path);
+    let json_data = json.as_bytes();
+
+    c.bench_function(&title, |bench| {
+        bench.iter(|| {
+            let v = JsonValue::parse(black_box(json_data), false).unwrap();
             black_box(v)
         });
     });
@@ -317,6 +331,11 @@ macro_rules! document_case {
                 jiter_value(concat!("./benches/", stringify!($file_name), ".json"), c);
             }
 
+            fn [< $file_name _jiter_value_parse >](c: &mut Criterion) {
+                documents::prepare();
+                jiter_value_parse(concat!("./benches/", stringify!($file_name), ".json"), c);
+            }
+
             fn [< $file_name _serde_value >](c: &mut Criterion) {
                 documents::prepare();
                 serde_value(concat!("./benches/", stringify!($file_name), ".json"), c);
@@ -476,10 +495,13 @@ criterion_group!(
     short_numbers_jiter_value,
     short_numbers_serde_value,
     twitter_jiter_value,
+    twitter_jiter_value_parse,
     twitter_serde_value,
     canada_jiter_value,
+    canada_jiter_value_parse,
     canada_serde_value,
     citm_catalog_jiter_value,
+    citm_catalog_jiter_value_parse,
     citm_catalog_serde_value,
 );
 criterion_main!(benches);
