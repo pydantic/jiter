@@ -5,7 +5,7 @@ requires-python = ">=3.11"
 
 [dependency-groups]
 dev = [
-    "maturin>=1.15",
+    "maturin>=1.16",
     "pytest",
     "pytest-pretty",
     "dirty-equals",
