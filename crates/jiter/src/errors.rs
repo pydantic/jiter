@@ -143,8 +143,6 @@ impl JsonError {
                 | JsonErrorType::EofWhileParsingObject
                 | JsonErrorType::EofWhileParsingString
                 | JsonErrorType::EofWhileParsingValue
-                | JsonErrorType::ExpectedListCommaOrEnd
-                | JsonErrorType::ExpectedObjectCommaOrEnd
         )
     }
 }

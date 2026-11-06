@@ -1905,6 +1905,69 @@ fn test_string_simd_stop_char_after_non_ascii() {
 }
 
 #[test]
+fn test_value_partial_invalid_delimiters() {
+    let documents: &[&[u8]] = &[
+        br#"[{"a": "foo", "b": 1}, {"a": "bar": 2}, {"a": "baz", "b": 3}]"#,
+        b"[1 2]",
+        b"[1;2]",
+        br#"{"a": 1 "b": 2}"#,
+        br#"{"a": 1; "b": 2}"#,
+        br#"{"a": [1 2]}"#,
+        br#"[{"a": 1 "b": 2}]"#,
+    ];
+    let mut scratch = JsonValueScratch::new();
+    for &json_data in documents {
+        let expected = JsonValue::parse(json_data, false).unwrap_err();
+        assert!(matches!(
+            expected.error_type,
+            JsonErrorType::ExpectedListCommaOrEnd | JsonErrorType::ExpectedObjectCommaOrEnd
+        ));
+        for mode in [PartialMode::Off, PartialMode::On, PartialMode::TrailingStrings] {
+            assert_eq!(
+                JsonValue::parse_with_config(json_data, false, mode).unwrap_err(),
+                expected
+            );
+            assert_eq!(scratch.parse(json_data, false, mode).unwrap_err(), expected);
+            assert_eq!(JsonValue::parse_owned(json_data, false, mode).unwrap_err(), expected);
+            assert_eq!(scratch.parse_owned(json_data, false, mode).unwrap_err(), expected);
+            // An error must not leave the reusable stacks in a broken state.
+            assert_eq!(
+                scratch.parse(br#"[1, {"a": 2}]"#, false, mode).unwrap(),
+                JsonValue::parse(br#"[1, {"a": 2}]"#, false).unwrap()
+            );
+        }
+    }
+}
+
+#[test]
+fn test_value_partial_valid_prefixes() {
+    let documents: &[&[u8]] = &[
+        br#"{"a": [1, 2.5, true, false, null, "text"], "b": {"c": 3}}"#,
+        br#"[{"a": [true, false, null, 1.2e3, "escaped\ntext"]}]"#,
+    ];
+    let mut scratch = JsonValueScratch::new();
+    for &json_data in documents {
+        for mode in [PartialMode::On, PartialMode::TrailingStrings] {
+            for end in 1..=json_data.len() {
+                let prefix = &json_data[..end];
+                let value = JsonValue::parse_with_config(prefix, false, mode).unwrap();
+                assert_eq!(scratch.parse(prefix, false, mode).unwrap(), value);
+            }
+            // Owned parsing still checks complete consumption of the input.
+            let incomplete = br#"{"a": [true, f"#;
+            assert_eq!(
+                JsonValue::parse_owned(incomplete, false, mode).unwrap_err().error_type,
+                JsonErrorType::TrailingCharacters
+            );
+            assert_eq!(
+                scratch.parse_owned(incomplete, false, mode).unwrap_err().error_type,
+                JsonErrorType::TrailingCharacters
+            );
+        }
+    }
+}
+
+#[test]
 fn test_value_partial_array_on() {
     let json_bytes = br#"["string", true, null, 1, "foo"#;
     let value = JsonValue::parse_with_config(json_bytes, false, PartialMode::On).unwrap();

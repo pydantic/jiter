@@ -480,6 +480,20 @@ fn take_value_recursive<'j, 's, const REUSE: bool>(
 
     let mut recursion_stack: SmallVec<[RecursedValue; 8]> = SmallVec::new();
     let partial_active = allow_partial.is_active();
+    let mut partial_eof = false;
+
+    // EOF can leave the cursor at the start of a truncated token. Once accepted,
+    // finish the enclosing containers without looking for any more delimiters.
+    macro_rules! allow_partial_err {
+        ($error:expr) => {
+            if partial_active && $error.allowed_if_partial() {
+                partial_eof = true;
+                true
+            } else {
+                false
+            }
+        };
+    }
 
     macro_rules! push_recursion {
         ($next_peek:expr, $value:expr) => {
@@ -509,7 +523,7 @@ fn take_value_recursive<'j, 's, const REUSE: bool>(
                                     // immediately jump to process the first value in the array
                                     continue 'recursion;
                                 }
-                                Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
+                                Err(e) if !allow_partial_err!(e) => return Err(e),
                                 _ => (),
                             }
                             Ok(JsonValue::empty_array())
@@ -527,10 +541,10 @@ fn take_value_recursive<'j, 's, const REUSE: bool>(
                                         );
                                         continue 'recursion;
                                     }
-                                    Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
+                                    Err(e) if !allow_partial_err!(e) => return Err(e),
                                     _ => (),
                                 },
-                                Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
+                                Err(e) if !allow_partial_err!(e) => return Err(e),
                                 _ => (),
                             }
                             Ok(JsonValue::empty_object())
@@ -555,14 +569,14 @@ fn take_value_recursive<'j, 's, const REUSE: bool>(
                     let base = match result {
                         Ok(value) => {
                             // now try to advance position in the current array
-                            match parser.array_step() {
+                            match if partial_eof { Ok(None) } else { parser.array_step() } {
                                 Ok(Some(next_peek)) => {
                                     elements.push(value);
                                     peek = next_peek;
                                     // array continuing
                                     continue;
                                 }
-                                Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
+                                Err(e) if !allow_partial_err!(e) => return Err(e),
                                 _ => (),
                             }
 
@@ -572,7 +586,7 @@ fn take_value_recursive<'j, 's, const REUSE: bool>(
                             elements.push(value);
                             base
                         }
-                        Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
+                        Err(e) if !allow_partial_err!(e) => return Err(e),
                         _ => {
                             let RecursedValue::Array { base } = current_recursion else {
                                 unreachable!("known to be in array recursion");
@@ -600,7 +614,7 @@ fn take_value_recursive<'j, 's, const REUSE: bool>(
                                     // immediately jump to process the first value in the array
                                     continue 'recursion;
                                 }
-                                Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
+                                Err(e) if !allow_partial_err!(e) => return Err(e),
                                 _ => (),
                             }
                             Ok(JsonValue::empty_array())
@@ -618,10 +632,10 @@ fn take_value_recursive<'j, 's, const REUSE: bool>(
                                         );
                                         continue 'recursion;
                                     }
-                                    Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
+                                    Err(e) if !allow_partial_err!(e) => return Err(e),
                                     _ => (),
                                 },
-                                Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
+                                Err(e) if !allow_partial_err!(e) => return Err(e),
                                 _ => (),
                             }
                             Ok(JsonValue::empty_object())
@@ -646,7 +660,11 @@ fn take_value_recursive<'j, 's, const REUSE: bool>(
                     let base = match result {
                         Ok(value) => {
                             // now try to advance position in the current object
-                            match parser.object_step::<StringDecoder>(tape) {
+                            match if partial_eof {
+                                Ok(None)
+                            } else {
+                                parser.object_step::<StringDecoder>(tape)
+                            } {
                                 Ok(Some(yet_another_key)) => {
                                     match parser.peek() {
                                         Ok(next_peek) => {
@@ -658,11 +676,11 @@ fn take_value_recursive<'j, 's, const REUSE: bool>(
                                             peek = next_peek;
                                             continue;
                                         }
-                                        Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
+                                        Err(e) if !allow_partial_err!(e) => return Err(e),
                                         _ => (),
                                     }
                                 }
-                                Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
+                                Err(e) if !allow_partial_err!(e) => return Err(e),
                                 _ => (),
                             }
 
@@ -672,7 +690,7 @@ fn take_value_recursive<'j, 's, const REUSE: bool>(
                             members.push((next_key, value));
                             base
                         }
-                        Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
+                        Err(e) if !allow_partial_err!(e) => return Err(e),
                         _ => {
                             let RecursedValue::Object { base, .. } = current_recursion else {
                                 unreachable!("known to be in object recursion");
@@ -698,12 +716,12 @@ fn take_value_recursive<'j, 's, const REUSE: bool>(
             value = match current_recursion {
                 RecursedValue::Array { base } => {
                     elements.push(value);
-                    match parser.array_step() {
+                    match if partial_eof { Ok(None) } else { parser.array_step() } {
                         Ok(Some(next_peek)) => {
                             current_recursion = RecursedValue::Array { base };
                             break next_peek;
                         }
-                        Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
+                        Err(e) if !allow_partial_err!(e) => return Err(e),
                         _ => (),
                     }
                     JsonValue::Array(Arc::new(take_container::<_, REUSE>(elements, base)))
@@ -711,7 +729,11 @@ fn take_value_recursive<'j, 's, const REUSE: bool>(
                 RecursedValue::Object { base, next_key } => {
                     members.push((next_key, value));
 
-                    match parser.object_step::<StringDecoder>(tape) {
+                    match if partial_eof {
+                        Ok(None)
+                    } else {
+                        parser.object_step::<StringDecoder>(tape)
+                    } {
                         Ok(Some(next_key)) => match parser.peek() {
                             Ok(next_peek) => {
                                 current_recursion = RecursedValue::Object {
@@ -720,10 +742,10 @@ fn take_value_recursive<'j, 's, const REUSE: bool>(
                                 };
                                 break next_peek;
                             }
-                            Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
+                            Err(e) if !allow_partial_err!(e) => return Err(e),
                             _ => (),
                         },
-                        Err(e) if !(partial_active && e.allowed_if_partial()) => return Err(e),
+                        Err(e) if !allow_partial_err!(e) => return Err(e),
                         _ => (),
                     }
 
