@@ -239,6 +239,49 @@ jobs:
           mode: walltime
           token: ${{ secrets.CODSPEED_TOKEN }}
 
+  bench-memory:
+    runs-on: ubuntu-24.04
+
+    env:
+      JSON_CASES: ${{ github.workspace }}/json-cases
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v8.0.0
+        with:
+          python-version: '3.13'
+          enable-cache: true # zizmor: ignore[cache-poisoning] -- Job does not produce release artifacts and does not have sensitive permissions
+
+      - name: check out the json-cases corpus
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: samuelcolvin/json-cases
+          ref: ${{ env.JSON_CASES_REF }}
+          path: json-cases
+          persist-credentials: false
+
+      - uses: moonrepo/setup-rust@abb2d32350334249b178c401e5ec5836e0cd88d3 # v1.3.0
+        with:
+          channel: stable
+          cache-target: release
+          bins: cargo-codspeed
+
+      - run: uv run crates/jiter/benches/generate_big.py
+
+      - name: build the json-cases corpus
+        run: make -C json-cases build
+
+      - run: cargo codspeed build -m memory -F python -p jiter
+
+      - uses: CodSpeedHQ/action@4296e51e7041e24dadb86d1d6e8b9320d223dbe8 # v5.0.3
+        with:
+          run: cargo codspeed run
+          mode: memory
+          token: ${{ secrets.CODSPEED_TOKEN }}
+
   test-latest-deps:
     name: test with latest dependencies
     runs-on: ubuntu-latest
@@ -767,7 +810,7 @@ jobs:
   # https://github.com/marketplace/actions/alls-green#why used for branch protection checks
   check:
     if: always()
-    needs: [test, test-latest-deps, test-python, bench, fuzz, fuzz-skip, lint]
+    needs: [test, test-latest-deps, test-python, bench, bench-memory, fuzz, fuzz-skip, lint]
     runs-on: ubuntu-latest
     steps:
       - name: Decide whether the needed jobs succeeded or failed
