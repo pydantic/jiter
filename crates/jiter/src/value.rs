@@ -432,14 +432,26 @@ impl Stacks<'_> {
 /// has anything on it yet — so the stack itself is the container and can be handed over whole.
 /// That is the whole document for the common single-container case, where copying it out would be
 /// pure overhead, and the outermost array of a big one, which would otherwise be the largest
-/// copy of all. A stack that is `REUSE`d for the next parse is split off instead, which copies
-/// its contents into an allocation of exactly their size and leaves it empty with its capacity.
+/// copy of all.
+///
+/// Any other container is split off its stack, which copies its contents into an allocation of
+/// exactly their size and leaves the stack with its capacity. That includes a container with a
+/// `base` of zero when the stack is `REUSE`d for the next parse, or when its contents fill less
+/// than half of the stack's capacity, which an earlier, bigger container may have grown: in
+/// `[{"id": 0, "a": {<30 members>}, "b": 1}, ...]`, each outer object starts at a `base` of zero,
+/// but the inner one grew the stack to 32 members, which a handed-over stack would keep for the
+/// outer object's 3 members. (`Vec::split_off(0)` would hand over the original allocation as
+/// well, so these are copied out with `append`.)
 #[inline]
 fn take_container<T, const REUSE: bool>(stack: &mut Vec<T>, base: usize) -> Vec<T> {
-    if REUSE || base != 0 {
+    if base != 0 {
         stack.split_off(base)
-    } else {
+    } else if !REUSE && stack.len() * 2 >= stack.capacity() {
         std::mem::take(stack)
+    } else {
+        let mut container = Vec::with_capacity(stack.len());
+        container.append(stack);
+        container
     }
 }
 
@@ -881,5 +893,38 @@ mod tests {
                 .unwrap(),
             JsonValue::parse_owned(br#"["ok\n", {"d": 4}]"#, false, PartialMode::Off).unwrap()
         );
+    }
+
+    /// Each outer object starts with nothing on the members stack, but its inner object grows that
+    /// stack to 32 members: no object may keep more than twice the capacity it needs.
+    #[test]
+    fn container_does_not_keep_stack_capacity() {
+        let inner: Vec<String> = (0..30).map(|i| format!(r#""k{i}": {i}"#)).collect();
+        let outer = format!(r#"{{"id": 0, "a": {{{}}}, "b": 1}}"#, inner.join(", "));
+        let doc = format!("[{}]", [outer.as_str(); 3].join(", "));
+
+        let check = |value: &JsonValue| {
+            let JsonValue::Array(items) = value else {
+                panic!("expected an array")
+            };
+            for item in items.iter() {
+                let JsonValue::Object(object) = item else {
+                    panic!("expected an object")
+                };
+                assert_eq!(object.len(), 3);
+                assert!(object.capacity() <= 6, "capacity {}", object.capacity());
+                let JsonValue::Object(inner) = &object[1].1 else {
+                    panic!("expected an object")
+                };
+                assert_eq!(inner.len(), 30);
+                assert!(inner.capacity() <= 60, "capacity {}", inner.capacity());
+            }
+        };
+
+        check(&JsonValue::parse(doc.as_bytes(), false).unwrap());
+        check(&JsonValue::parse_owned(doc.as_bytes(), false, PartialMode::Off).unwrap());
+        let mut scratch = JsonValueScratch::new();
+        check(&scratch.parse(doc.as_bytes(), false, PartialMode::Off).unwrap());
+        check(&scratch.parse(doc.as_bytes(), false, PartialMode::Off).unwrap());
     }
 }
