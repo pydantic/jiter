@@ -311,21 +311,20 @@ where
                 }
                 (StringChunk::Backslash, _, index) => index,
             };
-            index += 1;
-            if let Some(next_inner) = data.get(index) {
-                match next_inner {
-                    // these escapes are easy to validate
-                    b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't' => (),
-                    b'u' => {
-                        let (_, new_index) = parse_escape(data, index)?;
-                        index = new_index;
-                    }
-                    _ => return json_err!(InvalidEscape, index),
-                }
-                index += 1;
-            } else {
-                return json_err!(EofWhileParsingString, index);
-            }
+            index = skip_escape(data, index + 1)? + 1;
         }
+    }
+}
+
+/// Check the escape whose backslash is just before `index` and return the index of its last
+/// byte: `index` itself for a single-character escape, the last hex digit of a `\u` escape,
+/// or of the second `\u` escape of a surrogate pair.
+pub(crate) fn skip_escape(data: &[u8], index: usize) -> JsonResult<usize> {
+    match data.get(index) {
+        // these escapes are easy to validate
+        Some(b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't') => Ok(index),
+        Some(b'u') => parse_escape(data, index).map(|(_, index)| index),
+        Some(_) => json_err!(InvalidEscape, index),
+        None => json_err!(EofWhileParsingString, index),
     }
 }

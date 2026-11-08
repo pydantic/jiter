@@ -11,12 +11,14 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Write as _;
 
-use jiter::JsonValue;
+use jiter::{JsonErrorType, JsonValue};
 use serde_json::Value as SerdeValue;
 
 mod corpus;
+mod skip_parity;
 
 use corpus::{Loaded, corpus_root, load_cases};
+use skip_parity::{parse_outcome, skip_outcome};
 
 /// How jiter and serde_json disagreed about one document.
 #[derive(Debug)]
@@ -415,4 +417,55 @@ fn similar_cases_agree() {
         failures.join("\n")
     );
     println!("{groups} similar groups, {documents} documents");
+}
+
+/// `next_skip` must accept exactly the documents `JsonValue::parse` accepts and report the same
+/// error, at the same index, on the ones it rejects. The skip walks a document without building
+/// it, through a SIMD scan for arrays and objects that falls back to the per-value walk to
+/// report errors; the corpus, two thirds of it invalid documents, exercises both.
+///
+/// Two documented differences are left out: `next_skip` does not check that strings are valid
+/// UTF-8, so a document `JsonValue::parse` rejects for that alone may skip cleanly, or fail
+/// later on something else; and without `num-bigint` the value path rejects integers beyond
+/// i64, which the skip, never decoding a value, accepts.
+#[test]
+fn skip_agrees_with_parse() {
+    let Some(root) = corpus_root() else {
+        return;
+    };
+    let cases = load_cases(&root);
+    let mut mismatches = Vec::new();
+    let mut compared = 0;
+    let mut invalid_utf8 = 0;
+    for case in &cases {
+        for allow_inf_nan in [false, true] {
+            let parsed = parse_outcome(&case.json_data, allow_inf_nan);
+            if let Err((JsonErrorType::InvalidUnicodeCodePoint, _)) = parsed {
+                invalid_utf8 += 1;
+                continue;
+            }
+            #[cfg(not(feature = "num-bigint"))]
+            if let Err((JsonErrorType::NumberOutOfRange, _)) = parsed {
+                continue;
+            }
+            compared += 1;
+            let skipped = skip_outcome(&case.json_data, allow_inf_nan);
+            if parsed != skipped {
+                mismatches.push(format!(
+                    "{} (allow_inf_nan={allow_inf_nan}): parse {parsed:?}, skip {skipped:?}",
+                    case.name
+                ));
+            }
+        }
+    }
+    println!(
+        "{} cases, {compared} runs compared, {invalid_utf8} with invalid UTF-8 in strings not compared",
+        cases.len()
+    );
+    assert!(
+        mismatches.is_empty(),
+        "{} of {compared} runs skipped differently from how they parse:\n{}",
+        mismatches.len(),
+        mismatches.join("\n")
+    );
 }

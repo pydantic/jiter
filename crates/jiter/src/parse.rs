@@ -52,15 +52,15 @@ impl Peek {
     }
 }
 
-static TRUE_REST: [u8; 3] = *b"rue";
-static FALSE_REST: [u8; 4] = *b"alse";
-static NULL_REST: [u8; 3] = *b"ull";
+pub(crate) static TRUE_REST: [u8; 3] = *b"rue";
+pub(crate) static FALSE_REST: [u8; 4] = *b"alse";
+pub(crate) static NULL_REST: [u8; 3] = *b"ull";
 static NAN_REST: [u8; 2] = *b"aN";
 static INFINITY_REST: [u8; 7] = *b"nfinity";
 
 #[derive(Debug, Clone)]
 pub(crate) struct Parser<'j> {
-    data: &'j [u8],
+    pub(crate) data: &'j [u8],
     pub index: usize,
 }
 
@@ -269,7 +269,11 @@ pub(crate) fn consume_nan(data: &[u8], index: usize) -> JsonResult<usize> {
     consume_ident(data, index, NAN_REST)
 }
 
-fn consume_ident<const SIZE: usize>(data: &[u8], mut index: usize, expected: [u8; SIZE]) -> JsonResult<usize> {
+pub(crate) fn consume_ident<const SIZE: usize>(
+    data: &[u8],
+    mut index: usize,
+    expected: [u8; SIZE],
+) -> JsonResult<usize> {
     match data.get(index + 1..=index + SIZE) {
         Some(s) if s == expected => Ok(index + SIZE + 1),
         // TODO very sadly iterating over expected cause extra branches in the generated assembly
