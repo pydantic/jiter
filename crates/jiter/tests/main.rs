@@ -2251,3 +2251,26 @@ fn test_known_skip_recursion_budget() {
         }
     }
 }
+
+#[test]
+fn test_next_skip_recursion_budget_after_entering_container() {
+    let mut jiter = Jiter::new(b"[[1],{}]");
+    assert_eq!(jiter.next_array().unwrap(), Some(Peek::Array));
+    jiter.next_skip_with_recursion_limit(1).unwrap();
+    assert_eq!(jiter.array_step().unwrap(), Some(Peek::Object));
+    jiter.next_skip_with_recursion_limit(0).unwrap();
+    assert_eq!(jiter.array_step().unwrap(), None);
+    jiter.finish().unwrap();
+    assert!(Jiter::new(b"[[1]]").next_skip_with_recursion_limit(1).is_err());
+    assert!(Jiter::new(b"[1,]").next_skip_with_recursion_limit(1).is_err());
+
+    let deepest = format!("{}1{}", "[".repeat(255), "]".repeat(255));
+    let mut jiter = Jiter::new(deepest.as_bytes());
+    jiter.next_skip_with_recursion_limit(255).unwrap();
+    jiter.finish().unwrap();
+    assert!(
+        Jiter::new(deepest.as_bytes())
+            .next_skip_with_recursion_limit(254)
+            .is_err()
+    );
+}
