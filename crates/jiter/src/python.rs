@@ -1,4 +1,4 @@
-use ahash::AHashSet;
+use foldhash::HashSet;
 use std::marker::PhantomData;
 
 use pyo3::exceptions::{PyTypeError, PyValueError};
@@ -275,7 +275,7 @@ impl MaybeKeyCheck for NoopKeyCheck {
 }
 
 #[derive(Default)]
-struct DuplicateKeyCheck(AHashSet<String>);
+struct DuplicateKeyCheck(HashSet<String>);
 
 impl MaybeKeyCheck for DuplicateKeyCheck {
     fn check(&mut self, key: &str, index: usize) -> JsonResult<()> {
