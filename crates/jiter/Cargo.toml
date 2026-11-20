@@ -16,7 +16,7 @@ rust-version = { workspace = true }
 [dependencies]
 num-bigint = { version = "0.4.4", optional = true }
 num-traits = "0.2.16"
-ahash = { version = "0.8.0", optional = true }
+foldhash = { version = "0.2.0", optional = true }
 smallvec = { version = "1.11.0", features = ["const_new"] }
 pyo3 = { workspace = true, optional = true }
 lexical-parse-float = { version = "1.0.5", features = ["format"] }
@@ -25,7 +25,7 @@ serde = { version = "1.0.147", optional = true }
 
 [features]
 default = ["num-bigint"]
-python = ["dep:pyo3", "dep:pyo3-build-config", "dep:ahash"]
+python = ["dep:pyo3", "dep:pyo3-build-config", "dep:foldhash"]
 num-bigint = ["dep:num-bigint", "pyo3?/num-bigint"]
 serde = ["dep:serde"]
 
