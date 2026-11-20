@@ -106,7 +106,7 @@ fn skip_comment(data: &[u8], index: &mut usize) -> bool {
     let start = *index + 2;
     match data.get(*index + 1) {
         Some(b'/') => {
-            *index = match data[start..].iter().position(|&b| b == b'\n') {
+            *index = match data[start..].iter().position(|&b| matches!(b, b'\r' | b'\n')) {
                 Some(offset) => start + offset,
                 None => data.len(),
             };

@@ -19,6 +19,7 @@ def from_json(
     partial_mode: Literal[True, False, 'off', 'on', 'trailing-strings'] = False,
     catch_duplicate_keys: bool = False,
     float_mode: Literal['float', 'decimal', 'lossless-float'] = 'float',
+    allow_comments: bool = False,
 ) -> Any:
     """
     Parse input bytes into a JSON object.
@@ -37,6 +38,7 @@ def from_json(
             - 'trailing-strings' - allow incomplete JSON, and include the last incomplete string in the output
         catch_duplicate_keys: if True, raise an exception if objects contain the same key multiple times
         float_mode: How to return floats: as a `float`, `Decimal` or `LosslessFloat`
+        allow_comments: if True, allow `// line` and `/* block */` comments wherever whitespace is allowed (JSONC)
 
     Returns:
         Python object built from the JSON input.

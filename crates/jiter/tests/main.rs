@@ -278,6 +278,7 @@ jsonc_tests! {
     line_after: ok => "1 // c", "Int(1) @ 1:1";
     line_before: ok => "// c\n1", "Int(1) @ 2:1";
     line_crlf: ok => "1 // c\r\n", "Int(1) @ 1:1";
+    line_cr: ok => "[1 // c\r,2]", "[ @ 1:1, Int(1) @ 1:2, Int(2) @ 1:10, ]";
     line_empty: ok => "1 //", "Int(1) @ 1:1";
     block_before: ok => "/* c */ 1", "Int(1) @ 1:9";
     block_empty: ok => "/**/1", "Int(1) @ 1:5";
@@ -299,6 +300,7 @@ jsonc_tests! {
     unterminated: err => "/* c", "ExpectedSomeValue @ 1:1";
     unterminated_array: err => "[1 /* c ]", "ExpectedListCommaOrEnd @ 1:4";
     unterminated_trailing: err => "1 /* c *", "TrailingCharacters @ 1:3";
+    line_cr_trailing: err => "1 // c\r2", "TrailingCharacters @ 1:8";
     slash: err => "/", "ExpectedSomeValue @ 1:1";
     slash_array: err => "[1 / 2]", "ExpectedListCommaOrEnd @ 1:4";
     slash_colon: err => r#"{"a" /x: 1}"#, "ExpectedColon @ 1:6";
@@ -1949,9 +1951,7 @@ fn bench_files_allow_comments() {
         if path.extension().is_none_or(|ext| ext != "json") {
             continue;
         }
-        let Ok(value) = serde_json::from_str::<serde_json::Value>(&read_file(path.to_str().unwrap())) else {
-            continue;
-        };
+        let value = serde_json::from_str::<serde_json::Value>(&read_file(path.to_str().unwrap())).unwrap();
         let pretty = serde_json::to_string_pretty(&value).unwrap();
         let expected = JsonValue::parse(pretty.as_bytes(), false).unwrap();
         for comment in [" // c /* c */\n", " /* c // c */\n", "/**/\n"] {
