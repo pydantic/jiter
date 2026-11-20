@@ -39,7 +39,7 @@ use serde::forward_to_deserialize_any;
 
 use crate::errors::{DEFAULT_RECURSION_LIMIT, JsonError, JsonErrorType, LinePosition};
 use crate::number_decoder::{NumberAny, NumberInt};
-use crate::parse::{Parser, Peek};
+use crate::parse::{Json, Jsonc, Parser, Peek, Whitespace};
 use crate::string_decoder::{StringDecoder, StringOutput, StringOutputType, Tape};
 use crate::value::take_value_skip;
 
@@ -149,7 +149,21 @@ pub fn from_slice<'a, T>(data: &'a [u8]) -> Result<T, Error>
 where
     T: serde::Deserialize<'a>,
 {
-    let mut de = JiterDeserializer::new(data);
+    deserialize_complete(JiterDeserializer::new(data))
+}
+
+/// Deserialize an instance of `T` from a slice of JSON bytes with comments.
+pub fn from_slice_jsonc<'a, T>(data: &'a [u8]) -> Result<T, Error>
+where
+    T: serde::Deserialize<'a>,
+{
+    deserialize_complete(JiterDeserializer::new(data).with_allow_comments())
+}
+
+fn deserialize_complete<'a, T, W: Whitespace>(mut de: JiterDeserializer<'a, W>) -> Result<T, Error>
+where
+    T: serde::Deserialize<'a>,
+{
     let result = T::deserialize(&mut de);
     // position any error that reached the boundary unpositioned, at where the parser stopped
     let value = result.map_err(|e| e.with_index(de.parser.index))?;
@@ -165,10 +179,18 @@ where
     from_slice(data.as_bytes())
 }
 
+/// Deserialize an instance of `T` from a string of JSON with comments.
+pub fn from_str_jsonc<'a, T>(data: &'a str) -> Result<T, Error>
+where
+    T: serde::Deserialize<'a>,
+{
+    from_slice_jsonc(data.as_bytes())
+}
+
 /// A [`serde::Deserializer`] backed by jiter's parser.
 #[derive(Debug)]
-pub struct JiterDeserializer<'j> {
-    parser: Parser<'j>,
+pub struct JiterDeserializer<'j, W: Whitespace = Json> {
+    parser: Parser<'j, W>,
     tape: Tape,
     allow_inf_nan: bool,
     /// Max nesting depth; `None` disables the check.
@@ -189,6 +211,19 @@ impl<'j> JiterDeserializer<'j> {
         }
     }
 
+    /// Allow `// line` and `/* block */` comments.
+    pub fn with_allow_comments(self) -> JiterDeserializer<'j, Jsonc> {
+        JiterDeserializer {
+            parser: self.parser.into_whitespace(),
+            tape: self.tape,
+            allow_inf_nan: self.allow_inf_nan,
+            recursion_limit: self.recursion_limit,
+            depth: self.depth,
+        }
+    }
+}
+
+impl<W: Whitespace> JiterDeserializer<'_, W> {
     /// Allow `NaN`, `Infinity` and `-Infinity` in numbers (off by default).
     pub fn with_allow_inf_nan(mut self) -> Self {
         self.allow_inf_nan = true;
@@ -239,7 +274,7 @@ impl<'j> JiterDeserializer<'j> {
     }
 }
 
-impl<'de> de::Deserializer<'de> for &mut JiterDeserializer<'de> {
+impl<'de, W: Whitespace> de::Deserializer<'de> for &mut JiterDeserializer<'de, W> {
     type Error = Error;
 
     fn deserialize_any<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
@@ -374,7 +409,10 @@ impl<'de> de::Deserializer<'de> for &mut JiterDeserializer<'de> {
 }
 
 /// Deserialize a number for a typed float target, keeping non-finite values as real `f64`s.
-fn deserialize_number<'de, V: Visitor<'de>>(de: &mut JiterDeserializer<'de>, visitor: V) -> Result<V::Value, Error> {
+fn deserialize_number<'de, W: Whitespace, V: Visitor<'de>>(
+    de: &mut JiterDeserializer<'de, W>,
+    visitor: V,
+) -> Result<V::Value, Error> {
     let peek = de.parser.peek()?;
     if peek.is_num() {
         match de
@@ -429,14 +467,14 @@ fn visit_int<'de, V: Visitor<'de>>(int: NumberInt, visitor: V) -> Result<V::Valu
     }
 }
 
-struct JiterSeqAccess<'a, 'de> {
-    de: &'a mut JiterDeserializer<'de>,
+struct JiterSeqAccess<'a, 'de, W: Whitespace> {
+    de: &'a mut JiterDeserializer<'de, W>,
     first: bool,
     /// `true` once the closing `]` has been consumed.
     ended: bool,
 }
 
-impl JiterSeqAccess<'_, '_> {
+impl<W: Whitespace> JiterSeqAccess<'_, '_, W> {
     /// The next element's [`Peek`], or `None` (consuming `]`) at the end.
     fn step(&mut self) -> Result<Option<Peek>, Error> {
         let peek = if std::mem::take(&mut self.first) {
@@ -464,7 +502,7 @@ impl JiterSeqAccess<'_, '_> {
     }
 }
 
-impl<'de> SeqAccess<'de> for &mut JiterSeqAccess<'_, 'de> {
+impl<'de, W: Whitespace> SeqAccess<'de> for &mut JiterSeqAccess<'_, 'de, W> {
     type Error = Error;
 
     fn next_element_seed<T: de::DeserializeSeed<'de>>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error> {
@@ -476,12 +514,12 @@ impl<'de> SeqAccess<'de> for &mut JiterSeqAccess<'_, 'de> {
     }
 }
 
-struct JiterMapAccess<'a, 'de> {
-    de: &'a mut JiterDeserializer<'de>,
+struct JiterMapAccess<'a, 'de, W: Whitespace> {
+    de: &'a mut JiterDeserializer<'de, W>,
     first: bool,
 }
 
-impl<'de> MapAccess<'de> for JiterMapAccess<'_, 'de> {
+impl<'de, W: Whitespace> MapAccess<'de> for JiterMapAccess<'_, 'de, W> {
     type Error = Error;
 
     fn next_key_seed<K: de::DeserializeSeed<'de>>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error> {
@@ -570,15 +608,15 @@ impl<'de> de::Deserializer<'de> for MapKeyDeserializer<'_, 'de> {
     }
 }
 
-struct JiterEnumAccess<'a, 'de> {
-    de: &'a mut JiterDeserializer<'de>,
+struct JiterEnumAccess<'a, 'de, W: Whitespace> {
+    de: &'a mut JiterDeserializer<'de, W>,
     /// `true` for the bare-string (unit variant) form.
     unit: bool,
 }
 
-impl<'a, 'de> EnumAccess<'de> for JiterEnumAccess<'a, 'de> {
+impl<'a, 'de, W: Whitespace> EnumAccess<'de> for JiterEnumAccess<'a, 'de, W> {
     type Error = Error;
-    type Variant = JiterVariantAccess<'a, 'de>;
+    type Variant = JiterVariantAccess<'a, 'de, W>;
 
     fn variant_seed<V: de::DeserializeSeed<'de>>(self, seed: V) -> Result<(V::Value, Self::Variant), Self::Error> {
         let key = if self.unit {
@@ -610,12 +648,12 @@ impl<'a, 'de> EnumAccess<'de> for JiterEnumAccess<'a, 'de> {
     }
 }
 
-struct JiterVariantAccess<'a, 'de> {
-    de: &'a mut JiterDeserializer<'de>,
+struct JiterVariantAccess<'a, 'de, W: Whitespace> {
+    de: &'a mut JiterDeserializer<'de, W>,
     unit: bool,
 }
 
-impl JiterVariantAccess<'_, '_> {
+impl<W: Whitespace> JiterVariantAccess<'_, '_, W> {
     /// Consume the closing `}` of an object variant, erroring on extra keys.
     fn finish(&mut self) -> Result<(), Error> {
         if self.unit {
@@ -632,7 +670,7 @@ impl JiterVariantAccess<'_, '_> {
     }
 }
 
-impl<'de> VariantAccess<'de> for JiterVariantAccess<'_, 'de> {
+impl<'de, W: Whitespace> VariantAccess<'de> for JiterVariantAccess<'_, 'de, W> {
     type Error = Error;
 
     fn unit_variant(mut self) -> Result<(), Self::Error> {

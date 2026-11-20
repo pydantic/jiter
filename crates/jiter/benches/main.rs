@@ -42,7 +42,9 @@ fn jiter_value(path: &str, c: &mut Criterion) {
     let mut scratch = JsonValueScratch::new();
     c.bench_function(&title, |bench| {
         bench.iter(|| {
-            let v = scratch.parse(black_box(json_data), false, PartialMode::Off).unwrap();
+            let v = scratch
+                .parse(black_box(json_data), false, PartialMode::Off, false)
+                .unwrap();
             black_box(v)
         });
     });
@@ -404,7 +406,7 @@ fn string_array_jiter_value_owned(c: &mut Criterion) {
     c.bench_function("string_array_jiter_value_owned", |bench| {
         bench.iter(|| {
             let v = scratch
-                .parse_owned(black_box(json_data), false, PartialMode::Off)
+                .parse_owned(black_box(json_data), false, PartialMode::Off, false)
                 .unwrap();
             black_box(v)
         });
@@ -419,7 +421,7 @@ fn medium_response_jiter_value_owned(c: &mut Criterion) {
     c.bench_function("medium_response_jiter_value_owned", |bench| {
         bench.iter(|| {
             let v = scratch
-                .parse_owned(black_box(json_data), false, PartialMode::Off)
+                .parse_owned(black_box(json_data), false, PartialMode::Off, false)
                 .unwrap();
             black_box(v)
         });

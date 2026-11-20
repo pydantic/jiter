@@ -145,3 +145,18 @@ fn test_string_cache_pool() {
         jiter::cache_clear();
     });
 }
+
+#[test]
+fn test_python_parse_jsonc() {
+    let json = br#"{"a": [1, /* c */ 2.5, "s"], // c
+        "b": null}"#;
+    Python::attach(|py| {
+        let parse = PythonParse {
+            allow_comments: true,
+            ..Default::default()
+        };
+        let v = parse.python_parse(py, json).unwrap();
+        assert_eq!(v.to_string(), "{'a': [1, 2.5, 's'], 'b': None}");
+        assert!(PythonParse::default().python_parse(py, json).is_err());
+    });
+}

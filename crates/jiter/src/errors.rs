@@ -171,7 +171,7 @@ macro_rules! json_err {
     };
 }
 
-use crate::Jiter;
+use crate::{Jiter, Whitespace};
 pub(crate) use json_err;
 
 pub(crate) const DEFAULT_RECURSION_LIMIT: u8 = 200;
@@ -240,11 +240,11 @@ impl JiterError {
         Self { error_type, index }
     }
 
-    pub fn get_position(&self, jiter: &Jiter) -> LinePosition {
+    pub fn get_position<W: Whitespace>(&self, jiter: &Jiter<'_, W>) -> LinePosition {
         jiter.error_position(self.index)
     }
 
-    pub fn description(&self, jiter: &Jiter) -> String {
+    pub fn description<W: Whitespace>(&self, jiter: &Jiter<'_, W>) -> String {
         let position = self.get_position(jiter);
         format!("{} at {}", self.error_type, position)
     }

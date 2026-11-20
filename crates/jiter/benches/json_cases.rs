@@ -22,7 +22,7 @@ use corpus::{TAGS, find_corpus_root, load_cases};
 fn jiter_value<'j>(scratch: &mut JsonValueScratch<'j>, documents: &[&'j [u8]]) -> usize {
     let mut parsed = 0;
     for json_data in documents {
-        if let Ok(value) = scratch.parse(black_box(json_data), false, PartialMode::Off) {
+        if let Ok(value) = scratch.parse(black_box(json_data), false, PartialMode::Off, false) {
             black_box(&value);
             parsed += 1;
         }

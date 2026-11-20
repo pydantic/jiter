@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use jiter::serde::{Error, JiterDeserializer, from_slice, from_str};
+use jiter::serde::{Error, JiterDeserializer, from_slice, from_slice_jsonc, from_str, from_str_jsonc};
 
 fn de_f64_inf_nan(s: &str) -> f64 {
     let mut de = JiterDeserializer::new(s.as_bytes()).with_allow_inf_nan();
@@ -521,4 +521,45 @@ proptest! {
             "mismatch for {json}\n  jiter: {jiter:?}\n  serde: {serde:?}"
         );
     }
+}
+
+#[test]
+fn jsonc() {
+    #[derive(Deserialize, Debug, PartialEq)]
+    struct Config<'a> {
+        name: &'a str,
+        values: Vec<u8>,
+        #[serde(default)]
+        skipped: Option<u8>,
+    }
+    let data = r#"
+        // a config file
+        {
+            "name": "jiter", /* borrowed */
+            "values": [1, /* two */ 2, 3,], // not allowed: trailing comma
+        }
+    "#;
+    assert!(from_str_jsonc::<Config>(data).is_err());
+    let data = r#"
+        // a config file
+        {
+            "name": "jiter", /* borrowed */
+            "ignored": {"deep": [1, /* c */ 2]}, // skipped via ignored_any
+            "values": [1, /* two */ 2, 3] // three values
+        }
+    "#;
+    let expected = Config {
+        name: "jiter",
+        values: vec![1, 2, 3],
+        skipped: None,
+    };
+    assert_eq!(from_str_jsonc::<Config>(data).unwrap(), expected);
+    assert_eq!(from_slice_jsonc::<Config>(data.as_bytes()).unwrap(), expected);
+    assert!(from_str::<Config>(data).is_err());
+
+    let mut de = JiterDeserializer::new(b"/* c */ NaN // c")
+        .with_allow_inf_nan()
+        .with_allow_comments();
+    assert!(f64::deserialize(&mut de).unwrap().is_nan());
+    de.finish().unwrap();
 }

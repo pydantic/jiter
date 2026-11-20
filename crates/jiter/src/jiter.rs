@@ -1,6 +1,6 @@
 use crate::errors::{DEFAULT_RECURSION_LIMIT, JiterError, JsonType, LinePosition, json_error};
 use crate::number_decoder::{NumberAny, NumberFloat, NumberInt, NumberRange};
-use crate::parse::{Parser, Peek};
+use crate::parse::{Json, Jsonc, Parser, Peek, Whitespace};
 use crate::string_decoder::{StringDecoder, StringDecoderRange, Tape};
 use crate::value::{JsonValue, take_value_borrowed, take_value_owned, take_value_skip};
 use crate::{JsonError, JsonErrorType, PartialMode};
@@ -9,15 +9,15 @@ pub type JiterResult<T> = Result<T, JiterError>;
 
 /// A JSON iterator.
 #[derive(Debug)]
-pub struct Jiter<'j> {
+pub struct Jiter<'j, W: Whitespace = Json> {
     data: &'j [u8],
-    parser: Parser<'j>,
+    parser: Parser<'j, W>,
     tape: Tape,
     allow_inf_nan: bool,
     allow_partial_strings: bool,
 }
 
-impl Clone for Jiter<'_> {
+impl<W: Whitespace> Clone for Jiter<'_, W> {
     /// Clone a `Jiter`. Like the default implementation, but a new empty `tape` is used.
     fn clone(&self) -> Self {
         Self {
@@ -60,6 +60,19 @@ impl<'j> Jiter<'j> {
         }
     }
 
+    /// Allow `// line` and `/* block */` comments.
+    pub fn with_allow_comments(self) -> Jiter<'j, Jsonc> {
+        Jiter {
+            data: self.data,
+            parser: self.parser.into_whitespace(),
+            tape: self.tape,
+            allow_inf_nan: self.allow_inf_nan,
+            allow_partial_strings: self.allow_partial_strings,
+        }
+    }
+}
+
+impl<'j, W: Whitespace> Jiter<'j, W> {
     /// Returns the tape, for [`Jiter::with_tape`] on the next document.
     pub fn into_tape(self) -> Vec<u8> {
         self.tape
