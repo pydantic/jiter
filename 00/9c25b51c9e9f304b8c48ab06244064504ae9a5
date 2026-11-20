@@ -1,0 +1,23 @@
+crates/jiter/src/jiter.rs
+  s_d4a691b07897c1::t_bf98dc0bc9af42 259-266,271
+crates/jiter/src/value.rs
+  s_d4a691b07897c1::t_bf98dc0bc9af42 472-474
+crates/jiter/tests/main.rs
+  s_d4a691b07897c1::t_bf98dc0bc9af42 2173-2205
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "009c25b51c9e9f304b8c48ab06244064504ae9a5",
+  "prompts": {},
+  "sessions": {
+    "s_d4a691b07897c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1f3a8-88c7-7fa2-9bb8-6aca02aa037a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Alex Hall <alex.mojaki@gmail.com>"
+    }
+  }
+}
