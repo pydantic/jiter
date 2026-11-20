@@ -2170,3 +2170,36 @@ fn jiter_with_tape_reuses_buffer() {
     jiter.finish().unwrap();
     assert_eq!(jiter.into_tape().capacity(), 64);
 }
+
+#[test]
+fn test_known_value_recursion_budget() {
+    for json in ["null", "1", r#""[{}]""#, "[]", "{}"] {
+        let mut jiter = Jiter::new(json.as_bytes());
+        let peek = jiter.peek().unwrap();
+        jiter.known_value_with_recursion_limit(peek, 0).unwrap();
+        jiter.finish().unwrap();
+    }
+    for limit in 0..=3 {
+        let valid = format!("{}1{}", "[".repeat(limit.into()), "]".repeat(limit.into()));
+        let mut jiter = Jiter::new(valid.as_bytes());
+        let peek = jiter.peek().unwrap();
+        jiter.known_value_with_recursion_limit(peek, limit).unwrap();
+        jiter.finish().unwrap();
+
+        let invalid = format!("[{valid}]");
+        let mut jiter = Jiter::new(invalid.as_bytes());
+        let peek = jiter.peek().unwrap();
+        let error = jiter.known_value_with_recursion_limit(peek, limit).unwrap_err();
+        assert_eq!(
+            error.error_type,
+            JiterErrorType::JsonError(JsonErrorType::RecursionLimitExceeded)
+        );
+    }
+    let mut jiter = Jiter::new(br#"{"a":[]}"#);
+    let peek = jiter.peek().unwrap();
+    jiter.known_value_with_recursion_limit(peek, 1).unwrap();
+    jiter.finish().unwrap();
+    let mut jiter = Jiter::new(br#"{"a":[1]}"#);
+    let peek = jiter.peek().unwrap();
+    assert!(jiter.known_value_with_recursion_limit(peek, 1).is_err());
+}

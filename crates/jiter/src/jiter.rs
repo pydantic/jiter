@@ -256,11 +256,19 @@ impl<'j> Jiter<'j> {
     /// # Arguments
     /// - `peek`: The [Peek] of the next JSON value.
     pub fn known_value(&mut self, peek: Peek) -> JiterResult<JsonValue<'j>> {
+        self.known_value_with_recursion_limit(peek, DEFAULT_RECURSION_LIMIT)
+    }
+
+    /// Parse a known value with a recursion budget relative to this value.
+    ///
+    /// This is useful after entering outer containers incrementally. A budget of
+    /// zero permits scalars and empty containers, but no nonempty containers.
+    pub fn known_value_with_recursion_limit(&mut self, peek: Peek, recursion_limit: u8) -> JiterResult<JsonValue<'j>> {
         take_value_borrowed(
             peek,
             &mut self.parser,
             &mut self.tape,
-            DEFAULT_RECURSION_LIMIT,
+            recursion_limit,
             self.allow_inf_nan,
             PartialMode::Off,
         )
