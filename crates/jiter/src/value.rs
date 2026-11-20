@@ -790,6 +790,9 @@ fn take_value_skip_recursive(
     recursion_limit: u8,
     allow_inf_nan: bool,
 ) -> JsonResult<()> {
+    if recursion_limit == 0 {
+        return Err(json_error!(RecursionLimitExceeded, parser.index));
+    }
     let mut recursion_stack = bitvec::bitarr![0; 256];
     let recursion_limit: usize = recursion_limit.into();
     let mut current_recursion_depth = 0;

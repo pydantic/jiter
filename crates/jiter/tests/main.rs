@@ -2219,3 +2219,35 @@ fn test_next_value_recursion_budget_after_entering_container() {
     assert!(Jiter::new(b"[[1]]").next_value_with_recursion_limit(1).is_err());
     assert!(Jiter::new(b"[1,]").next_value_with_recursion_limit(1).is_err());
 }
+
+#[test]
+fn test_known_skip_recursion_budget() {
+    for (json, limit, valid) in [
+        ("null", 0, true),
+        (r#""[{}]""#, 0, true),
+        ("[]", 0, true),
+        ("{}", 0, true),
+        ("[ ]", 0, true),
+        ("[1]", 0, false),
+        (r#"{"a":1}"#, 0, false),
+        ("[1]", 1, true),
+        ("[[]]", 1, true),
+        ("[[1]]", 1, false),
+        (r#"{"a":[]}"#, 1, true),
+        (r#"{"a":[1]}"#, 1, false),
+        (r#"{"a":[1]}"#, 2, true),
+    ] {
+        let mut jiter = Jiter::new(json.as_bytes());
+        let peek = jiter.peek().unwrap();
+        let result = jiter.known_skip_with_recursion_limit(peek, limit);
+        assert_eq!(result.is_ok(), valid, "{json} with budget {limit}");
+        if let Err(error) = result {
+            assert_eq!(
+                error.error_type,
+                JiterErrorType::JsonError(JsonErrorType::RecursionLimitExceeded)
+            );
+        } else {
+            jiter.finish().unwrap();
+        }
+    }
+}

@@ -298,11 +298,19 @@ impl<'j> Jiter<'j> {
     /// # Arguments
     /// - `peek`: The [Peek] of the next JSON value.
     pub fn known_skip(&mut self, peek: Peek) -> JiterResult<()> {
+        self.known_skip_with_recursion_limit(peek, DEFAULT_RECURSION_LIMIT)
+    }
+
+    /// Skip a known value with a recursion budget relative to this value.
+    ///
+    /// A budget of zero permits scalars and empty containers only. Like
+    /// [`Self::next_skip`], this does not validate raw UTF-8 in strings.
+    pub fn known_skip_with_recursion_limit(&mut self, peek: Peek, recursion_limit: u8) -> JiterResult<()> {
         take_value_skip(
             peek,
             &mut self.parser,
             &mut self.tape,
-            DEFAULT_RECURSION_LIMIT,
+            recursion_limit,
             self.allow_inf_nan,
         )
         .map_err(Into::into)
