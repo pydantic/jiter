@@ -2170,3 +2170,107 @@ fn jiter_with_tape_reuses_buffer() {
     jiter.finish().unwrap();
     assert_eq!(jiter.into_tape().capacity(), 64);
 }
+
+#[test]
+fn test_known_value_recursion_budget() {
+    for json in ["null", "1", r#""[{}]""#, "[]", "{}"] {
+        let mut jiter = Jiter::new(json.as_bytes());
+        let peek = jiter.peek().unwrap();
+        jiter.known_value_with_recursion_limit(peek, 0).unwrap();
+        jiter.finish().unwrap();
+    }
+    for limit in 0..=3 {
+        let valid = format!("{}1{}", "[".repeat(limit.into()), "]".repeat(limit.into()));
+        let mut jiter = Jiter::new(valid.as_bytes());
+        let peek = jiter.peek().unwrap();
+        jiter.known_value_with_recursion_limit(peek, limit).unwrap();
+        jiter.finish().unwrap();
+
+        let invalid = format!("[{valid}]");
+        let mut jiter = Jiter::new(invalid.as_bytes());
+        let peek = jiter.peek().unwrap();
+        let error = jiter.known_value_with_recursion_limit(peek, limit).unwrap_err();
+        assert_eq!(
+            error.error_type,
+            JiterErrorType::JsonError(JsonErrorType::RecursionLimitExceeded)
+        );
+    }
+    let mut jiter = Jiter::new(br#"{"a":[]}"#);
+    let peek = jiter.peek().unwrap();
+    jiter.known_value_with_recursion_limit(peek, 1).unwrap();
+    jiter.finish().unwrap();
+    let mut jiter = Jiter::new(br#"{"a":[1]}"#);
+    let peek = jiter.peek().unwrap();
+    assert!(jiter.known_value_with_recursion_limit(peek, 1).is_err());
+}
+
+#[test]
+fn test_next_value_recursion_budget_after_entering_container() {
+    let mut jiter = Jiter::new(b"[[1],[]]");
+    assert_eq!(jiter.next_array().unwrap(), Some(Peek::Array));
+    assert_eq!(
+        jiter.next_value_with_recursion_limit(1).unwrap(),
+        JsonValue::parse(b"[1]", false).unwrap()
+    );
+    assert_eq!(jiter.array_step().unwrap(), Some(Peek::Array));
+    jiter.next_value_with_recursion_limit(0).unwrap();
+    assert_eq!(jiter.array_step().unwrap(), None);
+    jiter.finish().unwrap();
+    assert!(Jiter::new(b"[[1]]").next_value_with_recursion_limit(1).is_err());
+    assert!(Jiter::new(b"[1,]").next_value_with_recursion_limit(1).is_err());
+}
+
+#[test]
+fn test_known_skip_recursion_budget() {
+    for (json, limit, valid) in [
+        ("null", 0, true),
+        (r#""[{}]""#, 0, true),
+        ("[]", 0, true),
+        ("{}", 0, true),
+        ("[ ]", 0, true),
+        ("[1]", 0, false),
+        (r#"{"a":1}"#, 0, false),
+        ("[1]", 1, true),
+        ("[[]]", 1, true),
+        ("[[1]]", 1, false),
+        (r#"{"a":[]}"#, 1, true),
+        (r#"{"a":[1]}"#, 1, false),
+        (r#"{"a":[1]}"#, 2, true),
+    ] {
+        let mut jiter = Jiter::new(json.as_bytes());
+        let peek = jiter.peek().unwrap();
+        let result = jiter.known_skip_with_recursion_limit(peek, limit);
+        assert_eq!(result.is_ok(), valid, "{json} with budget {limit}");
+        if let Err(error) = result {
+            assert_eq!(
+                error.error_type,
+                JiterErrorType::JsonError(JsonErrorType::RecursionLimitExceeded)
+            );
+        } else {
+            jiter.finish().unwrap();
+        }
+    }
+}
+
+#[test]
+fn test_next_skip_recursion_budget_after_entering_container() {
+    let mut jiter = Jiter::new(b"[[1],{}]");
+    assert_eq!(jiter.next_array().unwrap(), Some(Peek::Array));
+    jiter.next_skip_with_recursion_limit(1).unwrap();
+    assert_eq!(jiter.array_step().unwrap(), Some(Peek::Object));
+    jiter.next_skip_with_recursion_limit(0).unwrap();
+    assert_eq!(jiter.array_step().unwrap(), None);
+    jiter.finish().unwrap();
+    assert!(Jiter::new(b"[[1]]").next_skip_with_recursion_limit(1).is_err());
+    assert!(Jiter::new(b"[1,]").next_skip_with_recursion_limit(1).is_err());
+
+    let deepest = format!("{}1{}", "[".repeat(255), "]".repeat(255));
+    let mut jiter = Jiter::new(deepest.as_bytes());
+    jiter.next_skip_with_recursion_limit(255).unwrap();
+    jiter.finish().unwrap();
+    assert!(
+        Jiter::new(deepest.as_bytes())
+            .next_skip_with_recursion_limit(254)
+            .is_err()
+    );
+}

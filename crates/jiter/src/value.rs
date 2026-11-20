@@ -469,6 +469,9 @@ fn take_value_recursive<'j, 's, const REUSE: bool>(
     stacks: &mut Stacks<'s>,
     create_cow: &impl Fn(StringOutput<'_, 'j>) -> Cow<'s, str>,
 ) -> JsonResult<JsonValue<'s>> {
+    if recursion_limit == 0 {
+        return Err(json_error!(RecursionLimitExceeded, parser.index));
+    }
     let recursion_limit: usize = recursion_limit.into();
 
     // Every array in the document shares one stack of elements, every object one stack of
@@ -787,6 +790,9 @@ fn take_value_skip_recursive(
     recursion_limit: u8,
     allow_inf_nan: bool,
 ) -> JsonResult<()> {
+    if recursion_limit == 0 {
+        return Err(json_error!(RecursionLimitExceeded, parser.index));
+    }
     let mut recursion_stack = bitvec::bitarr![0; 256];
     let recursion_limit: usize = recursion_limit.into();
     let mut current_recursion_depth = 0;
