@@ -1,4 +1,5 @@
 use std::fmt;
+use std::marker::PhantomData;
 use std::ops::Range;
 
 use crate::errors::{JsonResult, LinePosition, json_err};
@@ -58,15 +59,96 @@ static NULL_REST: [u8; 3] = *b"ull";
 static NAN_REST: [u8; 2] = *b"aN";
 static INFINITY_REST: [u8; 7] = *b"nfinity";
 
-#[derive(Debug, Clone)]
-pub(crate) struct Parser<'j> {
-    data: &'j [u8],
-    pub index: usize,
+/// How whitespace between tokens is skipped, [`Json`] or [`Jsonc`].
+pub trait Whitespace: fmt::Debug + Clone {
+    /// Skip whitespace from `index`, returning the next byte.
+    fn eat_whitespace(data: &[u8], index: &mut usize) -> Option<u8>;
 }
 
-impl<'j> Parser<'j> {
+/// Strict JSON, the default.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Json;
+
+/// JSON with `// line` and `/* block */` comments.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Jsonc;
+
+impl Whitespace for Json {
+    #[inline(always)]
+    fn eat_whitespace(data: &[u8], index: &mut usize) -> Option<u8> {
+        while let Some(next) = data.get(*index) {
+            match next {
+                b' ' | b'\r' | b'\t' | b'\n' => *index += 1,
+                _ => return Some(*next),
+            }
+        }
+        None
+    }
+}
+
+impl Whitespace for Jsonc {
+    #[inline(always)]
+    fn eat_whitespace(data: &[u8], index: &mut usize) -> Option<u8> {
+        loop {
+            match Json::eat_whitespace(data, index)? {
+                // `/` can't start a value, so if it's not a comment the caller errors on it
+                b'/' if skip_comment(data, index) => {}
+                next => return Some(next),
+            }
+        }
+    }
+}
+
+/// Skip the comment starting at `index`, false if it's not a terminated comment.
+#[cold]
+#[inline(never)]
+fn skip_comment(data: &[u8], index: &mut usize) -> bool {
+    let start = *index + 2;
+    match data.get(*index + 1) {
+        Some(b'/') => {
+            *index = match data[start..].iter().position(|&b| b == b'\n') {
+                Some(offset) => start + offset,
+                None => data.len(),
+            };
+            true
+        }
+        Some(b'*') => {
+            let mut i = start;
+            while let Some(offset) = data.get(i..).and_then(|rest| rest.iter().position(|&b| b == b'*')) {
+                i += offset + 1;
+                if data.get(i) == Some(&b'/') {
+                    *index = i + 1;
+                    return true;
+                }
+            }
+            false
+        }
+        _ => false,
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct Parser<'j, W: Whitespace = Json> {
+    data: &'j [u8],
+    pub index: usize,
+    _whitespace: PhantomData<W>,
+}
+
+impl<'j, W: Whitespace> Parser<'j, W> {
     pub fn new(data: &'j [u8]) -> Self {
-        Self { data, index: 0 }
+        Self {
+            data,
+            index: 0,
+            _whitespace: PhantomData,
+        }
+    }
+
+    pub fn into_whitespace<W2: Whitespace>(self) -> Parser<'j, W2> {
+        Parser {
+            data: self.data,
+            index: self.index,
+            _whitespace: PhantomData,
+        }
     }
 
     #[allow(dead_code)]
@@ -251,13 +333,7 @@ impl<'j> Parser<'j> {
     }
 
     fn eat_whitespace(&mut self) -> Option<u8> {
-        while let Some(next) = self.data.get(self.index) {
-            match next {
-                b' ' | b'\r' | b'\t' | b'\n' => self.index += 1,
-                _ => return Some(*next),
-            }
-        }
-        None
+        W::eat_whitespace(self.data, &mut self.index)
     }
 }
 

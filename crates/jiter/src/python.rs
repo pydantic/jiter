@@ -10,7 +10,7 @@ use smallvec::SmallVec;
 
 use crate::errors::{DEFAULT_RECURSION_LIMIT, JsonError, JsonResult, json_err, json_error};
 use crate::number_decoder::{AbstractNumberDecoder, NumberAny, NumberRange};
-use crate::parse::{Parser, Peek};
+use crate::parse::{Json, Jsonc, Parser, Peek, Whitespace};
 use crate::py_lossless_float::{FloatMode, get_decimal_type};
 use crate::py_string_cache::{
     StringCacheAll, StringCacheGuard, StringCacheKeys, StringCacheMode, StringMaybeCache, StringNoCache,
@@ -23,6 +23,8 @@ use crate::{JsonErrorType, LosslessFloat, PartialMode};
 pub struct PythonParse {
     /// Whether to allow `(-)Infinity` and `NaN` values.
     pub allow_inf_nan: bool,
+    /// Whether to allow `// line` and `/* block */` comments.
+    pub allow_comments: bool,
     /// Whether to cache strings to avoid constructing new Python objects,
     pub cache_mode: StringCacheMode,
     /// Whether to allow partial JSON data.
@@ -48,8 +50,8 @@ impl PythonParse {
     /// A [PyObject](https://docs.rs/pyo3/latest/pyo3/type.PyObject.html) representing the parsed JSON value.
     pub fn python_parse<'py>(&self, py: Python<'py>, json_data: &[u8]) -> JsonResult<Bound<'py, PyAny>> {
         macro_rules! ppp {
-            ($string_cache:ident, $key_check:ident, $parse_number:ident) => {
-                PythonParser::<$string_cache, $key_check, $parse_number>::parse(
+            ($whitespace:ident, $string_cache:ident, $key_check:ident, $parse_number:ident) => {
+                PythonParser::<$whitespace, $string_cache, $key_check, $parse_number>::parse(
                     py,
                     json_data,
                     self.allow_inf_nan,
@@ -58,22 +60,37 @@ impl PythonParse {
             };
         }
         macro_rules! ppp_group {
-            ($string_cache:ident) => {
+            ($whitespace:ident, $string_cache:ident) => {
                 match (self.catch_duplicate_keys, self.float_mode) {
-                    (true, FloatMode::Float) => ppp!($string_cache, DuplicateKeyCheck, ParseNumberLossy),
-                    (true, FloatMode::Decimal) => ppp!($string_cache, DuplicateKeyCheck, ParseNumberDecimal),
-                    (true, FloatMode::LosslessFloat) => ppp!($string_cache, DuplicateKeyCheck, ParseNumberLossless),
-                    (false, FloatMode::Float) => ppp!($string_cache, NoopKeyCheck, ParseNumberLossy),
-                    (false, FloatMode::Decimal) => ppp!($string_cache, NoopKeyCheck, ParseNumberDecimal),
-                    (false, FloatMode::LosslessFloat) => ppp!($string_cache, NoopKeyCheck, ParseNumberLossless),
+                    (true, FloatMode::Float) => ppp!($whitespace, $string_cache, DuplicateKeyCheck, ParseNumberLossy),
+                    (true, FloatMode::Decimal) => {
+                        ppp!($whitespace, $string_cache, DuplicateKeyCheck, ParseNumberDecimal)
+                    }
+                    (true, FloatMode::LosslessFloat) => {
+                        ppp!($whitespace, $string_cache, DuplicateKeyCheck, ParseNumberLossless)
+                    }
+                    (false, FloatMode::Float) => ppp!($whitespace, $string_cache, NoopKeyCheck, ParseNumberLossy),
+                    (false, FloatMode::Decimal) => ppp!($whitespace, $string_cache, NoopKeyCheck, ParseNumberDecimal),
+                    (false, FloatMode::LosslessFloat) => {
+                        ppp!($whitespace, $string_cache, NoopKeyCheck, ParseNumberLossless)
+                    }
+                }
+            };
+        }
+        macro_rules! ppp_cache {
+            ($whitespace:ident) => {
+                match self.cache_mode {
+                    StringCacheMode::All => ppp_group!($whitespace, StringCacheAll),
+                    StringCacheMode::Keys => ppp_group!($whitespace, StringCacheKeys),
+                    StringCacheMode::None => ppp_group!($whitespace, StringNoCache),
                 }
             };
         }
 
-        match self.cache_mode {
-            StringCacheMode::All => ppp_group!(StringCacheAll),
-            StringCacheMode::Keys => ppp_group!(StringCacheKeys),
-            StringCacheMode::None => ppp_group!(StringNoCache),
+        if self.allow_comments {
+            ppp_cache!(Jsonc)
+        } else {
+            ppp_cache!(Json)
         }
     }
 }
@@ -83,11 +100,11 @@ pub fn map_json_error(json_data: &[u8], json_error: &JsonError) -> PyErr {
     PyValueError::new_err(json_error.description(json_data))
 }
 
-struct PythonParser<'j, StringCache, KeyCheck, ParseNumber> {
+struct PythonParser<'j, W: Whitespace, StringCache, KeyCheck, ParseNumber> {
     _string_cache: PhantomData<StringCache>,
     _key_check: PhantomData<KeyCheck>,
     _parse_number: PhantomData<ParseNumber>,
-    parser: Parser<'j>,
+    parser: Parser<'j, W>,
     tape: Tape,
     string_cache: StringCacheGuard,
     recursion_limit: u8,
@@ -95,8 +112,8 @@ struct PythonParser<'j, StringCache, KeyCheck, ParseNumber> {
     partial_mode: PartialMode,
 }
 
-impl<StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: MaybeParseNumber>
-    PythonParser<'_, StringCache, KeyCheck, ParseNumber>
+impl<W: Whitespace, StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: MaybeParseNumber>
+    PythonParser<'_, W, StringCache, KeyCheck, ParseNumber>
 {
     fn parse<'py>(
         py: Python<'py>,
@@ -108,7 +125,7 @@ impl<StringCache: StringMaybeCache, KeyCheck: MaybeKeyCheck, ParseNumber: MaybeP
             _string_cache: PhantomData::<StringCache>,
             _key_check: PhantomData::<KeyCheck>,
             _parse_number: PhantomData::<ParseNumber>,
-            parser: Parser::new(json_data),
+            parser: Parser::<W>::new(json_data),
             tape: Tape::default(),
             string_cache: StringCacheGuard::default(),
             recursion_limit: DEFAULT_RECURSION_LIMIT,
@@ -288,9 +305,9 @@ impl MaybeKeyCheck for DuplicateKeyCheck {
 }
 
 trait MaybeParseNumber {
-    fn parse_number<'py>(
+    fn parse_number<'py, W: Whitespace>(
         py: Python<'py>,
-        parser: &mut Parser,
+        parser: &mut Parser<'_, W>,
         peek: Peek,
         allow_inf_nan: bool,
     ) -> JsonResult<Bound<'py, PyAny>>;
@@ -299,9 +316,9 @@ trait MaybeParseNumber {
 struct ParseNumberLossy;
 
 impl MaybeParseNumber for ParseNumberLossy {
-    fn parse_number<'py>(
+    fn parse_number<'py, W: Whitespace>(
         py: Python<'py>,
-        parser: &mut Parser,
+        parser: &mut Parser<'_, W>,
         peek: Peek,
         allow_inf_nan: bool,
     ) -> JsonResult<Bound<'py, PyAny>> {
@@ -324,9 +341,9 @@ impl MaybeParseNumber for ParseNumberLossy {
 struct ParseNumberLossless;
 
 impl MaybeParseNumber for ParseNumberLossless {
-    fn parse_number<'py>(
+    fn parse_number<'py, W: Whitespace>(
         py: Python<'py>,
-        parser: &mut Parser,
+        parser: &mut Parser<'_, W>,
         peek: Peek,
         allow_inf_nan: bool,
     ) -> JsonResult<Bound<'py, PyAny>> {
@@ -360,9 +377,9 @@ impl MaybeParseNumber for ParseNumberLossless {
 struct ParseNumberDecimal;
 
 impl MaybeParseNumber for ParseNumberDecimal {
-    fn parse_number<'py>(
+    fn parse_number<'py, W: Whitespace>(
         py: Python<'py>,
-        parser: &mut Parser,
+        parser: &mut Parser<'_, W>,
         peek: Peek,
         allow_inf_nan: bool,
     ) -> JsonResult<Bound<'py, PyAny>> {
