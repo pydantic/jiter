@@ -23,7 +23,7 @@ mod jiter_python {
 
     use super::get_jiter_version;
 
-    #[allow(clippy::fn_params_excessive_bools)]
+    #[allow(clippy::fn_params_excessive_bools, clippy::too_many_arguments)]
     #[pyfunction(
         signature = (
             json_data,
@@ -34,6 +34,7 @@ mod jiter_python {
             partial_mode=PartialMode::Off,
             catch_duplicate_keys=false,
             float_mode=FloatMode::Float,
+            allow_comments=false,
         )
     )]
     pub fn from_json<'py>(
@@ -44,9 +45,11 @@ mod jiter_python {
         partial_mode: PartialMode,
         catch_duplicate_keys: bool,
         float_mode: FloatMode,
+        allow_comments: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
         let parse_builder = PythonParse {
             allow_inf_nan,
+            allow_comments,
             cache_mode,
             partial_mode,
             catch_duplicate_keys,

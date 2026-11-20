@@ -11,10 +11,10 @@ use num_bigint::BigInt;
 
 use jiter::{
     Jiter, JiterErrorType, JiterResult, JsonErrorType, JsonObject, JsonType, JsonValue, JsonValueScratch, LinePosition,
-    NumberAny, NumberFloat, NumberInt, PartialMode, Peek,
+    NumberAny, NumberFloat, NumberInt, PartialMode, Peek, Whitespace,
 };
 
-fn json_vec(jiter: &mut Jiter, peek: Option<Peek>) -> JiterResult<Vec<String>> {
+fn json_vec<W: Whitespace>(jiter: &mut Jiter<'_, W>, peek: Option<Peek>) -> JiterResult<Vec<String>> {
     let mut v = Vec::new();
     let peek = match peek {
         Some(peek) => peek,
@@ -73,7 +73,7 @@ fn json_vec(jiter: &mut Jiter, peek: Option<Peek>) -> JiterResult<Vec<String>> {
     Ok(v)
 }
 
-fn display_number(peek: Peek, jiter: &mut Jiter) -> JiterResult<String> {
+fn display_number<W: Whitespace>(peek: Peek, jiter: &mut Jiter<'_, W>) -> JiterResult<String> {
     let position = jiter.current_position().short();
     let number = jiter.known_number(peek)?;
     let s = match number {
@@ -229,6 +229,82 @@ single_tests! {
     floats_error: err => "06", "InvalidNumber @ 1:2";
     unexpect_value: err => "[\u{16}\u{8}", "ExpectedSomeValue @ 1:2";
     unexpect_value_xx: err => "xx", "ExpectedSomeValue @ 1:1";
+}
+
+macro_rules! jsonc_expect_ok_or_error {
+    ($name:ident, ok, $json:literal, $expected:expr) => {
+        paste::item! {
+            #[allow(non_snake_case)]
+            #[test]
+            fn [< jsonc_ok__ $name >]() {
+                let mut jiter = Jiter::new($json.as_bytes()).with_allow_comments();
+                let elements = json_vec(&mut jiter, None).unwrap().join(", ");
+                assert_eq!(elements, $expected);
+                jiter.finish().unwrap();
+
+                // comments are invalid without `with_allow_comments`
+                let mut jiter = Jiter::new($json.as_bytes());
+                assert!(json_vec(&mut jiter, None).and_then(|_| jiter.finish()).is_err());
+            }
+        }
+    };
+
+    ($name:ident, err, $json:literal, $expected_error:literal) => {
+        paste::item! {
+            #[allow(non_snake_case)]
+            #[test]
+            fn [< jsonc_xerror__ $name >]() {
+                let mut jiter = Jiter::new($json.as_bytes()).with_allow_comments();
+                let e = json_vec(&mut jiter, None).and_then(|_| jiter.finish()).unwrap_err();
+                let JiterErrorType::JsonError(error_type) = e.error_type else {
+                    panic!("unexpected error type: {:?}", e.error_type);
+                };
+                let actual_error = format!("{:?} @ {}", error_type, jiter.error_position(e.index).short());
+                assert_eq!(actual_error, $expected_error);
+            }
+        }
+    };
+}
+
+macro_rules! jsonc_tests {
+    ($($name:ident: $ok_or_err:ident => $input:literal, $expected:literal;)*) => {
+        $(
+            jsonc_expect_ok_or_error!($name, $ok_or_err, $input, $expected);
+        )*
+    }
+}
+
+jsonc_tests! {
+    line_after: ok => "1 // c", "Int(1) @ 1:1";
+    line_before: ok => "// c\n1", "Int(1) @ 2:1";
+    line_crlf: ok => "1 // c\r\n", "Int(1) @ 1:1";
+    line_empty: ok => "1 //", "Int(1) @ 1:1";
+    block_before: ok => "/* c */ 1", "Int(1) @ 1:9";
+    block_empty: ok => "/**/1", "Int(1) @ 1:5";
+    block_doc: ok => "/** doc **/ 1", "Int(1) @ 1:13";
+    block_stars_slashes: ok => "/* a * b / c */ 1", "Int(1) @ 1:17";
+    block_multiline: ok => "/* a\nb\n*/ 1", "Int(1) @ 3:4";
+    block_line_inside: ok => "/* // */ 1", "Int(1) @ 1:10";
+    line_block_inside: ok => "1 // /* c", "Int(1) @ 1:1";
+    block_no_nesting: ok => "[1 /* /* */, 2]", "[ @ 1:1, Int(1) @ 1:2, Int(2) @ 1:14, ]";
+    array: ok => "[1 /* a */, /* b */ 2]", "[ @ 1:1, Int(1) @ 1:2, Int(2) @ 1:21, ]";
+    array_empty: ok => "[ /* c */ ]", "[ @ 1:1, ]";
+    object: ok => r#"{/* a */"k"/* b */:/* c */true/* d */}"#, "{ @ 1:1, Key(k), true @ 1:27, }";
+    object_empty: ok => "{ // c\n}", "{ @ 1:1, }";
+    number_adjacent: ok => "[1//c\n,2]", "[ @ 1:1, Int(1) @ 1:2, Int(2) @ 2:2, ]";
+    float_adjacent: ok => "-1.5/**/", "Float(-1.5) @ 1:1";
+    literal_adjacent: ok => "[true/**/,null]", "[ @ 1:1, true @ 1:2, null @ 1:11, ]";
+    string_line: ok => r#""//" // c"#, "String(//) @ 1:1";
+    string_block: ok => r#""/* x */" /* c */"#, "String(/* x */) @ 1:1";
+    unterminated: err => "/* c", "ExpectedSomeValue @ 1:1";
+    unterminated_array: err => "[1 /* c ]", "ExpectedListCommaOrEnd @ 1:4";
+    unterminated_trailing: err => "1 /* c *", "TrailingCharacters @ 1:3";
+    slash: err => "/", "ExpectedSomeValue @ 1:1";
+    slash_array: err => "[1 / 2]", "ExpectedListCommaOrEnd @ 1:4";
+    slash_colon: err => r#"{"a" /x: 1}"#, "ExpectedColon @ 1:6";
+    slash_key: err => r#"{/x "a": 1}"#, "KeyMustBeAString @ 1:2";
+    trailing_comma: err => "[1, /* c */]", "TrailingComma @ 1:12";
+    only_comment: err => "// c", "EofWhileParsingValue @ 1:4";
 }
 
 #[cfg(feature = "num-bigint")]
@@ -1255,7 +1331,7 @@ fn jiter_invalid_numbers_expected_some_value() {
 
 fn value_owned() -> JsonValue<'static> {
     let s = r#"  { "int": 1, "const": true, "float": 1.2, "array": [1, false, null]}"#.to_string();
-    JsonValue::parse_owned(s.as_bytes(), false, PartialMode::Off).unwrap()
+    JsonValue::parse_owned(s.as_bytes(), false, PartialMode::Off, false).unwrap()
 }
 
 fn get_key<'a, 'j>(o: &'a JsonObject<'j>, key: &str) -> Option<&'a JsonValue<'j>> {
@@ -1790,6 +1866,103 @@ fn jiter_value_invalid_long_float() {
 }
 
 #[test]
+fn jiter_allow_comments() {
+    let json = br#"
+        // config
+        {
+            "name": "jiter", /* the name */
+            "nums": [1, /* two */ 2.5],
+            "nan": NaN // needs allow_inf_nan
+        }
+    "#;
+    let mut jiter = Jiter::new(json).with_allow_inf_nan().with_allow_comments();
+    assert_eq!(jiter.next_object().unwrap(), Some("name"));
+    assert_eq!(jiter.next_str().unwrap(), "jiter");
+    assert_eq!(jiter.next_key().unwrap(), Some("nums"));
+    assert_eq!(jiter.next_array().unwrap(), Some(Peek::new(b'1')));
+    assert_eq!(jiter.next_int().unwrap(), NumberInt::Int(1));
+    let peek = jiter.array_step().unwrap().unwrap();
+    assert_eq!(jiter.known_float(peek).unwrap(), 2.5);
+    assert_eq!(jiter.array_step().unwrap(), None);
+    assert_eq!(jiter.next_key().unwrap(), Some("nan"));
+    assert!(jiter.next_float().unwrap().is_nan());
+    assert_eq!(jiter.next_key().unwrap(), None);
+    jiter.finish().unwrap();
+
+    let json = br#"[1, /* c */ {"a": 2}] // c"#;
+    let mut jiter = Jiter::new(json).with_allow_comments();
+    assert_eq!(
+        jiter.next_value().unwrap(),
+        JsonValue::parse(br#"[1, {"a": 2}]"#, false).unwrap()
+    );
+    jiter.finish().unwrap();
+
+    let mut jiter = Jiter::new(json).with_allow_comments();
+    jiter.next_skip().unwrap();
+    jiter.finish().unwrap();
+
+    let mut jiter = Jiter::new(b"// c\n/* c */ x").with_allow_comments();
+    let e = jiter.next_value().unwrap_err();
+    assert_eq!(e.description(&jiter), "expected value at line 2 column 9");
+}
+
+#[test]
+fn value_allow_comments() {
+    let json = br#"{"a": /* c */ [1, "//"] // c
+    }"#;
+    let expected = JsonValue::parse(br#"{"a": [1, "//"]}"#, false).unwrap();
+    assert!(JsonValue::parse(json, false).is_err());
+    assert_eq!(
+        JsonValue::parse_with_config(json, false, PartialMode::Off, true).unwrap(),
+        expected
+    );
+    assert_eq!(
+        JsonValue::parse_owned(json, false, PartialMode::Off, true).unwrap(),
+        expected
+    );
+    assert_eq!(
+        JsonValueScratch::new()
+            .parse(json, false, PartialMode::Off, true)
+            .unwrap(),
+        expected
+    );
+    assert_eq!(
+        JsonValueScratch::new()
+            .parse_owned(json, false, PartialMode::Off, true)
+            .unwrap(),
+        expected
+    );
+
+    let value = JsonValue::parse_with_config(b"[1, /* c */ 2, // c", false, PartialMode::On, true).unwrap();
+    assert_eq!(value, JsonValue::parse(b"[1, 2]", false).unwrap());
+
+    let e = JsonValue::parse_with_config(b"{\n  // c\n  \"a\": x\n}", false, PartialMode::Off, true).unwrap_err();
+    assert_eq!(e.error_type, JsonErrorType::ExpectedSomeValue);
+    assert_eq!(e.get_position(b"{\n  // c\n  \"a\": x\n}").short(), "3:8");
+}
+
+#[test]
+fn bench_files_allow_comments() {
+    // pretty JSON only has newlines between tokens, so a comment can end every line
+    for entry in std::fs::read_dir("./benches").unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().is_none_or(|ext| ext != "json") {
+            continue;
+        }
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&read_file(path.to_str().unwrap())) else {
+            continue;
+        };
+        let pretty = serde_json::to_string_pretty(&value).unwrap();
+        let expected = JsonValue::parse(pretty.as_bytes(), false).unwrap();
+        for comment in [" // c /* c */\n", " /* c // c */\n", "/**/\n"] {
+            let jsonc = format!("/* c */\n{}\n// c", pretty.replace('\n', comment));
+            let value = JsonValue::parse_with_config(jsonc.as_bytes(), false, PartialMode::Off, true).unwrap();
+            assert_eq!(value, expected, "{}", path.display());
+        }
+    }
+}
+
+#[test]
 fn jiter_partial_string() {
     let mut jiter = Jiter::new(br#"["foo"#).with_allow_partial_strings();
     assert_eq!(jiter.next_array().unwrap(), Some(Peek::String));
@@ -1869,7 +2042,8 @@ fn test_string_simd_chunks_partial() {
             let full: String = serde_json::from_str(&json).unwrap();
             for cut in 1..=json.len() {
                 let value =
-                    JsonValue::parse_with_config(&json.as_bytes()[..cut], false, PartialMode::TrailingStrings).unwrap();
+                    JsonValue::parse_with_config(&json.as_bytes()[..cut], false, PartialMode::TrailingStrings, false)
+                        .unwrap();
                 let JsonValue::Str(s) = value else {
                     panic!("expected string, got {value:?}")
                 };
@@ -1907,7 +2081,7 @@ fn test_string_simd_stop_char_after_non_ascii() {
 #[test]
 fn test_value_partial_array_on() {
     let json_bytes = br#"["string", true, null, 1, "foo"#;
-    let value = JsonValue::parse_with_config(json_bytes, false, PartialMode::On).unwrap();
+    let value = JsonValue::parse_with_config(json_bytes, false, PartialMode::On, false).unwrap();
     assert_eq!(
         value,
         JsonValue::Array(Arc::new(vec![
@@ -1920,7 +2094,7 @@ fn test_value_partial_array_on() {
     // test all position in the string
     for i in 1..json_bytes.len() {
         let partial_json = &json_bytes[..i];
-        let value = JsonValue::parse_with_config(partial_json, false, PartialMode::On).unwrap();
+        let value = JsonValue::parse_with_config(partial_json, false, PartialMode::On, false).unwrap();
         assert!(matches!(value, JsonValue::Array(_)));
     }
 }
@@ -1928,7 +2102,7 @@ fn test_value_partial_array_on() {
 #[test]
 fn test_value_partial_array_trailing_strings() {
     let json_bytes = br#"["string", true, null, 1, "foo"#;
-    let value = JsonValue::parse_with_config(json_bytes, false, PartialMode::TrailingStrings).unwrap();
+    let value = JsonValue::parse_with_config(json_bytes, false, PartialMode::TrailingStrings, false).unwrap();
     assert_eq!(
         value,
         JsonValue::Array(Arc::new(vec![
@@ -1942,7 +2116,7 @@ fn test_value_partial_array_trailing_strings() {
     // test all position in the string
     for i in 1..json_bytes.len() {
         let partial_json = &json_bytes[..i];
-        let value = JsonValue::parse_with_config(partial_json, false, PartialMode::TrailingStrings).unwrap();
+        let value = JsonValue::parse_with_config(partial_json, false, PartialMode::TrailingStrings, false).unwrap();
         assert!(matches!(value, JsonValue::Array(_)));
     }
 }
@@ -1950,7 +2124,7 @@ fn test_value_partial_array_trailing_strings() {
 #[test]
 fn test_value_partial_object() {
     let json_bytes = br#"{"a": "value", "b": true, "c": false, "d": null, "e": 1, "f": 2.22, "g": ["#;
-    let value = JsonValue::parse_with_config(json_bytes, false, PartialMode::TrailingStrings).unwrap();
+    let value = JsonValue::parse_with_config(json_bytes, false, PartialMode::TrailingStrings, false).unwrap();
     let JsonValue::Object(obj) = value else {
         panic!("expected object")
     };
@@ -1969,7 +2143,7 @@ fn test_value_partial_object() {
     // test all position in the string
     for i in 1..json_bytes.len() {
         let partial_json = &json_bytes[..i];
-        let value = JsonValue::parse_with_config(partial_json, false, PartialMode::TrailingStrings).unwrap();
+        let value = JsonValue::parse_with_config(partial_json, false, PartialMode::TrailingStrings, false).unwrap();
         assert!(matches!(value, JsonValue::Object(_)));
     }
 }
@@ -1982,7 +2156,7 @@ fn test_partial_pass1() {
     // test all position in the string
     for i in 1..json_bytes.len() {
         let partial_json = &json_bytes[..i];
-        let value = JsonValue::parse_with_config(partial_json, false, PartialMode::TrailingStrings).unwrap();
+        let value = JsonValue::parse_with_config(partial_json, false, PartialMode::TrailingStrings, false).unwrap();
         assert!(matches!(value, JsonValue::Array(_)));
     }
 }
@@ -1995,7 +2169,7 @@ fn test_partial_medium_response() {
     // test all position in the string
     for i in 1..json_bytes.len() {
         let partial_json = &json_bytes[..i];
-        let value = JsonValue::parse_with_config(partial_json, false, PartialMode::TrailingStrings).unwrap();
+        let value = JsonValue::parse_with_config(partial_json, false, PartialMode::TrailingStrings, false).unwrap();
         assert!(matches!(value, JsonValue::Object(_)));
     }
 }
@@ -2114,7 +2288,10 @@ fn test_scratch_reuse() {
     for _ in 0..3 {
         for json_data in documents {
             let expected = JsonValue::parse(json_data, false).unwrap();
-            assert_eq!(scratch.parse(json_data, false, PartialMode::Off).unwrap(), expected);
+            assert_eq!(
+                scratch.parse(json_data, false, PartialMode::Off, false).unwrap(),
+                expected
+            );
         }
     }
 }
@@ -2124,15 +2301,17 @@ fn test_scratch_owned() {
     let mut scratch = JsonValueScratch::new();
     let value = {
         let s = r#"  { "int": 1, "const": true, "float": 1.2, "array": [1, false, null]}"#.to_string();
-        scratch.parse_owned(s.as_bytes(), false, PartialMode::Off).unwrap()
+        scratch
+            .parse_owned(s.as_bytes(), false, PartialMode::Off, false)
+            .unwrap()
     };
     assert_eq!(value, value_owned());
     let again = scratch
-        .parse_owned(br#"[{"k": "v"}, {"k": "w"}]"#, false, PartialMode::Off)
+        .parse_owned(br#"[{"k": "v"}, {"k": "w"}]"#, false, PartialMode::Off, false)
         .unwrap();
     assert_eq!(
         again,
-        JsonValue::parse_owned(br#"[{"k": "v"}, {"k": "w"}]"#, false, PartialMode::Off).unwrap()
+        JsonValue::parse_owned(br#"[{"k": "v"}, {"k": "w"}]"#, false, PartialMode::Off, false).unwrap()
     );
 }
 
@@ -2140,17 +2319,17 @@ fn test_scratch_owned() {
 fn test_scratch_after_error() {
     let mut scratch = JsonValueScratch::new();
     let broken: &[u8] = br#"{"a": "escaped\nvalue", "b": [1, 2, {"c": [3, "#;
-    assert!(scratch.parse(broken, false, PartialMode::Off).is_err());
+    assert!(scratch.parse(broken, false, PartialMode::Off, false).is_err());
     let trailing: &[u8] = br#"[1, "two\n"] x"#;
-    assert!(scratch.parse(trailing, false, PartialMode::Off).is_err());
+    assert!(scratch.parse(trailing, false, PartialMode::Off, false).is_err());
     let json_data: &[u8] = br#"[5, {"b": "six\n"}]"#;
     assert_eq!(
-        scratch.parse(json_data, false, PartialMode::Off).unwrap(),
+        scratch.parse(json_data, false, PartialMode::Off, false).unwrap(),
         JsonValue::parse(json_data, false).unwrap()
     );
     assert_eq!(
-        scratch.parse(broken, false, PartialMode::On).unwrap(),
-        JsonValue::parse_with_config(broken, false, PartialMode::On).unwrap()
+        scratch.parse(broken, false, PartialMode::On, false).unwrap(),
+        JsonValue::parse_with_config(broken, false, PartialMode::On, false).unwrap()
     );
 }
 

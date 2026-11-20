@@ -60,6 +60,36 @@ def test_python_disallow_nan():
         jiter.from_json(b'[NaN]', allow_inf_nan=False)
 
 
+def test_allow_comments():
+    data = b"""
+    // a config
+    {
+        "a": [1, /* two */ 2.5, "//not a comment"], // trailing
+        "b": null /* block
+        comment */
+    }
+    """
+    expected = {'a': [1, 2.5, '//not a comment'], 'b': None}
+    for cache_mode in (True, False, 'keys'):
+        for float_mode in ('float', 'decimal', 'lossless-float'):
+            parsed = jiter.from_json(
+                data, allow_comments=True, cache_mode=cache_mode, float_mode=float_mode
+            )
+            assert parsed['b'] is None
+            assert parsed['a'][0] == 1
+            assert parsed['a'][2] == '//not a comment'
+            assert float(parsed['a'][1]) == 2.5
+    assert jiter.from_json(data, allow_comments=True) == expected
+    assert (
+        jiter.from_json(data, allow_comments=True, catch_duplicate_keys=True)
+        == expected
+    )
+    with pytest.raises(ValueError, match='expected value at line 2 column 5'):
+        jiter.from_json(data)
+    with pytest.raises(ValueError, match='expected value at line 1 column 1'):
+        jiter.from_json(b'/* unterminated', allow_comments=True)
+
+
 def test_error():
     with pytest.raises(ValueError, match='EOF while parsing a list at line 1 column 9'):
         jiter.from_json(b'["string"')
