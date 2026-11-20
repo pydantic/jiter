@@ -2203,3 +2203,19 @@ fn test_known_value_recursion_budget() {
     let peek = jiter.peek().unwrap();
     assert!(jiter.known_value_with_recursion_limit(peek, 1).is_err());
 }
+
+#[test]
+fn test_next_value_recursion_budget_after_entering_container() {
+    let mut jiter = Jiter::new(b"[[1],[]]");
+    assert_eq!(jiter.next_array().unwrap(), Some(Peek::Array));
+    assert_eq!(
+        jiter.next_value_with_recursion_limit(1).unwrap(),
+        JsonValue::parse(b"[1]", false).unwrap()
+    );
+    assert_eq!(jiter.array_step().unwrap(), Some(Peek::Array));
+    jiter.next_value_with_recursion_limit(0).unwrap();
+    assert_eq!(jiter.array_step().unwrap(), None);
+    jiter.finish().unwrap();
+    assert!(Jiter::new(b"[[1]]").next_value_with_recursion_limit(1).is_err());
+    assert!(Jiter::new(b"[1,]").next_value_with_recursion_limit(1).is_err());
+}

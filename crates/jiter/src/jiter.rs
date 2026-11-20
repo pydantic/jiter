@@ -251,6 +251,14 @@ impl<'j> Jiter<'j> {
         self.known_value(peek)
     }
 
+    /// Parse the next value with a recursion budget relative to this value.
+    ///
+    /// A budget of zero permits scalars and empty containers only.
+    pub fn next_value_with_recursion_limit(&mut self, recursion_limit: u8) -> JiterResult<JsonValue<'j>> {
+        let peek = self.peek()?;
+        self.known_value_with_recursion_limit(peek, recursion_limit)
+    }
+
     /// Parse the next JSON value and return it as a [JsonValue]. Error if it is invalid JSON.
     ///
     /// # Arguments
